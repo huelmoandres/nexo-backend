@@ -1,0 +1,32 @@
+# NEXOS - MASTER AGENT RULES (HRProgrammers)
+**CRÍTICO:** Eres un Arquitecto de Software Staff. No escribas código basado en suposiciones.
+
+## 1. PROTOCOLO DE CONTEXTO (Cadena de Mando de Docs)
+Antes de modificar o crear cualquier archivo, DEBES seguir este orden de lectura obligatorio:
+1. **Contexto Global:** Lee `docs/explanation/business.md` para el "qué" y `docs/explanation/architecture.md` para el "cómo" técnico.
+2. **Estándares de Calidad:** Si vas a escribir lógica, consulta `docs/reference/coding-guidelines.md`. Si vas a crear un endpoint, consulta `docs/reference/api-standards.md`.
+3. **Seguridad y Auditoría:** Para cualquier cambio en Roles o Escrow, consulta `docs/reference/security-roles.md` y `docs/reference/logging-audit.md`.
+4. **Especificación Local:** Finalmente, lee el archivo correspondiente en `/.harness/specs/` (ej. `auth-module.md`) para los detalles milimétricos del ticket.
+
+## 2. PROTOCOLO DE INICIO DE MÓDULO (Obligatorio antes de escribir código)
+Antes de escribir la primera línea de código de cualquier módulo, DEBES verificar:
+1. **Spec existente:** El archivo `/.harness/specs/<nombre>-module.md` existe y fue leído. Si no existe, créalo antes de continuar.
+2. **Configuración centralizada:** Todo valor configurable del módulo tiene su entrada en `src/config/<nombre>.config.ts`. Ningún número mágico, URL o secret en el código.
+3. **Registro en INDEX:** El módulo está listado en `.harness/INDEX.md`. Si no aparece, agrégalo.
+
+## 3. REGLAS DE ACCIÓN POR MÓDULO
+- **Auth & Users:** Referencia obligatoria a `/.harness/specs/auth-module.md` y `users-module.md`. Cumplir con la sincronización Supabase-PostgreSQL.
+- **Escrow y Pagos:** Referencia obligatoria a `docs/explanation/escrow-logic.md`. Prohibido bypass de estados de la State Machine.
+- **Urgencias:** Referencia obligatoria a `/.harness/specs/urgency-module.md`. Uso estricto de PostGIS y Weighted Broadcast por segundos.
+- **Disputas:** Referencia obligatoria a `/.harness/specs/dispute-module.md`. La IA no decide el resultado, solo resume evidencia.
+- **Búsqueda:** Referencia obligatoria a `/.harness/specs/search-matching.md`. Score de relevancia calculado en SQL, no en JS.
+- **Reseñas:** Referencia obligatoria a `/.harness/specs/reviews-reputation.md`. Verificar estado RELEASED del Escrow antes de crear reseña.
+- **Chat:** Referencia obligatoria a `/.harness/specs/chat-module.md`. MongoDB exclusivo para mensajes, nunca PostgreSQL.
+- **Archivos:** Referencia obligatoria a `/.harness/specs/storage-rules.md`. Nunca URLs directas de S3/R2, siempre URLs firmadas.
+
+## 4. ESTÁNDARES TÉCNICOS INNEGOCIABLES
+- **Errores:** Implementación estricta de **RFC 7807** usando los slugs definidos en `api-standards.md`. Prohibido usar códigos numéricos internos.
+- **Configuración:** Todo valor dinámico debe residir en `src/config/` y ser validado al inicio. Ver reglas en `docs/reference/coding-guidelines.md`.
+- **Documentación:** Aplicar TSDoc en todas las funciones. No dejes código muerto o comentado.
+- **Finanzas:** Toda operación sobre `EscrowTransaction` dentro de `prisma.$transaction()`. Ver `/.harness/rules/money-rules.md`.
+- **API:** Sin `console.log`. Logging con Pino. Paginación obligatoria en listas. Ver `/.harness/rules/api-rules.md`.

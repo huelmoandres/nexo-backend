@@ -1,0 +1,102 @@
+# =============================================================================
+# NEXOS — Docker Compose para Entorno de Desarrollo
+# HRProgrammers
+#
+# Uso:
+#   docker compose up -d          → Levanta todos los servicios en segundo plano
+#   docker compose down           → Detiene los servicios (los datos persisten en .docker_data/)
+#   docker compose down -v        → Detiene y elimina volúmenes (reset completo)
+#   docker compose logs -f        → Ver logs en tiempo real
+#   bash scripts/init-local.sh    → Setup completo automatizado
+#
+# NOTA: El proceso NestJS (app) NO corre en Docker durante desarrollo.
+# Se ejecuta localmente con: npm run start:dev
+# Esto permite hot-reload nativo y mejor DX.
+#
+# VOLÚMENES: Los datos persisten en .docker_data/ (ignorado en .gitignore).
+# Para un reset completo: rm -rf .docker_data/ && docker compose up -d
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 con PostGIS 3.4
+  # Núcleo financiero ACID: Users, Jobs, Escrow, Disputes, AuditLog.
+  # La extensión PostGIS habilita ST_DWithin y ST_Distance para geo-matching.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: nexos_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nexos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexos_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-nexos_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./.docker_data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nexos} -d ${POSTGRES_DB:-nexos_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 (Alpine — imagen liviana)
+  # Tres usos: Token Blocklist de logout, caché de categorías, colas BullMQ.
+  # La persistencia AOF evita perder jobs de BullMQ ante un restart.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: nexos_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --save 20 1
+      --loglevel warning
+      --requirepass ${REDIS_PASSWORD:-nexos_redis_password}
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./.docker_data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-nexos_redis_password}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # MongoDB 7
+  # Almacenamiento exclusivo para historial de chats entre cliente y profesional.
+  # NO se usa para datos financieros ni de identidad (ver money-rules.md).
+  # ---------------------------------------------------------------------------
+  mongodb:
+    image: mongo:7
+    container_name: nexos_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-nexos}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-nexos_mongo_password}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-nexos_chats}
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./.docker_data/mongodb:/data/db
+    healthcheck:
+      test:
+        - "CMD"
+        - "mongosh"
+        - "--quiet"
+        - "--username"
+        - "${MONGO_USER:-nexos}"
+        - "--password"
+        - "${MONGO_PASSWORD:-nexos_mongo_password}"
+        - "--eval"
+        - "db.adminCommand('ping').ok"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s

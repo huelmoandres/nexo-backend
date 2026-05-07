@@ -1,0 +1,587 @@
+// =============================================================================
+// NEXOS - PRISMA SCHEMA (HRProgrammers)
+// Fuente única de verdad para la base de datos PostgreSQL de Nexos.
+// El schema incluye entidades activas y entidades planificadas del roadmap.
+// La disponibilidad productiva se define por modulos Nest implementados en /src/modules.
+//
+// IMPORTANTE — Extensiones de base de datos requeridas:
+// Ejecutar manualmente en PostgreSQL antes de la primera migración:
+//   CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+//   CREATE EXTENSION IF NOT EXISTS "postgis";
+//
+// Convenciones:
+//   - Dinero: todos los campos *Cents son Int (centavos UYU × 100).
+//     Usar el Value Object Money de src/common/types/money.value-object.ts.
+//   - Fechas: TIMESTAMPTZ — siempre UTC. Usar date-fns en la capa de Service.
+//   - Soft Delete: las tablas con deletedAt NUNCA se borran físicamente.
+//     Siempre update({ data: { deletedAt: new Date() } }).
+//   - PostGIS: las columnas `location` usan geography(Point, 4326).
+//     Toda operación geoespacial ocurre en SQL raw (prisma.$queryRaw).
+// =============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [uuidOssp(map: "uuid-ossp"), postgis]
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum Role {
+  CLIENT
+  INDEPENDENT_PRO
+  COMPANY_ADMIN
+  COMPANY_EMPLOYEE
+  SUPER_ADMIN
+}
+
+enum KycStatus {
+  UNVERIFIED
+  PENDING_KYC
+  VERIFIED
+}
+
+enum SubscriptionPlan {
+  FREE
+  MEDIUM
+  BUSINESS
+}
+
+enum JobStatus {
+  PENDING          // Publicado, esperando profesional
+  ACCEPTED         // Profesional asignado, trabajo no iniciado
+  IN_PROGRESS      // Trabajo en curso
+  COMPLETED        // Profesional marcó como terminado, esperando conformidad
+  PENDING_APPROVAL // Sinónimo explícito para el periodo de 48hs
+  CLOSED           // Conformidad dada, Escrow liberado
+  CANCELLED        // Cancelado antes de inicio
+}
+
+enum EscrowStatus {
+  PENDING        // Creado, pendiente de fondeo
+  HELD           // Dinero retenido, trabajo en curso
+  HELD_DISPUTED  // Disputa abierta, fondos congelados
+  RELEASED       // Fondos liberados al profesional (estado terminal exitoso)
+  REFUNDED       // Fondos devueltos al cliente (estado terminal de cancelación)
+}
+
+enum DisputeStatus {
+  OPEN                  // Disputa iniciada
+  SECOND_CHANCE         // Se habilitó re-visita técnica de 48hs
+  MEDIATION_LOCKED      // Solo SUPER_ADMIN puede resolver
+  RESOLVED_PRO_FAVOR    // Resuelto a favor del profesional → Escrow RELEASED
+  RESOLVED_CLIENT_FAVOR // Resuelto a favor del cliente → Escrow REFUNDED
+  RESOLVED              // Resolución acordada entre partes (autogestión)
+}
+
+enum EvidenceType {
+  BEFORE_PHOTO      // Foto del estado antes del trabajo (alto valor en disputa)
+  AFTER_PHOTO       // Foto del estado al finalizar (alto valor en disputa)
+  MATERIAL_RECEIPT  // Recibo de materiales — solo válido si uploadedAt < dispute.createdAt
+  CHAT_SCREENSHOT   // Captura referencial (bajo valor, el chat interno ya existe)
+  CLIENT_COMPLAINT  // Descripción escrita del cliente (referencial)
+}
+
+enum ReviewStatus {
+  PENDING_PHOTOS // Scores guardados, esperando fotos Before/After
+  VALIDATED      // Reseña visible públicamente
+  REJECTED       // Moderada y ocultada por SUPER_ADMIN
+}
+
+enum UrgencyStatus {
+  BROADCAST  // Alerta activa, buscando profesional (Weighted Broadcast en curso)
+  ACCEPTED   // Primer profesional asignó el trabajo
+  COMPLETED  // Trabajo finalizado
+  EXPIRED    // Nadie aceptó antes del deadline (configurable, default 30min)
+  CANCELLED  // Cliente canceló antes de asignación
+}
+
+enum NotificationType {
+  URGENCY_DISPATCHED  // Nueva urgencia disponible para el profesional
+  URGENCY_ACCEPTED    // Alguien aceptó la urgencia del cliente
+  ESCROW_FUNDED       // El cliente fondeó el Escrow
+  ESCROW_RELEASED     // Fondos liberados al profesional
+  DISPUTE_OPENED      // Se abrió una disputa en un trabajo
+  DISPUTE_RESOLVED    // La disputa fue resuelta
+  KYC_APPROVED        // Verificación de identidad aprobada
+  KYC_REJECTED        // Verificación de identidad rechazada
+  REVIEW_VALIDATED    // Una reseña fue validada y es pública
+  SYSTEM              // Mensajes del sistema (actualizaciones, mantenimiento)
+}
+
+enum AuditAction {
+  USER_CREATED
+  COMPANY_CREATED
+  // Financieros (Escrow)
+  FUND_ESCROW
+  RELEASE_FUNDS
+  REFUND_CLIENT
+  // Disputas
+  OPEN_DISPUTE
+  SECOND_CHANCE_ACTIVATED
+  LOCK_MEDIATION
+  RESOLVE_PRO
+  RESOLVE_CLIENT
+  // Identidad y roles
+  ROLE_CHANGED          // Cambio de rol en User — auditoría crítica de seguridad
+  KYC_STATUS_CHANGED
+  // Trabajos
+  JOB_STATUS_CHANGED
+  JOB_ASSIGNED
+  // Evidencia
+  EVIDENCE_UPLOADED
+  EVIDENCE_DELETED      // Soft delete de evidencia — inmutable en producción
+  // Empresa
+  EMPLOYEE_ACTION       // Acción de un COMPANY_EMPLOYEE — filtrable por companyId
+  EMPLOYEE_ADDED
+  EMPLOYEE_REMOVED
+}
+
+// =============================================================================
+// BLOQUE A — GEOGRAFÍA JERÁRQUICA
+// Country → State (Departamento) → City (Localidad/Barrio)
+// Propósito: filtros de UI, SEO de perfiles y escalabilidad regional.
+// El matching de cercanía sigue siendo responsabilidad de PostGIS (location).
+// =============================================================================
+
+model Country {
+  id      String  @id @default(uuid())
+  name    String  @unique // Ej: "Uruguay"
+  isoCode String  @unique // Ej: "UY" — ISO 3166-1 alpha-2
+  states  State[]
+}
+
+model State {
+  id        String  @id @default(uuid())
+  name      String  // Ej: "Montevideo", "Canelones", "Maldonado"
+  countryId String
+  country   Country @relation(fields: [countryId], references: [id])
+  cities    City[]
+}
+
+model City {
+  id       String                @id @default(uuid())
+  name     String                // Ej: "Pocitos", "Ciudad de la Costa"
+  stateId  String
+  state    State                 @relation(fields: [stateId], references: [id])
+  profiles ProfessionalProfile[]
+}
+
+// =============================================================================
+// BLOQUE B — IDENTIDAD Y EMPRESA
+// =============================================================================
+
+model User {
+  id             String   @id @default(uuid())
+  /// UID de Supabase Auth. Se extrae del JWT — nunca confiar en el body del request.
+  supabaseUid    String   @unique
+  email          String   @unique
+  fullName       String
+  role           Role     @default(CLIENT)
+  /// Token de Expo Push Notifications. Se actualiza al iniciar sesión desde la app.
+  expoPushToken  String?
+  /// FK a Company — solo para usuarios con rol COMPANY_EMPLOYEE.
+  companyId      String?
+  company        Company? @relation("CompanyEmployees", fields: [companyId], references: [id])
+
+  // Relaciones
+  professionalProfile ProfessionalProfile?
+  ownedCompany        Company?             @relation("CompanyAdmin")
+  jobsAsClient        Job[]                @relation("JobClient")
+  disputesAsClient    Dispute[]            @relation("DisputeClient")
+  disputesAsPro       Dispute[]            @relation("DisputeProfessional")
+  reviewsAsClient     Review[]             @relation("ReviewClient")
+  reviewsAsPro        Review[]             @relation("ReviewProfessional")
+  evidences           WorkEvidence[]
+  auditLogs           AuditLog[]
+  notifications       Notification[]
+  urgenciesAsClient   Urgency[]
+
+  /// Soft Delete — nunca borrar físicamente. Usar update({ data: { deletedAt: new Date() } })
+  deletedAt DateTime? @db.Timestamptz
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+}
+
+model Company {
+  id      String  @id @default(uuid())
+  name    String
+  /// RUT uruguayo (Registro Único Tributario) — identificador fiscal obligatorio.
+  rut     String  @unique
+  /// Key S3/R2 del logo. Nunca URL directa — usar StorageService.generatePresignedGetUrl().
+  logoKey String?
+
+  /// El usuario COMPANY_ADMIN que administra esta empresa.
+  adminId String @unique
+  admin   User   @relation("CompanyAdmin", fields: [adminId], references: [id])
+
+  // Relaciones
+  employees User[]     @relation("CompanyEmployees")
+  auditLogs AuditLog[]
+
+  /// Soft Delete
+  deletedAt DateTime? @db.Timestamptz
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+}
+
+model ProfessionalProfile {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  /// Ciudad administrativa para filtros de UI y SEO. Complementa la ubicación PostGIS.
+  cityId String?
+  city   City?   @relation(fields: [cityId], references: [id])
+
+  /// Coordenadas GPS para matching geoespacial con PostGIS (ST_DWithin, ST_Distance).
+  /// Índice GiST declarado abajo. Toda query sobre este campo usa prisma.$queryRaw.
+  location Unsupported("geography(Point, 4326)")?
+
+  kycStatus        KycStatus        @default(UNVERIFIED)
+  subscriptionPlan SubscriptionPlan @default(FREE)
+  isAvailable      Boolean          @default(false)
+  /// Rating promedio recalculado por ReviewService al validar cada reseña.
+  averageRating    Float            @default(0)
+  bio              String?
+  /// Años de experiencia declarados por el profesional.
+  experienceYears  Int?
+
+  // Keys S3/R2 de documentos KYC — nunca URLs directas
+  documentFrontKey String?
+  documentBackKey  String?
+  /// Key del documento de identidad (frente o único) tras flujo presign.
+  identityCardKey  String?
+  selfieKey        String?
+
+  // Relaciones
+  categories  ProfessionalCategory[]
+  jobsAsPro   Job[]                  @relation("JobProfessional")
+  urgencies   Urgency[]
+  reviews     Review[]               @relation("ReviewProfessionalProfile")
+
+  /// Soft Delete
+  deletedAt DateTime? @db.Timestamptz
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+
+  @@index([location], type: Gist) // Índice GiST obligatorio para PostGIS
+}
+
+model Category {
+  id              String  @id @default(uuid())
+  name            String
+  slug            String  @unique // Ej: "electricidad-urgencias"
+  supportsUrgency Boolean @default(false)
+  /// Auto-relación para jerarquía. Ej: "Electricidad" → "Electricidad de Urgencia"
+  parentId        String?
+  parent          Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children        Category[] @relation("CategoryHierarchy")
+
+  professionals ProfessionalCategory[]
+  jobs          Job[]
+  urgencies     Urgency[]
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+}
+
+/// Tabla intermedia N-N entre ProfessionalProfile y Category.
+model ProfessionalCategory {
+  professionalId String
+  categoryId     String
+  professional   ProfessionalProfile @relation(fields: [professionalId], references: [id])
+  category       Category            @relation(fields: [categoryId], references: [id])
+
+  @@id([professionalId, categoryId])
+}
+
+// =============================================================================
+// BLOQUE C — TRABAJO Y CICLO FINANCIERO
+// =============================================================================
+
+model Job {
+  id String @id @default(uuid())
+
+  clientId String
+  client   User   @relation("JobClient", fields: [clientId], references: [id])
+
+  /// Asignado cuando un profesional acepta el trabajo. Null hasta entonces.
+  professionalId String?
+  professional   ProfessionalProfile? @relation("JobProfessional", fields: [professionalId], references: [id])
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  status      JobStatus @default(PENDING)
+  title       String
+  description String
+
+  /// Monto acordado en centavos (Pesos Uruguayos × 100).
+  /// Ejemplo: $1,500 UYU = 150000 centavos.
+  /// Usar: Money.fromCents(agreedAmountCents) en la capa de Service.
+  agreedAmountCents Int
+
+  /// Timestamp cuando el profesional marcó el trabajo como COMPLETED.
+  completedAt       DateTime? @db.Timestamptz
+  /// Deadline de aceptación silenciosa: completedAt + 48hs hábiles (calculado con date-fns).
+  approvalDeadline  DateTime? @db.Timestamptz
+
+  // Relaciones
+  escrowTransaction EscrowTransaction?
+  dispute           Dispute?
+  review            Review?
+  evidences         WorkEvidence[]
+  urgency           Urgency?
+
+  /// Soft Delete — el historial de trabajos nunca se borra para proteger a ambas partes.
+  deletedAt DateTime? @db.Timestamptz
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+}
+
+/// Núcleo financiero ACID. Toda mutación de esta tabla requiere prisma.$transaction().
+/// Ver docs/explanation/escrow-logic.md para la State Machine completa.
+model EscrowTransaction {
+  id    String @id @default(uuid())
+  jobId String @unique
+  job   Job    @relation(fields: [jobId], references: [id])
+
+  status EscrowStatus @default(PENDING)
+
+  /// Monto total retenido en centavos. Usar Money.fromCents(amountCents).
+  amountCents Int
+  /// Comisión de HRProgrammers en centavos. Calculado al fondear.
+  commissionCents Int @default(0)
+  /// Monto neto que recibirá el profesional: amountCents - commissionCents.
+  netAmountCents Int @default(0)
+
+  /// ID del Job de BullMQ del timer de aceptación silenciosa (48hs).
+  /// Se usa para cancelarlo si el cliente abre una disputa antes del deadline.
+  bullJobId String?
+
+  /// Referencia interna de la pasarela de pagos uruguaya (ej. RedPagos, Mercado Pago UY).
+  providerReference String?
+  /// URL externa de seguimiento o comprobante de la pasarela de pagos.
+  externalUrl       String?
+
+  releasedAt DateTime? @db.Timestamptz
+  refundedAt DateTime? @db.Timestamptz
+  createdAt  DateTime  @default(now()) @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @db.Timestamptz
+
+  auditLogs AuditLog[]
+}
+
+model Urgency {
+  id String @id @default(uuid())
+
+  clientId String
+  client   User   @relation(fields: [clientId], references: [id])
+
+  /// Profesional que aceptó. Null hasta la asignación.
+  professionalId String?
+  professional   ProfessionalProfile? @relation(fields: [professionalId], references: [id])
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  jobId String? @unique
+  job   Job?    @relation(fields: [jobId], references: [id])
+
+  status UrgencyStatus @default(BROADCAST)
+
+  /// Coordenadas del cliente en el momento de despachar la urgencia.
+  clientLat Float
+  clientLng Float
+
+  description String
+  /// Presupuesto estimado en centavos. Opcional — puede no conocerse al despachar.
+  estimatedBudgetCents Int?
+
+  /// ID del Job padre de BullMQ del Weighted Broadcast.
+  /// Se usa para cancelar los Jobs hijos cuando alguien acepta.
+  bullJobId String?
+
+  /// Deadline antes de marcar la urgencia como EXPIRED (configurable, default 30min).
+  expiresAt  DateTime  @db.Timestamptz
+  acceptedAt DateTime? @db.Timestamptz
+  createdAt  DateTime  @default(now()) @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @db.Timestamptz
+}
+
+// =============================================================================
+// BLOQUE D — CONFIANZA, DISPUTAS Y RESEÑAS
+// =============================================================================
+
+model Dispute {
+  id    String @id @default(uuid())
+  jobId String @unique
+  job   Job    @relation(fields: [jobId], references: [id])
+
+  clientId String
+  client   User   @relation("DisputeClient", fields: [clientId], references: [id])
+
+  professionalId String
+  professional   User   @relation("DisputeProfessional", fields: [professionalId], references: [id])
+
+  status DisputeStatus @default(OPEN)
+  /// Motivo de la disputa. DisputeReason enum definido en código (src/common/enums/).
+  reason      String
+  description String
+  /// Notas del SUPER_ADMIN al resolver. Obligatorio para trazabilidad de decisiones humanas.
+  adminNotes  String?
+
+  /// Deadline de la Segunda Oportunidad: +48hs hábiles desde activación.
+  secondChanceDeadline DateTime? @db.Timestamptz
+  resolvedAt           DateTime? @db.Timestamptz
+  createdAt            DateTime  @default(now()) @db.Timestamptz
+  updatedAt            DateTime  @updatedAt @db.Timestamptz
+
+  evidences WorkEvidence[]
+}
+
+/// Evidencia de un trabajo. Inmutable por diseño — no tiene Soft Delete.
+/// El uploadedAt es generado por la DB, nunca por el código de aplicación ni el cliente.
+model WorkEvidence {
+  id String @id @default(uuid())
+
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id])
+
+  /// Vinculada a una disputa si fue subida durante el proceso de mediación.
+  disputeId String?
+  dispute   Dispute? @relation(fields: [disputeId], references: [id])
+
+  uploadedById String
+  uploadedBy   User   @relation(fields: [uploadedById], references: [id])
+
+  type EvidenceType
+  /// Key S3/R2 del archivo. Nunca URL directa.
+  /// Usar StorageService.generatePresignedGetUrl(fileKey, bucket) para visualizar.
+  fileKey     String
+  description String?
+  /// true si fue subida DESPUÉS de abrir la disputa → no reconocida en mediación.
+  lateEvidence Boolean @default(false)
+
+  /// Generado por PostgreSQL DEFAULT NOW(). Crítico para la Regla de Evidencia Proactiva.
+  uploadedAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([jobId, type])
+}
+
+model Review {
+  id    String @id @default(uuid())
+  jobId String @unique
+  job   Job    @relation(fields: [jobId], references: [id])
+
+  clientId String
+  client   User   @relation("ReviewClient", fields: [clientId], references: [id])
+
+  professionalId String
+  professional   User   @relation("ReviewProfessional", fields: [professionalId], references: [id])
+
+  professionalProfileId String
+  professionalProfile   ProfessionalProfile @relation("ReviewProfessionalProfile", fields: [professionalProfileId], references: [id])
+
+  status ReviewStatus @default(PENDING_PHOTOS)
+
+  /// Dimensión 1: puntualidad del profesional. Rango 1-5 (entero).
+  punctualityScore   Int
+  /// Dimensión 2: calidad y prolijidad del trabajo. Rango 1-5 (entero).
+  qualityScore       Int
+  /// Dimensión 3: relación precio/resultado. Rango 1-5 (entero).
+  valueForMoneyScore Int
+  /// Promedio calculado en ReviewService: AVG(punctuality, quality, value). Nunca ingresado por el cliente.
+  overallScore       Float
+
+  comment String
+
+  /// Keys S3/R2 de las fotos. Obligatorias para pasar de PENDING_PHOTOS a VALIDATED.
+  beforePhotoKey String?
+  afterPhotoKey  String?
+
+  /// Soft Delete — el historial de reseñas es propiedad de los clientes que las escribieron.
+  deletedAt DateTime? @db.Timestamptz
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+}
+
+// =============================================================================
+// BLOQUE E — AUDITORÍA UNIVERSAL Y NOTIFICACIONES
+// =============================================================================
+
+/// Registro inmutable de todas las acciones críticas del sistema.
+/// Cubre: pagos, cambios de roles, estados de trabajos y acciones de empleados.
+/// No tiene Soft Delete — es inmutable por diseño legal y de trazabilidad.
+model AuditLog {
+  id String @id @default(uuid())
+
+  /// Usuario que ejecutó la acción. Puede ser un usuario de sistema (BullMQ worker).
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  /// FK opcional a Company. Permite al COMPANY_ADMIN auditar las acciones de sus empleados.
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  /// Escrow vinculado (si la acción afecta un pago).
+  escrowTransactionId String?
+  escrowTransaction   EscrowTransaction? @relation(fields: [escrowTransactionId], references: [id])
+
+  action AuditAction
+
+  /// Nombre de la tabla afectada. Ej: "EscrowTransaction", "User", "Job".
+  entityType String
+  /// UUID de la fila afectada. Indexado para consultas de auditoría por entidad.
+  entityId   String
+
+  /// Estado anterior serializado como JSON string.
+  previousState String?
+  /// Estado nuevo serializado como JSON string.
+  newState      String?
+
+  /// Datos adicionales contextuales. Ej: { adminNotes, fromRole, toRole, reason }.
+  metadata Json?
+
+  /// Dirección IP del cliente que originó la acción. Crítico para cambios de rol y finanzas.
+  ipAddress String?
+  /// User-Agent del cliente para trazabilidad de seguridad.
+  userAgent String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([entityId])
+  @@index([companyId])
+  @@index([userId])
+}
+
+/// Historial persistente de notificaciones en-app (la campana).
+/// Permite al usuario ver lo que pasó mientras estaba desconectado.
+model Notification {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  type    NotificationType
+  title   String
+  message String
+
+  /// Tipo de entidad relacionada para deep linking. Ej: "Job", "Dispute", "Urgency".
+  relatedEntityType String?
+  /// UUID de la entidad relacionada. La app navega a ella al tocar la notificación.
+  relatedEntityId   String?
+
+  /// null = no leída. Indexado junto con userId para la query de "no leídas".
+  readAt    DateTime? @db.Timestamptz
+  createdAt DateTime  @default(now()) @db.Timestamptz
+
+  @@index([userId, readAt])
+}
