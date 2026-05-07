@@ -1,20 +1,24 @@
 import type { JwtPayload } from 'jsonwebtoken';
-import * as jwt from 'jsonwebtoken';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 import * as jwksUtil from '../supabase-jwks.util';
 import { createSupabaseJwtSecretProvider } from '../strategies/supabase-jwt.strategy';
 
-const jwtDecodeMock = vi.hoisted(() =>
-  vi.fn<Parameters<typeof jwt.decode>, ReturnType<typeof jwt.decode>>(),
-);
+type JwtDecodeFn = typeof import('jsonwebtoken').decode;
+type JsonWebTokenModule = typeof import('jsonwebtoken');
+
+const jwtDecodeMock = vi.hoisted(() => vi.fn() as MockInstance<JwtDecodeFn>);
 
 vi.mock('jsonwebtoken', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('jsonwebtoken')>();
-  jwtDecodeMock.mockImplementation(actual.decode);
-  return {
+  // importOriginal devuelve `unknown`: forzamos el módulo real para el mock.
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- contrato de importOriginal vs. tsc estricto
+  const actual = (await importOriginal()) as JsonWebTokenModule;
+  const decodeImpl: JwtDecodeFn = actual.decode;
+  jwtDecodeMock.mockImplementation(decodeImpl);
+  const mocked: JsonWebTokenModule = {
     ...actual,
-    decode: jwtDecodeMock,
+    decode: jwtDecodeMock as unknown as JwtDecodeFn,
   };
+  return mocked;
 });
 
 const baseCfg = {
@@ -38,29 +42,27 @@ function runProvider(
 
 describe('createSupabaseJwtSecretProvider', () => {
   afterEach(async () => {
-    const actual = await vi.importActual<typeof import('jsonwebtoken')>(
-      'jsonwebtoken',
-    );
+    const actual =
+      await vi.importActual<typeof import('jsonwebtoken')>('jsonwebtoken');
     jwtDecodeMock.mockImplementation(actual.decode);
     vi.restoreAllMocks();
   });
 
   it('entrega el secreto para tokens HS256 válidos', async () => {
-    const jwtActual = await vi.importActual<typeof import('jsonwebtoken')>(
-      'jsonwebtoken',
-    );
+    const jwtActual =
+      await vi.importActual<typeof import('jsonwebtoken')>('jsonwebtoken');
     const token = jwtActual.sign({ sub: 'u1' }, baseCfg.supabaseJwtSecret, {
       algorithm: 'HS256',
     });
-    const provider = createSupabaseJwtSecretProvider(baseCfg as never);
+    const provider = createSupabaseJwtSecretProvider(baseCfg);
     const { err, secretOrKey } = await runProvider(provider, token);
     expect(err).toBeNull();
     expect(secretOrKey).toBe('symmetric-secret');
   });
 
   it('rechaza JWT mal formado (decode string)', async () => {
-    jwtDecodeMock.mockReturnValue('not-an-object' as never);
-    const provider = createSupabaseJwtSecretProvider(baseCfg as never);
+    jwtDecodeMock.mockReturnValue('not-an-object');
+    const provider = createSupabaseJwtSecretProvider(baseCfg);
     const { err } = await runProvider(provider, 'x');
     expect(err?.message).toBe('JWT mal formado');
   });
@@ -69,8 +71,8 @@ describe('createSupabaseJwtSecretProvider', () => {
     jwtDecodeMock.mockReturnValue({
       header: { alg: 'none', kid: 'x' },
       payload: {},
-    } as never);
-    const provider = createSupabaseJwtSecretProvider(baseCfg as never);
+    });
+    const provider = createSupabaseJwtSecretProvider(baseCfg);
     const { err } = await runProvider(provider, 'x');
     expect(err?.message).toContain('Algoritmo JWT no admitido');
   });
@@ -79,8 +81,8 @@ describe('createSupabaseJwtSecretProvider', () => {
     jwtDecodeMock.mockReturnValue({
       header: { alg: 'ES256' },
       payload: { iss: 'https://a.supabase.co/auth/v1' },
-    } as never);
-    const provider = createSupabaseJwtSecretProvider(baseCfg as never);
+    });
+    const provider = createSupabaseJwtSecretProvider(baseCfg);
     const { err } = await runProvider(provider, 'x');
     expect(err?.message).toBe('JWT asimétrico sin header kid');
   });
@@ -89,11 +91,11 @@ describe('createSupabaseJwtSecretProvider', () => {
     jwtDecodeMock.mockReturnValue({
       header: { alg: 'ES256', kid: 'k1' },
       payload: {} as JwtPayload,
-    } as never);
+    });
     const provider = createSupabaseJwtSecretProvider({
       ...baseCfg,
       supabaseUrl: '',
-    } as never);
+    });
     const { err } = await runProvider(provider, 'x');
     expect(err?.message).toContain('JWKS Supabase no resuelto');
   });
@@ -104,7 +106,7 @@ describe('createSupabaseJwtSecretProvider', () => {
       payload: {
         iss: 'https://xyz.supabase.co/auth/v1',
       },
-    } as never);
+    });
     const getSigningKey = vi.fn(
       (
         _kid: string,
@@ -117,7 +119,7 @@ describe('createSupabaseJwtSecretProvider', () => {
       getSigningKey,
     } as never);
 
-    const provider = createSupabaseJwtSecretProvider(baseCfg as never);
+    const provider = createSupabaseJwtSecretProvider(baseCfg);
     const { err, secretOrKey } = await runProvider(provider, 'raw');
     expect(err).toBeNull();
     expect(secretOrKey).toBe('pem-data');
@@ -128,15 +130,13 @@ describe('createSupabaseJwtSecretProvider', () => {
     jwtDecodeMock.mockReturnValue({
       header: { alg: 'ES256', kid: 'k1' },
       payload: { iss: 'https://xyz.supabase.co/auth/v1' },
-    } as never);
+    });
     vi.spyOn(jwksUtil, 'getJwksClient').mockReturnValue({
-      getSigningKey: (
-        _kid: string,
-        cb: (err: Error | null) => void,
-      ) => cb(new Error('jwks down')),
+      getSigningKey: (_kid: string, cb: (err: Error | null) => void) =>
+        cb(new Error('jwks down')),
     } as never);
 
-    const provider = createSupabaseJwtSecretProvider(baseCfg as never);
+    const provider = createSupabaseJwtSecretProvider(baseCfg);
     const { err } = await runProvider(provider, 'raw');
     expect(err?.message).toBe('jwks down');
   });
@@ -145,7 +145,7 @@ describe('createSupabaseJwtSecretProvider', () => {
     jwtDecodeMock.mockReturnValue({
       header: { alg: 'ES256', kid: 'k1' },
       payload: { iss: 'https://xyz.supabase.co/auth/v1' },
-    } as never);
+    });
     vi.spyOn(jwksUtil, 'getJwksClient').mockReturnValue({
       getSigningKey: (
         _kid: string,
@@ -153,7 +153,7 @@ describe('createSupabaseJwtSecretProvider', () => {
       ) => cb(null, undefined),
     } as never);
 
-    const provider = createSupabaseJwtSecretProvider(baseCfg as never);
+    const provider = createSupabaseJwtSecretProvider(baseCfg);
     const { err } = await runProvider(provider, 'raw');
     expect(err?.message).toBe('JWKS signing key unavailable');
   });

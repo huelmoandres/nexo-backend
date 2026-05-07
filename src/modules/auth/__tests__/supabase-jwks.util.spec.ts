@@ -43,9 +43,9 @@ describe('supabaseJwksUriFromIssuer', () => {
     expect(supabaseJwksUriFromIssuer(iss)).toBe(
       'https://xyz.supabase.co/auth/v1/.well-known/jwks.json',
     );
-    expect(
-      supabaseJwksUriFromIssuer('https://xyz.supabase.co/auth/v1/'),
-    ).toBe('https://xyz.supabase.co/auth/v1/.well-known/jwks.json');
+    expect(supabaseJwksUriFromIssuer('https://xyz.supabase.co/auth/v1/')).toBe(
+      'https://xyz.supabase.co/auth/v1/.well-known/jwks.json',
+    );
   });
 });
 
@@ -54,9 +54,9 @@ describe('resolveSupabaseJwksUri', () => {
     const payload: JwtPayload = {
       iss: 'https://project.supabase.co/auth/v1',
     };
-    expect(
-      resolveSupabaseJwksUri('https://other.supabase.co', payload),
-    ).toBe('https://project.supabase.co/auth/v1/.well-known/jwks.json');
+    expect(resolveSupabaseJwksUri('https://other.supabase.co', payload)).toBe(
+      'https://project.supabase.co/auth/v1/.well-known/jwks.json',
+    );
   });
 
   it('usa env si el payload no tiene iss Supabase utilizable', () => {
@@ -67,16 +67,15 @@ describe('resolveSupabaseJwksUri', () => {
   });
 
   it('usa env si el token no es objeto payload', () => {
-    expect(
-      resolveSupabaseJwksUri('https://fb.supabase.co', undefined),
-    ).toBe('https://fb.supabase.co/auth/v1/.well-known/jwks.json');
+    expect(resolveSupabaseJwksUri('https://fb.supabase.co', undefined)).toBe(
+      'https://fb.supabase.co/auth/v1/.well-known/jwks.json',
+    );
   });
 });
 
 describe('getJwksClient', () => {
   it('reutiliza el mismo cliente para la misma URI JWKS', () => {
-    const uri =
-      'https://abc.supabase.co/auth/v1/.well-known/jwks.json';
+    const uri = 'https://abc.supabase.co/auth/v1/.well-known/jwks.json';
     const a = getJwksClient(uri);
     const b = getJwksClient(uri);
     expect(a).toBe(b);
