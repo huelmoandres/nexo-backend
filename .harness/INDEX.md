@@ -1,5 +1,9 @@
 # Nexos Harness Index (HRProgrammers)
 
+## Entrada para agentes y personas nuevas
+
+- [**AGENTS.md**](../AGENTS.md): rol esperado, orden de lectura, stack, convenciones (`api`, aliases), **JWT HS256 + ES256/JWKS**, seeds Prisma vs Fishery, enlaces a harness y seeds.
+
 ## Guías de Referencia (Cómo trabajamos)
 - [Estándares de API](../docs/reference/api-standards.md): Códigos HTTP, RFC 7807 y paginación.
 - [Guía de Codificación](../docs/reference/coding-guidelines.md): TSDoc, SOLID, path aliases, date-fns, seguridad HTTP y OpenGraph.
@@ -9,11 +13,15 @@
 - [Logs y Auditoría](../docs/reference/logging-audit.md): Trazabilidad de Escrow.
 
 ## Reglas de Implementación (Restricciones del agente)
+- [JWT y Supabase (HS256 + JWKS)](rules/auth-jwt.md): secreto, ES256, claim `iss`, `jwks-rsa` CommonJS, guard Passport.
 - [Reglas de API](rules/api-rules.md): RFC 7807, Pino, paginación obligatoria y DTOs.
 - [Reglas de Dinero](rules/money-rules.md): PostgreSQL ACID, prisma.$transaction() y State Machine del Escrow.
 - [Estándares Técnicos Avanzados](rules/tech-standards.md): Value Object Money, interfaces para integraciones externas, TypeScript strict y límites de deuda técnica.
 
 ## Especificaciones de Módulos (Qué construimos)
+
+**Auth (implementación):** validación de JWT con **HS256** (`SUPABASE_JWT_SECRET`) y **ES256** vía **JWKS** (prioridad al claim `iss` de Supabase, fallback `SUPABASE_URL`). Detalle: [auth-jwt.md](rules/auth-jwt.md), código en `src/modules/auth/supabase-jwks.util.ts` y estrategia JWT.
+
 - [Módulo de Autenticación](specs/auth-module.md): Sincronización Supabase y Redis Blocklist.
 - [Módulo de Usuarios](specs/users-module.md): Roles, Empresas y Sello Uruguay Pro.
 - [Módulo de Disputas](specs/dispute-module.md): Flujo de mediación y evidencias.
@@ -22,6 +30,7 @@
 - [Reseñas y Reputación](specs/reviews-reputation.md): Calificación multidimensional y Prueba Social.
 - [Chat y Mensajería](specs/chat-module.md): MongoDB, ciclo de vida y moderación preventiva de IA.
 - [Gestión de Archivos](specs/storage-rules.md): S3/R2, URLs firmadas y clasificación de privacidad.
+- **Diagnostics** (código): comprobaciones de dependencias en arranque y reporte para `/health/ready` — `src/modules/diagnostics/`.
 
 ## Infraestructura y Datos
 - [Arquitectura Global](../docs/explanation/architecture.md): Stack técnico, Doble DB y Flujos BullMQ.
@@ -30,6 +39,7 @@
 - [Esquema de Base de Datos](../prisma/schema.prisma): Fuente de verdad PostgreSQL.
 - [Docker Compose](../docker-compose.yml): PostgreSQL+PostGIS, Redis y MongoDB para desarrollo local.
 - [Variables de Entorno](../.env.example): Todas las variables requeridas con documentación inline.
+- [Seeds de base de datos](specs/seeds.md): Comandos npm, dataset demo y variables `SEED_*` / stress.
 
 ## Evals de Módulos (Auto-verificación antes de PR)
 - [Auth Module Eval](evals/auth-module-eval.md): Supabase UID, Redis Blocklist y sincronización de usuario.

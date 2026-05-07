@@ -59,4 +59,36 @@ export class CreateProfessionalProfileDto {
   @ArrayMinSize(1)
   @IsUUID('4', { each: true })
   categoryIds!: string[];
+
+  @ApiPropertyOptional({
+    example: '3c0f6a65-a2b4-4d8b-9a56-2d0fca0df6f1',
+    description: 'País administrativo (opcional en v1 para compatibilidad).',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  countryId?: string;
+
+  @ApiPropertyOptional({
+    example: '631f0ec9-6a82-430e-a88c-277f3a5db5a1',
+    description: 'Departamento/State administrativo (opcional en v1).',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  stateId?: string;
+
+  @ApiPropertyOptional({
+    example: 'e3f8cb22-fda0-4d51-89e4-5592f7b49931',
+    description: 'Ciudad/Localidad administrativa (opcional en v1).',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  cityId?: string;
+
+  @ApiPropertyOptional({
+    example: 'fcc5f31a-8d94-4504-a2e0-b1fbd8d3fa9c',
+    description: 'Barrio administrativo (opcional en v1).',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  neighborhoodId?: string;
 }

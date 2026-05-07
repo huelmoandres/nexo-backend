@@ -8,6 +8,7 @@ describe('SupabaseJwtStrategy', () => {
 
   const baseConfig = {
     supabaseJwtSecret: '',
+    supabaseUrl: '',
     redisUrl: '',
     redisBlocklistPrefix: 'blocklist:',
     redisMaxRetriesPerRequest: 1,

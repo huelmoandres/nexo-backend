@@ -97,6 +97,10 @@ export class UsersProfileService {
         latitude: dto.latitude,
         longitude: dto.longitude,
         categoryIds: dto.categoryIds,
+        countryId: dto.countryId,
+        stateId: dto.stateId,
+        cityId: dto.cityId,
+        neighborhoodId: dto.neighborhoodId,
       });
 
     const coords = await this.usersRepository.getProfileCoordinates(profile.id);

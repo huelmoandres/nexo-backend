@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { AuditAction, type Company, type Prisma } from '@prisma/client';
+import {
+  AuditAction,
+  VerificationSubjectType,
+  type Company,
+  type Prisma,
+} from '@prisma/client';
 import { PrismaService } from '@prisma/prisma.service';
 
 const professionalProfileIncludeMe = {
@@ -87,6 +92,7 @@ export class UsersRepository {
 
   /**
    * Crea empresa y registro de auditoría `COMPANY_CREATED` en una transacción.
+   * También inicializa el `TrustProfile` corporativo en estado `PENDING`.
    *
    * @param input.userId - Administrador de la nueva empresa.
    * @param input.name - Razón social normalizada.
@@ -125,6 +131,14 @@ export class UsersRepository {
         },
       });
 
+      await tx.trustProfile.create({
+        data: {
+          subjectType: VerificationSubjectType.COMPANY,
+          subjectId: company.id,
+          companyId: company.id,
+        },
+      });
+
       return company;
     });
   }
@@ -132,6 +146,8 @@ export class UsersRepository {
   /**
    * Crea perfil, asocia categorías y asigna `location` con PostGIS (WGS84).
    * Orden en SQL: longitud, latitud (ST_MakePoint).
+   * Además inicializa agregados nuevos (`ProfessionalIdentity`, `TrustProfile`)
+   * para mantener dual-write encapsulado dentro del repositorio.
    *
    * @param input.userId - Propietario del perfil.
    * @param input.bio - Descripción opcional del profesional.
@@ -139,6 +155,10 @@ export class UsersRepository {
    * @param input.latitude - Latitud WGS84 del punto de servicio.
    * @param input.longitude - Longitud WGS84 del punto de servicio.
    * @param input.categoryIds - IDs existentes; se usa `connect` vía tabla intermedia.
+   * @param input.countryId - País administrativo (opcional).
+   * @param input.stateId - Departamento/state administrativo (opcional).
+   * @param input.cityId - Ciudad administrativa (opcional).
+   * @param input.neighborhoodId - Barrio administrativo (opcional).
    * @returns Perfil creado con sus categorías incluidas.
    */
   async createProfessionalProfileWithPostgis(input: {
@@ -148,6 +168,10 @@ export class UsersRepository {
     latitude: number;
     longitude: number;
     categoryIds: string[];
+    countryId?: string;
+    stateId?: string;
+    cityId?: string;
+    neighborhoodId?: string;
   }): Promise<ProfessionalProfileWithCategories> {
     return this.prisma.$transaction(async (tx) => {
       const profile = await tx.professionalProfile.create({
@@ -155,6 +179,10 @@ export class UsersRepository {
           userId: input.userId,
           bio: input.bio,
           experienceYears: input.experienceYears,
+          countryId: input.countryId,
+          stateId: input.stateId,
+          cityId: input.cityId,
+          neighborhoodId: input.neighborhoodId,
           categories: {
             create: input.categoryIds.map((categoryId) => ({
               category: { connect: { id: categoryId } },
@@ -170,6 +198,20 @@ export class UsersRepository {
         input.latitude,
         profile.id,
       );
+
+      await tx.professionalIdentity.create({
+        data: {
+          professionalProfileId: profile.id,
+        },
+      });
+
+      await tx.trustProfile.create({
+        data: {
+          subjectType: VerificationSubjectType.PROFESSIONAL,
+          subjectId: profile.id,
+          professionalProfileId: profile.id,
+        },
+      });
 
       return profile;
     });

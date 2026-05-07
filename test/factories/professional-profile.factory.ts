@@ -23,7 +23,11 @@ export const professionalProfileFactory =
   Factory.define<ProfessionalProfileWithCategories>(() => ({
     id: faker.string.uuid(),
     userId: faker.string.uuid(),
+    countryId: null,
+    stateId: null,
     cityId: null,
+    neighborhoodId: null,
+    addressLine: null,
     kycStatus: 'UNVERIFIED',
     subscriptionPlan: 'FREE',
     isAvailable: false,

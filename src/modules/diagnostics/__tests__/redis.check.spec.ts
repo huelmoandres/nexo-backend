@@ -7,6 +7,7 @@ type AuthConfig = ConfigType<typeof authConfig>;
 
 const baseConfig: AuthConfig = {
   supabaseJwtSecret: 'secret-very-long-enough',
+  supabaseUrl: '',
   redisUrl: 'redis://:password@localhost:6379',
   redisBlocklistPrefix: 'blocklist:',
   redisMaxRetriesPerRequest: 1,

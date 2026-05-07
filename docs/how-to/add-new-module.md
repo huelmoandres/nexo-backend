@@ -3,6 +3,8 @@
 **Audiencia:** Desarrollador que ya entiende el proyecto y necesita agregar un nuevo dominio.
 **Asume:** Que el entorno ya está corriendo (ver `docs/tutorials/getting-started.md`).
 
+**Checklist de contexto (antes de codear):** leer [AGENTS.md](../../AGENTS.md), el [.harness/INDEX.md](../../.harness/INDEX.md) y la spec del dominio en `.harness/specs/` si ya existe.
+
 ---
 
 ## 1. Crear la carpeta y generar los archivos base
@@ -132,7 +134,14 @@ Actualiza `.harness/INDEX.md` para que el módulo sea visible en el mapa del har
 
 ---
 
-## 8. Verificación final
+## 8. Tests y Swagger
+
+- Añade al menos **tests unitarios** mínimos del controller o service crítico (patrón Vitest del repo en `src/modules/*/__tests__/`).
+- Si el módulo expone HTTP público o de producto, añade **`@ApiTags`** coherente y documenta DTOs para que el endpoint aparezca en Swagger (`NODE_ENV=development` → `/api/docs`).
+
+---
+
+## 9. Verificación final
 
 Antes de hacer commit, verifica que:
 
@@ -143,6 +152,9 @@ npm run build
 # No hay errores de TypeScript
 npx tsc --noEmit
 
+# Tests unitarios del módulo (ajusta la ruta al patrón de tu feature)
+npm run test -- src/modules/<nombre>
+
 # El módulo responde correctamente
-curl -H "Authorization: Bearer <tu-jwt>" http://localhost:3000/<nombre>s
+curl -H "Authorization: Bearer <tu-jwt>" http://localhost:3000/api/<ruta-del-controller>
 ```

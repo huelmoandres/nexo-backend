@@ -12,7 +12,9 @@ export async function createE2eApp(
   rootModule: Type<unknown>,
 ): Promise<INestApplication> {
   const app = await NestFactory.create(rootModule, { logger: false });
-  app.setGlobalPrefix('api', { exclude: ['api/docs', 'api/docs-json'] });
+  app.setGlobalPrefix('api', {
+    exclude: ['api/docs', 'api/docs-json', 'health/live', 'health/ready'],
+  });
   const problemDetailTypes = app.get(ProblemDetailTypeService);
 
   app.useGlobalPipes(

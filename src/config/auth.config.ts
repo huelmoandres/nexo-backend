@@ -3,14 +3,19 @@ import { registerAs } from '@nestjs/config';
 /**
  * Configuración de autenticación: credenciales de Supabase y conexión a Redis.
  * Variables de entorno requeridas: `SUPABASE_JWT_SECRET`, `REDIS_URL`.
- * Variables de entorno opcionales: `REDIS_BLOCKLIST_PREFIX`, `REDIS_MAX_RETRIES`.
+ * Variables de entorno opcionales: `SUPABASE_URL` (JWKS RS256/ES256), `REDIS_BLOCKLIST_PREFIX`, `REDIS_MAX_RETRIES`.
  */
 export const authConfig = registerAs('auth', () => ({
   /**
-   * Secreto para verificar JWTs emitidos por Supabase Auth.
-   * Mapeado desde `SUPABASE_JWT_SECRET`. Si está vacío la estrategia JWT falla en startup.
+   * Secreto para verificar JWTs HS256 (p. ej. tests locales). Los tokens emitidos por
+   * Supabase en proyecto nuevos suelen usar ES256/RS256 contra JWKS (`SUPABASE_URL` o claim `iss`).
    */
   supabaseJwtSecret: process.env['SUPABASE_JWT_SECRET'] ?? '',
+
+  /**
+   * URL base del proyecto (Settings → API). Se usa para `.../auth/v1/.well-known/jwks.json`.
+   */
+  supabaseUrl: process.env['SUPABASE_URL'] ?? '',
 
   /**
    * URL de conexión a Redis usada para la blocklist de tokens revocados.

@@ -12,6 +12,8 @@ Se debe crear un Guard personalizado llamado `SupabaseGuard` que se aplicará a 
 3. Validar la firma criptográfica del JWT utilizando la librería `passport-jwt` y el secreto de Supabase.
 4. Si es válido, inyectar el payload del usuario en el objeto `Request` (ej. `req.user`). Si es inválido/expirado, arrojar `401 Unauthorized`.
 
+> **Nota de implementación (2026):** En entornos reales, Supabase puede emitir JWT **ES256** validados contra **JWKS** (no solo con un único “secreto” simétrico). El backend resuelve el endpoint JWKS prioritariamente desde el claim **`iss`** del token y hace fallback a `SUPABASE_URL`. Para tokens **HS256** (p. ej. tests) sigue usándose `SUPABASE_JWT_SECRET`. Código de referencia: `src/modules/auth/supabase-jwks.util.ts`, `src/modules/auth/strategies/supabase-jwt.strategy.ts`. Reglas: `.harness/rules/auth-jwt.md`.
+
 ## 3. Controladores y Endpoints
 
 ### A. Endpoint: Sincronización de Usuario (First Login)

@@ -97,6 +97,17 @@ npx prisma migrate dev --name init
 npx prisma studio
 ```
 
+### Datos de prueba (seeds)
+
+Para cargar datos demo o geográficos según el entorno, usa los scripts npm documentados en [.harness/specs/seeds.md](../../.harness/specs/seeds.md):
+
+```bash
+npm run db:seed
+# Variantes: db:seed:geo, db:seed:categories, db:seed:demo (ver package.json)
+```
+
+Las variables `SEED_*` y el alcance de cada script están descritos en la spec de seeds — **no confundir** con las factories de Vitest en `test/factories/`.
+
 ---
 
 ## Paso 5: Arrancar el servidor en modo desarrollo
@@ -125,7 +136,12 @@ curl http://localhost:3000/health/ready
 # Respuesta esperada: { "status": "ok", "checks": { ... } }
 ```
 
-Para probar endpoints protegidos necesitas un JWT de Supabase. Obtén uno iniciando sesión desde la App o usando el panel de Supabase → Authentication → Users.
+Para probar endpoints protegidos necesitas un **JWT de Supabase** (`session.access_token` desde el cliente Supabase). Flujo típico:
+
+1. Inicia sesión en el cliente (app o Supabase Auth helpers) y copia el access token.
+2. Primera vez en el backend: llama **`POST /api/auth/sync`** con header `Authorization: Bearer <token>` y cuerpo con email y nombre — crea el usuario en PostgreSQL alineado al `sub` del JWT (no confíes en IDs enviados fuera del token).
+
+Guía detallada de Postman y variables de entorno: [docs/reference/api-testing.md](../reference/api-testing.md).
 
 ---
 
@@ -158,6 +174,7 @@ El Controller **nunca** llama a Prisma directamente. El Service **nunca** format
 
 ## Próximos pasos
 
+- Lee [AGENTS.md](../../AGENTS.md) si usas asistentes de código o te incorporás al repo.
 - Lee `docs/explanation/architecture.md` para entender las decisiones de diseño.
 - Lee `docs/explanation/escrow-logic.md` antes de tocar cualquier módulo financiero.
 - Consulta `.harness/specs/` para el módulo en el que vayas a trabajar.

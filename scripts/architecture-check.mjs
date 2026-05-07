@@ -5,6 +5,14 @@ const root = process.cwd();
 
 const checks = [
   {
+    file: 'AGENTS.md',
+    mustInclude: [
+      '.harness/INDEX.md',
+      '.harness/specs/seeds.md',
+      'JWKS',
+    ],
+  },
+  {
     file: 'src/config/vitest.config.ts',
     mustInclude: ['lines: 95', 'functions: 95', 'branches: 95', 'statements: 95'],
   },
