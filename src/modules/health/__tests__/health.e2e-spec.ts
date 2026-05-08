@@ -30,20 +30,24 @@ describe('Health (e2e)', () => {
     >[0];
     const res = await request(httpServer).get('/health/ready');
     expect([200, 503]).toContain(res.status);
-    expect(Array.isArray(res.body.dependencies)).toBe(true);
 
     if (res.status === 200) {
       expect(res.body).toMatchObject({
         status: 'ok',
         checks: { database: 'ok', redis: 'ok' },
       });
+      expect(Array.isArray(res.body.dependencies)).toBe(true);
       return;
     }
 
-    expect(res.body).toMatchObject({
+    const errorPayload =
+      typeof res.body?.message === 'object' ? res.body.message : res.body;
+
+    expect(errorPayload).toMatchObject({
       status: 'down',
     });
-    expect(Array.isArray(res.body.hardDown)).toBe(true);
-    expect(res.body.hardDown.length).toBeGreaterThan(0);
+    expect(Array.isArray(errorPayload.hardDown)).toBe(true);
+    expect(errorPayload.hardDown.length).toBeGreaterThan(0);
+    expect(Array.isArray(errorPayload.dependencies)).toBe(true);
   });
 });
