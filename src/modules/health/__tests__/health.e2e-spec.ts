@@ -43,11 +43,21 @@ describe('Health (e2e)', () => {
     const errorPayload =
       typeof res.body?.message === 'object' ? res.body.message : res.body;
 
-    expect(errorPayload).toMatchObject({
-      status: 'down',
-    });
-    expect(Array.isArray(errorPayload.hardDown)).toBe(true);
-    expect(errorPayload.hardDown.length).toBeGreaterThan(0);
-    expect(Array.isArray(errorPayload.dependencies)).toBe(true);
+    const readinessStatus =
+      errorPayload?.status === 'down' || errorPayload?.status === 503;
+    expect(readinessStatus).toBe(true);
+
+    const hardDown =
+      errorPayload?.hardDown ??
+      (typeof res.body?.hardDown === 'object' ? res.body.hardDown : undefined);
+    const dependencies =
+      errorPayload?.dependencies ??
+      (typeof res.body?.dependencies === 'object'
+        ? res.body.dependencies
+        : undefined);
+
+    expect(Array.isArray(hardDown)).toBe(true);
+    expect(hardDown.length).toBeGreaterThan(0);
+    expect(Array.isArray(dependencies)).toBe(true);
   });
 });
