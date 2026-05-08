@@ -40,31 +40,16 @@ describe('Health (e2e)', () => {
       return;
     }
 
-    const errorPayload =
-      typeof res.body?.message === 'object' ? res.body.message : res.body;
-
-    const readinessStatus =
-      errorPayload?.status === 'down' ||
-      errorPayload?.status === 503 ||
-      res.body?.statusCode === 503;
-    expect(readinessStatus).toBe(true);
-
-    const hardDown =
-      errorPayload?.hardDown ??
-      (typeof res.body?.hardDown === 'object' ? res.body.hardDown : undefined);
-    const dependencies =
-      errorPayload?.dependencies ??
-      (typeof res.body?.dependencies === 'object'
-        ? res.body.dependencies
-        : undefined);
-
-    const hasStructuredReadinessDetail =
-      Array.isArray(hardDown) || Array.isArray(dependencies);
-    const hasHttpErrorEnvelope =
-      typeof res.body?.error === 'string' ||
-      typeof res.body?.message === 'string' ||
-      res.body?.statusCode === 503;
-
-    expect(hasStructuredReadinessDetail || hasHttpErrorEnvelope).toBe(true);
+    // 503: GlobalExceptionFilter serializa ServiceUnavailableException como
+    // RFC 7807 Problem Detail (type, title, status numérico, detail, code).
+    // No incluye hardDown/dependencies del payload original de HealthService.
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({
+      status: 503,
+      type: expect.any(String),
+      title: expect.any(String),
+      detail: expect.any(String),
+      code: expect.any(String),
+    });
   });
 });
