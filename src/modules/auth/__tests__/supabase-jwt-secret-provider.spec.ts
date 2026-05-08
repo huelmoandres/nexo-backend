@@ -1,27 +1,41 @@
+import type { ConfigType } from '@nestjs/config';
 import type { JwtPayload } from 'jsonwebtoken';
-import { afterEach, describe, expect, it, type MockInstance, vi } from 'vitest';
+import { authConfig } from '@config/auth.config';
+import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import * as jwksUtil from '../supabase-jwks.util';
 import { createSupabaseJwtSecretProvider } from '../strategies/supabase-jwt.strategy';
 
-type JwtDecodeFn = typeof import('jsonwebtoken').decode;
 type JsonWebTokenModule = typeof import('jsonwebtoken');
 
-const jwtDecodeMock = vi.hoisted(() => vi.fn() as MockInstance<JwtDecodeFn>);
+/**
+ * Firma única para el mock: `typeof jwt.decode` está sobrecargado y en CI/tsc estricto
+ * rompe `Mock` / `mockImplementation` (se infiere `never`).
+ */
+type JwtDecodeMockFn = (
+  token: string,
+  options?: import('jsonwebtoken').DecodeOptions,
+) =>
+  | string
+  | import('jsonwebtoken').JwtPayload
+  | import('jsonwebtoken').Jwt
+  | null;
+
+const jwtDecodeMock = vi.hoisted((): Mock<JwtDecodeMockFn> => vi.fn());
 
 vi.mock('jsonwebtoken', async (importOriginal) => {
   // importOriginal devuelve `unknown`: forzamos el módulo real para el mock.
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- contrato de importOriginal vs. tsc estricto
   const actual = (await importOriginal()) as JsonWebTokenModule;
-  const decodeImpl: JwtDecodeFn = actual.decode;
+  const decodeImpl = actual.decode as JwtDecodeMockFn;
   jwtDecodeMock.mockImplementation(decodeImpl);
   const mocked: JsonWebTokenModule = {
     ...actual,
-    decode: jwtDecodeMock as unknown as JwtDecodeFn,
+    decode: jwtDecodeMock as unknown as JsonWebTokenModule['decode'],
   };
   return mocked;
 });
 
-const baseCfg = {
+const baseCfg: ConfigType<typeof authConfig> = {
   supabaseJwtSecret: 'symmetric-secret',
   supabaseUrl: 'https://proj.supabase.co',
   redisUrl: '',
@@ -42,15 +56,13 @@ function runProvider(
 
 describe('createSupabaseJwtSecretProvider', () => {
   afterEach(async () => {
-    const actual =
-      await vi.importActual<typeof import('jsonwebtoken')>('jsonwebtoken');
+    const actual = await vi.importActual<JsonWebTokenModule>('jsonwebtoken');
     jwtDecodeMock.mockImplementation(actual.decode);
     vi.restoreAllMocks();
   });
 
   it('entrega el secreto para tokens HS256 válidos', async () => {
-    const jwtActual =
-      await vi.importActual<typeof import('jsonwebtoken')>('jsonwebtoken');
+    const jwtActual = await vi.importActual<JsonWebTokenModule>('jsonwebtoken');
     const token = jwtActual.sign({ sub: 'u1' }, baseCfg.supabaseJwtSecret, {
       algorithm: 'HS256',
     });
