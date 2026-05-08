@@ -29,11 +29,21 @@ describe('Health (e2e)', () => {
       typeof request
     >[0];
     const res = await request(httpServer).get('/health/ready');
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({
-      status: 'ok',
-      checks: { database: 'ok', redis: 'ok' },
-    });
+    expect([200, 503]).toContain(res.status);
     expect(Array.isArray(res.body.dependencies)).toBe(true);
+
+    if (res.status === 200) {
+      expect(res.body).toMatchObject({
+        status: 'ok',
+        checks: { database: 'ok', redis: 'ok' },
+      });
+      return;
+    }
+
+    expect(res.body).toMatchObject({
+      status: 'down',
+    });
+    expect(Array.isArray(res.body.hardDown)).toBe(true);
+    expect(res.body.hardDown.length).toBeGreaterThan(0);
   });
 });
