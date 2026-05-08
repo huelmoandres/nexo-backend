@@ -19,6 +19,12 @@
     "test:cov:strict": "vitest run --config src/config/vitest.config.ts --coverage",
     "test:e2e": "vitest run --config src/config/vitest.e2e.config.ts",
     "test:all": "npm run test && npm run test:e2e",
+    "db:seed": "node prisma/seed.js",
+    "db:seed:geo": "node prisma/seed.geo.js",
+    "db:seed:categories": "node prisma/seed.categories.js",
+    "db:seed:demo": "node prisma/seed.demo.js",
+    "db:seed:stress": "SEED_STRESS=1 STRESS_PRO_COUNT=500 node prisma/seed.js",
+    "db:backfill:trust-identity": "node prisma/backfill.trust-identity.js",
     "architecture:check": "node scripts/architecture-check.mjs",
     "quality:check": "npx tsc --noEmit && npm run lint && npm run architecture:check && npm run test:cov:strict && npm run test:e2e",
     "prepare": "husky"
@@ -39,6 +45,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "ioredis": "^5.10.1",
+    "jwks-rsa": "^4.0.1",
     "nestjs-pino": "^4.6.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -90,5 +97,8 @@
     "unplugin-swc": "^1.5.9",
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^4.1.5"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   }
 }

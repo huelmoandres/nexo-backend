@@ -54,6 +54,8 @@ export async function setup(): Promise<void> {
   process.env['REDIS_URL'] =
     `redis://:nexos_test_redis@${redisContainer.getHost()}:${redisContainer.getMappedPort(6379)}`;
   process.env['MONGODB_URI'] = mongoContainer.getConnectionString();
+  // Necesario para que ConfigModule.validate no falle al importar AppModule en e2e.
+  process.env['SUPABASE_JWT_SECRET'] ??= 'e2e-global-supabase-jwt-secret';
 
   // Ejecutar migraciones de Prisma contra el container de PostgreSQL.
   // Esto crea el schema real en la DB de test.

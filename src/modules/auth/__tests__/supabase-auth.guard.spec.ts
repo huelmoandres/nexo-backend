@@ -9,6 +9,7 @@ describe('SupabaseAuthGuard', () => {
   const problemDetailTypes = createProblemDetailTypeMock();
   const mockAuthConfig = {
     supabaseJwtSecret: '',
+    supabaseUrl: '',
     redisUrl: 'redis://localhost:6379',
     redisBlocklistPrefix: 'blocklist:',
     redisMaxRetriesPerRequest: 1,
@@ -94,9 +95,11 @@ describe('SupabaseAuthGuard', () => {
   });
 
   it('handleRequest lanza AUTH_INVALID_TOKEN cuando no hay user', () => {
-    expect(() => guard.handleRequest(null, false)).toThrowError();
+    expect(() =>
+      guard.handleRequest(null, false, undefined, {} as ExecutionContext),
+    ).toThrowError();
     try {
-      guard.handleRequest(null, false);
+      guard.handleRequest(null, false, undefined, {} as ExecutionContext);
     } catch (error) {
       expect(error).toMatchObject({
         response: expect.objectContaining({
@@ -106,15 +109,43 @@ describe('SupabaseAuthGuard', () => {
     }
   });
 
+  it('handleRequest incluye mensaje Passport/JWT desde info en no-produccion', () => {
+    try {
+      guard.handleRequest(
+        null,
+        false,
+        { message: 'jwt expires soon', name: 'Error' },
+        {} as ExecutionContext,
+      );
+    } catch (error) {
+      expect(error).toMatchObject({
+        response: expect.objectContaining({
+          detail: expect.stringContaining('jwt expires soon'),
+          code: 'AUTH_INVALID_TOKEN',
+        }),
+      });
+    }
+  });
+
   it('handleRequest retorna user cuando no hay error', () => {
     const user = { sub: 'uid-1' };
-    const result = guard.handleRequest(null, user);
+    const result = guard.handleRequest(
+      null,
+      user,
+      undefined,
+      {} as ExecutionContext,
+    );
     expect(result).toEqual(user);
   });
 
   it('handleRequest lanza AUTH_INVALID_TOKEN si llega error aunque haya user', () => {
     expect(() =>
-      guard.handleRequest(new Error('boom'), { sub: 'uid-1' }),
+      guard.handleRequest(
+        new Error('boom'),
+        { sub: 'uid-1' },
+        undefined,
+        {} as ExecutionContext,
+      ),
     ).toThrow();
   });
 });

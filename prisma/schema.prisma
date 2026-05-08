@@ -47,6 +47,48 @@ enum KycStatus {
   VERIFIED
 }
 
+enum Weekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum TrustStatus {
+  PENDING
+  VERIFIED
+  SUSPENDED
+}
+
+enum VerificationLevel {
+  LEVEL_1
+  LEVEL_2
+  LEVEL_3
+}
+
+enum VerificationSubjectType {
+  PROFESSIONAL
+  COMPANY
+}
+
+enum VerificationDocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VerificationDocumentType {
+  IDENTITY_CARD
+  SELFIE
+  PROOF_OF_ADDRESS
+  RUT_PROOF
+  COMPANY_INCORPORATION
+  PROFESSIONAL_CERTIFICATION
+}
+
 enum SubscriptionPlan {
   FREE
   MEDIUM
@@ -154,23 +196,51 @@ model Country {
   id      String  @id @default(uuid())
   name    String  @unique // Ej: "Uruguay"
   isoCode String  @unique // Ej: "UY" — ISO 3166-1 alpha-2
+  slug    String  @unique // Ej: "uruguay"
   states  State[]
+  professionalProfiles ProfessionalProfile[]
+  companyBillingAddresses Company[] @relation("CompanyBillingCountry")
 }
 
 model State {
   id        String  @id @default(uuid())
   name      String  // Ej: "Montevideo", "Canelones", "Maldonado"
+  slug      String
   countryId String
   country   Country @relation(fields: [countryId], references: [id])
   cities    City[]
+  professionalProfiles ProfessionalProfile[]
+  companyBillingAddresses Company[] @relation("CompanyBillingState")
+
+  @@unique([countryId, name])
+  @@unique([countryId, slug])
 }
 
 model City {
   id       String                @id @default(uuid())
   name     String                // Ej: "Pocitos", "Ciudad de la Costa"
+  slug     String
   stateId  String
   state    State                 @relation(fields: [stateId], references: [id])
+  neighborhoods Neighborhood[]
   profiles ProfessionalProfile[]
+  companyBillingAddresses Company[] @relation("CompanyBillingCity")
+
+  @@unique([stateId, name])
+  @@unique([stateId, slug])
+}
+
+model Neighborhood {
+  id      String @id @default(uuid())
+  name    String
+  slug    String
+  cityId  String
+  city    City   @relation(fields: [cityId], references: [id])
+  profiles ProfessionalProfile[]
+  companyBillingAddresses Company[] @relation("CompanyBillingNeighborhood")
+
+  @@unique([cityId, name])
+  @@unique([cityId, slug])
 }
 
 // =============================================================================
@@ -216,14 +286,31 @@ model Company {
   rut     String  @unique
   /// Key S3/R2 del logo. Nunca URL directa — usar StorageService.generatePresignedGetUrl().
   logoKey String?
+  tradeName String?
+  legalName String?
+  websiteUrl String?
+  billingAddressLine String?
+  taxId String?
+  taxCondition String?
+  billingCountryId String?
+  billingStateId String?
+  billingCityId String?
+  billingNeighborhoodId String?
+  billingCountry Country? @relation("CompanyBillingCountry", fields: [billingCountryId], references: [id])
+  billingState State? @relation("CompanyBillingState", fields: [billingStateId], references: [id])
+  billingCity City? @relation("CompanyBillingCity", fields: [billingCityId], references: [id])
+  billingNeighborhood Neighborhood? @relation("CompanyBillingNeighborhood", fields: [billingNeighborhoodId], references: [id])
 
   /// El usuario COMPANY_ADMIN que administra esta empresa.
   adminId String @unique
   admin   User   @relation("CompanyAdmin", fields: [adminId], references: [id])
 
   // Relaciones
-  employees User[]     @relation("CompanyEmployees")
+  employees User[]                @relation("CompanyEmployees")
   auditLogs AuditLog[]
+  businessHours CompanyBusinessHour[]
+  contacts CompanyContact[]
+  trustProfiles TrustProfile[]
 
   /// Soft Delete
   deletedAt DateTime? @db.Timestamptz
@@ -237,8 +324,15 @@ model ProfessionalProfile {
   user   User   @relation(fields: [userId], references: [id])
 
   /// Ciudad administrativa para filtros de UI y SEO. Complementa la ubicación PostGIS.
+  countryId String?
+  country Country? @relation(fields: [countryId], references: [id])
+  stateId String?
+  state State? @relation(fields: [stateId], references: [id])
   cityId String?
   city   City?   @relation(fields: [cityId], references: [id])
+  neighborhoodId String?
+  neighborhood Neighborhood? @relation(fields: [neighborhoodId], references: [id])
+  addressLine String?
 
   /// Coordenadas GPS para matching geoespacial con PostGIS (ST_DWithin, ST_Distance).
   /// Índice GiST declarado abajo. Toda query sobre este campo usa prisma.$queryRaw.
@@ -265,6 +359,9 @@ model ProfessionalProfile {
   jobsAsPro   Job[]                  @relation("JobProfessional")
   urgencies   Urgency[]
   reviews     Review[]               @relation("ReviewProfessionalProfile")
+  identity    ProfessionalIdentity?
+  trustProfiles TrustProfile[]
+  certifications ProfessionalCertification[]
 
   /// Soft Delete
   deletedAt DateTime? @db.Timestamptz
@@ -272,6 +369,113 @@ model ProfessionalProfile {
   updatedAt DateTime  @updatedAt @db.Timestamptz
 
   @@index([location], type: Gist) // Índice GiST obligatorio para PostGIS
+  @@index([countryId])
+  @@index([stateId])
+  @@index([cityId])
+  @@index([neighborhoodId])
+}
+
+model ProfessionalIdentity {
+  id String @id @default(uuid())
+  professionalProfileId String @unique
+  professionalProfile ProfessionalProfile @relation(fields: [professionalProfileId], references: [id])
+  phoneE164 String?
+  whatsappE164 String?
+  phoneVerifiedAt DateTime? @db.Timestamptz
+  whatsappVerifiedAt DateTime? @db.Timestamptz
+  instagramUrl String?
+  facebookUrl String?
+  linkedinUrl String?
+  tiktokUrl String?
+  websiteUrl String?
+  maxTravelDistanceKm Int?
+  profileImageKey String?
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+}
+
+model CompanyBusinessHour {
+  id String @id @default(uuid())
+  companyId String
+  company Company @relation(fields: [companyId], references: [id])
+  weekday Weekday
+  opensAt String?
+  closesAt String?
+  isClosed Boolean @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@unique([companyId, weekday])
+  @@index([companyId, weekday])
+}
+
+model CompanyContact {
+  id String @id @default(uuid())
+  companyId String
+  company Company @relation(fields: [companyId], references: [id])
+  channel String
+  value String
+  verifiedAt DateTime? @db.Timestamptz
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+}
+
+model TrustProfile {
+  id String @id @default(uuid())
+  subjectType VerificationSubjectType
+  subjectId String
+  status TrustStatus @default(PENDING)
+  verificationLevel VerificationLevel @default(LEVEL_1)
+  riskLevel String?
+  verifiedAt DateTime? @db.Timestamptz
+  suspendedAt DateTime? @db.Timestamptz
+  suspensionReason String?
+  professionalProfileId String?
+  professionalProfile ProfessionalProfile? @relation(fields: [professionalProfileId], references: [id])
+  companyId String?
+  company Company? @relation(fields: [companyId], references: [id])
+  documents VerificationDocument[]
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([subjectType, subjectId])
+  @@index([professionalProfileId])
+  @@index([companyId])
+}
+
+model VerificationDocument {
+  id String @id @default(uuid())
+  trustProfileId String
+  trustProfile TrustProfile @relation(fields: [trustProfileId], references: [id])
+  documentType VerificationDocumentType
+  storageKey String
+  status VerificationDocumentStatus @default(PENDING)
+  reviewedAt DateTime? @db.Timestamptz
+  reviewedBy String?
+  rejectionReason String?
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([trustProfileId, status])
+}
+
+model ProfessionalCertification {
+  id String @id @default(uuid())
+  professionalProfileId String
+  professionalProfile ProfessionalProfile @relation(fields: [professionalProfileId], references: [id])
+  title String
+  issuer String?
+  issuedAt DateTime? @db.Timestamptz
+  expiresAt DateTime? @db.Timestamptz
+  credentialId String?
+  credentialUrl String?
+  evidenceKey String?
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([professionalProfileId])
 }
 
 model Category {

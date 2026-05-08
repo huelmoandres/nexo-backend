@@ -317,3 +317,27 @@ En factories de módulos (proveedor de Redis, etc.), el patrón es el mismo:
 - Cada namespace de config se registra en `AppModule` dentro de `ConfigModule.forRoot({ load: [...] })`.
 - Los tests unitarios que necesitan config pasan un objeto plano `{ clave: valor }` al constructor — sin instanciar `ConfigService`.
 - Los archivos `*.config.ts` no se tocan al cambiar consumidores; solo cambian los consumidores.
+
+---
+
+## REGLA 8: Performance — checklist y olfatos (no sustituye profiling sistemático)
+
+**Objetivo:** evitar regresiones obvias en rutas calientes sin imponer micro-optimización en todo el código.
+
+### Dominios ya sensibles en el proyecto
+
+- **Búsqueda** (`search.repository.ts`): consultas FTS + PostGIS; mantener parámetros acotados y SQL parametrizado; revisar índices GiST/FTS en el schema cuando se añadan filtros.
+- **Usuarios** (`users.repository.ts`): transacciones explícitas donde haya invariantes; evitar transacciones largas innecesarias.
+
+### Olfatos a vigilar
+
+| Olfato | Riesgo | Qué hacer |
+|--------|--------|-----------|
+| `findMany` / queries en bucle por elemento (N+1) | Latencia y carga en DB | Batch, `include` selectivo, o una query agregada |
+| `$queryRawUnsafe` con input usuario | SQL injection / planes inesperados | Preferir Prisma o `Prisma.sql` con parámetros |
+| Lecturas sin límites en listados públicos | DoS indirecto / memoria | Paginación obligatoria (ver [api-rules](api-rules.md)) |
+| Caché Redis duplicada o sin TTL | Memoria / datos obsoletos | Convención por dominio (p. ej. categorías) documentada en el módulo |
+
+### Cuándo perfilar de verdad
+
+Tras medir con datos realistas (concurrentes, volúmenes de producción o stress seed): CPU en Node, tiempos de query en PostgreSQL (`EXPLAIN ANALYZE`), y latencia p95 de endpoints. Este checklist no reemplaza esa pasada.

@@ -8,6 +8,7 @@ type AuthConfig = ConfigType<typeof authConfig>;
 function buildConfig(secret: string): AuthConfig {
   return {
     supabaseJwtSecret: secret,
+    supabaseUrl: '',
     redisUrl: 'redis://localhost:6379',
     redisBlocklistPrefix: 'blocklist:',
     redisMaxRetriesPerRequest: 1,

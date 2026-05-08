@@ -11,6 +11,7 @@ const FIXED_NOW_SECONDS = Math.floor(FIXED_NOW.getTime() / 1000);
 const problemDetailTypes = createProblemDetailTypeMock();
 const makeAuthConfig = () => ({
   supabaseJwtSecret: '',
+  supabaseUrl: '',
   redisUrl: 'redis://localhost:6379',
   redisBlocklistPrefix: 'blocklist:',
   redisMaxRetriesPerRequest: 1,

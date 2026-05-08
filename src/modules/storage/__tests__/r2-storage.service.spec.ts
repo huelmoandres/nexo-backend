@@ -8,20 +8,32 @@ const mocks = vi.hoisted(() => {
   const mockGetSignedUrl = vi
     .fn()
     .mockResolvedValue('https://signed-url.example.com');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const MockS3Client = vi.fn(function (this: Record<string, any>) {
     this.send = mockSend;
   });
-  const MockPutObjectCommand = vi.fn(function (this: Record<string, unknown>, input: unknown) {
+  const MockPutObjectCommand = vi.fn(function (
+    this: Record<string, unknown>,
+    input: unknown,
+  ) {
     Object.assign(this as object, input as object);
   });
-  const MockGetObjectCommand = vi.fn(function (this: Record<string, unknown>, input: unknown) {
+  const MockGetObjectCommand = vi.fn(function (
+    this: Record<string, unknown>,
+    input: unknown,
+  ) {
     Object.assign(this as object, input as object);
   });
-  const MockDeleteObjectCommand = vi.fn(function (this: Record<string, unknown>, input: unknown) {
+  const MockDeleteObjectCommand = vi.fn(function (
+    this: Record<string, unknown>,
+    input: unknown,
+  ) {
     Object.assign(this as object, input as object);
   });
-  const MockHeadBucketCommand = vi.fn(function (this: Record<string, unknown>, input: unknown) {
+  const MockHeadBucketCommand = vi.fn(function (
+    this: Record<string, unknown>,
+    input: unknown,
+  ) {
     Object.assign(this as object, input as object);
   });
   return {
@@ -52,7 +64,9 @@ import { R2StorageService } from '../r2-storage.service';
 
 type StorageConfigType = ConfigType<typeof storageConfig>;
 
-function buildConfig(overrides: Partial<StorageConfigType> = {}): StorageConfigType {
+function buildConfig(
+  overrides: Partial<StorageConfigType> = {},
+): StorageConfigType {
   return {
     r2AccountId: 'acct123',
     r2Endpoint: 'https://acct123.r2.cloudflarestorage.com',
@@ -87,7 +101,13 @@ describe('R2StorageService', () => {
     });
 
     it('crea S3Client sin credenciales cuando no está configurado', () => {
-      buildService(buildConfig({ r2Endpoint: '', r2AccessKeyId: '', r2SecretAccessKey: '' }));
+      buildService(
+        buildConfig({
+          r2Endpoint: '',
+          r2AccessKeyId: '',
+          r2SecretAccessKey: '',
+        }),
+      );
       expect(mocks.MockS3Client).toHaveBeenCalledWith(
         expect.objectContaining({
           credentials: undefined,
@@ -99,7 +119,9 @@ describe('R2StorageService', () => {
   describe('generatePresignedPutUrl', () => {
     it('llama PutObjectCommand con Bucket, Key y ContentType correctos', async () => {
       const svc = buildService(buildConfig());
-      mocks.mockGetSignedUrl.mockResolvedValueOnce('https://put-url.example.com');
+      mocks.mockGetSignedUrl.mockResolvedValueOnce(
+        'https://put-url.example.com',
+      );
 
       const result = await svc.generatePresignedPutUrl({
         key: 'kyc/doc.pdf',
@@ -151,7 +173,9 @@ describe('R2StorageService', () => {
   describe('generatePresignedGetUrl', () => {
     it('llama GetObjectCommand con Bucket y Key correctos', async () => {
       const svc = buildService(buildConfig());
-      mocks.mockGetSignedUrl.mockResolvedValueOnce('https://get-url.example.com');
+      mocks.mockGetSignedUrl.mockResolvedValueOnce(
+        'https://get-url.example.com',
+      );
 
       const url = await svc.generatePresignedGetUrl('kyc/doc.pdf', 'my-bucket');
 
@@ -217,7 +241,9 @@ describe('R2StorageService', () => {
 
       await svc.headBucket('my-bucket');
 
-      expect(mocks.MockHeadBucketCommand).toHaveBeenCalledWith({ Bucket: 'my-bucket' });
+      expect(mocks.MockHeadBucketCommand).toHaveBeenCalledWith({
+        Bucket: 'my-bucket',
+      });
       expect(mocks.mockSend).toHaveBeenCalled();
     });
 
@@ -232,7 +258,9 @@ describe('R2StorageService', () => {
 
     it('lanza ServiceUnavailableException cuando no está configurado', async () => {
       const svc = buildService(buildConfig({ r2Endpoint: '' }));
-      await expect(svc.headBucket()).rejects.toThrow(ServiceUnavailableException);
+      await expect(svc.headBucket()).rejects.toThrow(
+        ServiceUnavailableException,
+      );
     });
   });
 });

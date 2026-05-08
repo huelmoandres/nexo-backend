@@ -16,6 +16,7 @@ describe('UsersRepository', () => {
     const tx = {
       company: { create: vi.fn().mockResolvedValue(company) },
       auditLog: { create: vi.fn().mockResolvedValue({}) },
+      trustProfile: { create: vi.fn().mockResolvedValue({}) },
     };
 
     const prisma = {
@@ -44,6 +45,13 @@ describe('UsersRepository', () => {
         }),
       }),
     );
+    expect(tx.trustProfile.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        subjectType: 'COMPANY',
+        subjectId: 'c1',
+        companyId: 'c1',
+      }),
+    });
   });
 
   it('createProfessionalProfileWithPostgis ejecuta UPDATE PostGIS', async () => {
@@ -59,6 +67,8 @@ describe('UsersRepository', () => {
         create: vi.fn().mockResolvedValue(profileRow),
       },
       $executeRawUnsafe: vi.fn().mockResolvedValue(1),
+      professionalIdentity: { create: vi.fn().mockResolvedValue({}) },
+      trustProfile: { create: vi.fn().mockResolvedValue({}) },
     };
 
     const prisma = {
@@ -86,6 +96,16 @@ describe('UsersRepository', () => {
       -34.9,
       'p1',
     );
+    expect(tx.professionalIdentity.create).toHaveBeenCalledWith({
+      data: { professionalProfileId: 'p1' },
+    });
+    expect(tx.trustProfile.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        subjectType: 'PROFESSIONAL',
+        subjectId: 'p1',
+        professionalProfileId: 'p1',
+      }),
+    });
   });
 
   it('findBySupabaseUidForMe delega en prisma.user.findFirst', async () => {

@@ -13,7 +13,13 @@ Nexos es un marketplace que conecta clientes con profesionales de servicios del 
 
 **Roadmap técnico:** BullMQ y MongoDB para flujos asíncronos/alta frecuencia.
 
-**Módulos activos en código:** `auth`, `users`, `storage`, `health`, `categories`, `search`.
+**Módulos activos en código:** `auth`, `users`, `storage`, `health`, `diagnostics`, `categories`, `search`.
+
+---
+
+## Desarrollo con IA
+
+[Punto de entrada del repo: **AGENTS.md**](AGENTS.md): orden de lectura (explicación → referencia → harness → código), stack, convenciones (`api`, path aliases), **JWT Supabase con JWKS (ES256)** y diferencia entre **seeds Prisma** y factories de test. Complementa [`.cursorrules`](.cursorrules) y el [Harness Index](.harness/INDEX.md).
 
 ---
 
@@ -106,6 +112,7 @@ Ver [docs/reference/api-testing.md](docs/reference/api-testing.md) para la guía
 | `npm run test:cov:strict` | Alias explícito de `test:cov` para quality gate estricto |
 | `npm run test:e2e` | Tests de integración con Testcontainers |
 | `npm run test:all` | Todos los tests (unit + e2e) |
+| `npm run db:seed` | Seeds base (`prisma/seed.js`); ver también `db:seed:geo`, `db:seed:categories`, `db:seed:demo` |
 | `npm run quality:check` | `tsc + lint + coverage 95 + e2e` en un solo comando |
 | `npm run prepare` | Activa Husky tras `npm install` (hooks de Git locales) |
 
@@ -198,6 +205,7 @@ Un módulo o endpoint se considera **terminado** cuando cumple todos los puntos:
 | [Coding Guidelines](docs/reference/coding-guidelines.md) | Estándares de TypeScript, SOLID, Swagger |
 | [API Testing](docs/reference/api-testing.md) | Swagger UI y Postman |
 | [Harness Index](.harness/INDEX.md) | Índice central de specs, rules y evals |
+| [AGENTS.md](AGENTS.md) | Guía de entrada para IA y colaboradores |
 
 ---
 

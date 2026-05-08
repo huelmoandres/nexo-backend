@@ -216,7 +216,7 @@ describe('CategoriesController (e2e)', () => {
       const res = await request(httpServer())
         .patch(`/api/categories/${randomUUID()}`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'X' });
+        .send({ name: 'Categoria inexistente' });
 
       expect(res.status).toBe(404);
     });
