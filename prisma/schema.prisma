@@ -155,6 +155,11 @@ enum NotificationType {
   KYC_REJECTED        // Verificación de identidad rechazada
   REVIEW_VALIDATED    // Una reseña fue validada y es pública
   SYSTEM              // Mensajes del sistema (actualizaciones, mantenimiento)
+  // Portfolio
+  PORTFOLIO_AI_FLAGGED        // Item del profesional flaggeado por IA — requiere corrección
+  PORTFOLIO_CONSENT_REQUESTED // Cliente recibe solicitud de verificación de badge
+  PORTFOLIO_CONSENT_REMINDER  // Recordatorio de consent pendiente (delay 3 días)
+  PORTFOLIO_CONSENT_RESOLVED  // Profesional recibe resultado del consent (aceptado/rechazado)
 }
 
 enum AuditAction {
@@ -183,6 +188,44 @@ enum AuditAction {
   EMPLOYEE_ACTION       // Acción de un COMPANY_EMPLOYEE — filtrable por companyId
   EMPLOYEE_ADDED
   EMPLOYEE_REMOVED
+  // Portfolio
+  PORTFOLIO_CONSENT_ACCEPTED  // Cliente aceptó verificación de un item
+  PORTFOLIO_CONSENT_DECLINED  // Cliente rechazó verificación de un item
+}
+
+enum PortfolioItemStatus {
+  DRAFT                  // Creado sin fotos o no publicado todavía
+  PUBLISHED              // Visible al público
+  HIDDEN_PENDING_REVIEW  // Flaggeado por IA o cliente; espera decisión admin
+  HIDDEN_BY_ADMIN        // Ocultado manualmente por SUPER_ADMIN
+}
+
+enum AiModerationStatus {
+  PENDING   // Esperando veredicto IA o retry
+  OK        // IA aprobó
+  FLAGGED   // IA rechazó (alguna categoría > threshold)
+}
+
+enum ConsentStatus {
+  PENDING   // Token emitido, cliente aún no responde
+  ACCEPTED  // Cliente confirmó, badge se enciende
+  DECLINED  // Cliente rechazó, item sigue visible sin badge
+  EXPIRED   // TTL agotado sin respuesta
+}
+
+enum ConsentDeclineReason {
+  NOT_MINE      // No reconoce el trabajo
+  INAPPROPRIATE // Contenido ofensivo o inadecuado
+  INACCURATE    // Descripción / categoría no refleja lo hecho
+  PRIVACY       // No quiere figurar aunque el trabajo sea real
+  OTHER         // Texto libre opcional en declineNotes
+}
+
+enum ModerationTransitionType {
+  INITIAL                       // Primera moderación del item
+  RE_MODERATION                 // Re-moderación por edición de fotos/texto
+  AUTO_RESTORE_AFTER_CORRECTION // Estaba HIDDEN, IA lo restauró sin intervención admin
+  ADMIN_OVERRIDE                // Decisión manual del admin
 }
 
 // =============================================================================
@@ -355,13 +398,14 @@ model ProfessionalProfile {
   selfieKey        String?
 
   // Relaciones
-  categories  ProfessionalCategory[]
-  jobsAsPro   Job[]                  @relation("JobProfessional")
-  urgencies   Urgency[]
-  reviews     Review[]               @relation("ReviewProfessionalProfile")
-  identity    ProfessionalIdentity?
-  trustProfiles TrustProfile[]
-  certifications ProfessionalCertification[]
+  categories      ProfessionalCategory[]
+  jobsAsPro       Job[]                  @relation("JobProfessional")
+  urgencies       Urgency[]
+  reviews         Review[]               @relation("ReviewProfessionalProfile")
+  identity        ProfessionalIdentity?
+  trustProfiles   TrustProfile[]
+  certifications  ProfessionalCertification[]
+  portfolioItems  PortfolioItem[]
 
   /// Soft Delete
   deletedAt DateTime? @db.Timestamptz
@@ -488,9 +532,10 @@ model Category {
   parent          Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
   children        Category[] @relation("CategoryHierarchy")
 
-  professionals ProfessionalCategory[]
-  jobs          Job[]
-  urgencies     Urgency[]
+  professionals   ProfessionalCategory[]
+  jobs            Job[]
+  urgencies       Urgency[]
+  portfolioItems  PortfolioItem[]
 
   createdAt DateTime  @default(now()) @db.Timestamptz
   updatedAt DateTime  @updatedAt @db.Timestamptz
@@ -544,6 +589,7 @@ model Job {
   review            Review?
   evidences         WorkEvidence[]
   urgency           Urgency?
+  portfolioItem     PortfolioItem?
 
   /// Soft Delete — el historial de trabajos nunca se borra para proteger a ambas partes.
   deletedAt DateTime? @db.Timestamptz
@@ -788,4 +834,148 @@ model Notification {
   createdAt DateTime  @default(now()) @db.Timestamptz
 
   @@index([userId, readAt])
+}
+
+// =============================================================================
+// BLOQUE F — PORTFOLIO DEL PROFESIONAL
+// Vidriera pública de trabajos realizados. Distinto de WorkEvidence (forense para
+// disputas) y de Review (post-transacción). Ver .harness/specs/portfolio-module.md.
+// =============================================================================
+
+/// Item del portfolio del profesional. Puede estar vinculado opcionalmente a un
+/// Job CLOSED del mismo profesional para obtener el badge "Verificado".
+/// Una vez verifiedFromJob = true, jobId y categoryId son INMUTABLES
+/// (trigger portfolio_item_freeze_after_verification_trg + guard en Service).
+model PortfolioItem {
+  id             String  @id @default(uuid())
+  professionalId String
+  professional   ProfessionalProfile @relation(fields: [professionalId], references: [id])
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  title       String  // 3-100 chars, validado en DTO
+  description String  // 10-2000 chars, validado en DTO
+  status      PortfolioItemStatus @default(DRAFT)
+
+  /// Vínculo opcional con un Job CLOSED del mismo profesional.
+  /// Si está seteado: job.professionalId === professionalId, job.status === CLOSED,
+  /// job.categoryId === categoryId.
+  jobId String? @unique
+  job   Job?    @relation(fields: [jobId], references: [id])
+
+  /// true solo si existe PortfolioConsent ACCEPTED para este item.
+  /// Una vez true, jobId y categoryId son INMUTABLES (trigger DB + guard Service).
+  verifiedFromJob Boolean @default(false)
+
+  // Snapshot del último veredicto de moderación IA
+  aiModerationStatus   AiModerationStatus @default(PENDING)
+  /// Razón legible: nsfw | watermark | brand_violation | unrelated | provider_unavailable
+  aiModerationReason   String?
+  /// Identificador del modelo que realizó la moderación. Formato: vendor:model:version
+  /// Regex: ^[a-z0-9_]+:[a-z0-9_-]+:[a-z0-9._-]+$ — validado por ModerationModelRef helper.
+  aiModerationModelRef String?
+  aiModeratedAt        DateTime? @db.Timestamptz
+
+  publishedAt DateTime? @db.Timestamptz
+  /// Seteado por el processor portfolio-cleanup tras borrar archivos de R2/Redis.
+  cleanedUpAt DateTime? @db.Timestamptz
+  /// Soft Delete — usar update({ data: { deletedAt: new Date() } }).
+  deletedAt   DateTime? @db.Timestamptz
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+
+  photos         PortfolioPhoto[]
+  consent        PortfolioConsent?
+  moderationLogs PortfolioModerationLog[]
+
+  @@index([professionalId, status])
+  @@index([categoryId, status])
+  @@index([aiModerationModelRef, aiModeratedAt])
+}
+
+/// Foto individual de un PortfolioItem. displayOrder es siempre compacto (1..N sin huecos).
+/// El re-orden automático al borrar/insertar debe ocurrir en la misma prisma.$transaction().
+model PortfolioPhoto {
+  id              String        @id @default(uuid())
+  portfolioItemId String
+  portfolioItem   PortfolioItem @relation(fields: [portfolioItemId], references: [id])
+
+  /// Key R2/S3 con naming canónico: usr_<professionalId>/portfolio/<itemId>/<uuid>.<ext>
+  /// Único globalmente para evitar colisiones de caché vs delete.
+  fileKey      String  @unique
+  caption      String?
+  /// Orden 1..N sin huecos. Re-orden atómico en transacción al borrar/insertar.
+  displayOrder Int
+  /// Seteado a true por el processor portfolio-moderate si la IA flagea esta foto específica.
+  aiFlagged    Boolean @default(false)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([portfolioItemId, displayOrder])
+}
+
+/// Flujo de consentimiento del cliente para el badge de verificación.
+/// El token es de un solo uso, enviado por email/push al cliente del Job vinculado.
+model PortfolioConsent {
+  id              String        @id @default(uuid())
+  portfolioItemId String        @unique
+  portfolioItem   PortfolioItem @relation(fields: [portfolioItemId], references: [id])
+
+  jobId        String
+  clientUserId String
+
+  /// UUID v4 de un solo uso. Enviado al cliente por email/push para autenticarse.
+  token String @unique
+
+  status        ConsentStatus        @default(PENDING)
+  declineReason ConsentDeclineReason?
+  /// Texto libre opcional al declinar. Sanitizado por PiiSanitizer. Max 500 chars.
+  declineNotes  String?
+
+  requestedAt DateTime @default(now()) @db.Timestamptz
+  /// Sello del INTENTO de envío del recordatorio (claim del lock de outbox).
+  reminderAttemptedAt DateTime? @db.Timestamptz
+  /// Sello de CONFIRMACIÓN del envío (provider devolvió OK con messageId).
+  reminderSentAt  DateTime? @db.Timestamptz
+  respondedAt     DateTime? @db.Timestamptz
+  /// TTL configurable. Default: requestedAt + 14 días (PORTFOLIO_CONSENT_TTL_DAYS).
+  expiresAt       DateTime  @db.Timestamptz
+
+  @@index([status, expiresAt])
+}
+
+/// Registro append-only de cada moderación IA sobre un PortfolioItem.
+/// Permite auditar qué modelo tomó cada decisión y comparar tras cambios de proveedor.
+/// NUNCA persiste texto libre del proveedor de IA — solo categorías + scores numéricos.
+model PortfolioModerationLog {
+  id              String        @id @default(uuid())
+  portfolioItemId String
+  portfolioItem   PortfolioItem @relation(fields: [portfolioItemId], references: [id])
+
+  /// Identificador del modelo que moderó. Formato: vendor:model:version
+  modelRef String
+
+  transitionType ModerationTransitionType
+  /// OK | FLAGGED | ERROR
+  status  String
+  /// Categoría de rechazo: nsfw | watermark | brand_violation | unrelated
+  reason  String?
+
+  /// JSON estructurado con categorías y scores numéricos.
+  /// Ejemplo: { "nsfw": 0.02, "violence": 0.01, "brand_violation": 0.71 }
+  /// NUNCA texto libre del proveedor (evita PII colateral).
+  scores Json?
+
+  /// Solo cuando status = ERROR. Sanitizado por PiiSanitizer antes de persistir.
+  errorCode    String?
+  /// Max 1000 chars. Sanitizado (sin emails, teléfonos, cédulas, IBAN, URLs con tokens).
+  errorMessage String?
+  /// Latencia del call al proveedor en milisegundos. Para monitoreo del SLO.
+  latencyMs    Int?
+
+  scoredAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([portfolioItemId, scoredAt])
+  @@index([modelRef, scoredAt])
 }
