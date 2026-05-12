@@ -43,10 +43,9 @@ export const CONTENT_MODERATION_PROVIDER_TOKEN = Symbol(
  * activo incluso en otros entornos.
  */
 @Injectable()
-export class AlwaysApprovedModerationProvider
-  implements IContentModerationProvider
-{
-  async moderate(_input: ModerationInput): Promise<ModerationResult> {
+export class AlwaysApprovedModerationProvider implements IContentModerationProvider {
+  async moderate(input: ModerationInput): Promise<ModerationResult> {
+    void input;
     return Promise.resolve({
       status: AiModerationStatus.OK,
       modelRef: 'stub:none:v0',

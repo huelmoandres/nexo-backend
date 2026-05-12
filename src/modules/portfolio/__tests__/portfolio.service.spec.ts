@@ -700,9 +700,9 @@ describe('PortfolioService', () => {
         findItemForOwner: vi.fn().mockResolvedValue(null),
       });
 
-      await expect(
-        service.softDeleteItem('sub-1', 'item-x'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.softDeleteItem('sub-1', 'item-x')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -722,7 +722,12 @@ describe('PortfolioService', () => {
       aiFlagged: false,
       createdAt: new Date(),
     };
-    const photo2 = { ...photo1, id: 'photo-2', fileKey: 'users/prof-1/portfolio/item-1/b.webp', displayOrder: 2 };
+    const photo2 = {
+      ...photo1,
+      id: 'photo-2',
+      fileKey: 'users/prof-1/portfolio/item-1/b.webp',
+      displayOrder: 2,
+    };
 
     const basePublishState = (
       overrides: Partial<RepoMocks> = {},
@@ -767,12 +772,15 @@ describe('PortfolioService', () => {
     });
 
     it('cache hit en todas las fotos: omite HEAD checks', async () => {
-      const { service, storage, cache } = basePublishState({}, {
-        cache: {
-          isExistsCached: vi.fn().mockResolvedValue(true),
-          markExists: vi.fn().mockResolvedValue(undefined),
+      const { service, storage, cache } = basePublishState(
+        {},
+        {
+          cache: {
+            isExistsCached: vi.fn().mockResolvedValue(true),
+            markExists: vi.fn().mockResolvedValue(undefined),
+          },
         },
-      });
+      );
 
       await service.publishItem('sub-1', 'item-1');
 
@@ -882,14 +890,15 @@ describe('PortfolioService', () => {
         await service.publishItem('sub-1', 'item-1');
         expect.fail('debió lanzar');
       } catch (err) {
-        const { ServiceUnavailableException: SUE } = await import(
-          '@nestjs/common'
-        );
+        const { ServiceUnavailableException: SUE } =
+          await import('@nestjs/common');
         expect(err).toBeInstanceOf(SUE);
         expect(
-          ((err as InstanceType<typeof SUE>).getResponse() as {
-            code: string;
-          }).code,
+          (
+            (err as InstanceType<typeof SUE>).getResponse() as {
+              code: string;
+            }
+          ).code,
         ).toBe('PORTFOLIO_PHOTOS_STORAGE_UNAVAILABLE');
       }
       expect(assertSpy).toHaveBeenCalledTimes(2);
@@ -986,9 +995,7 @@ describe('PortfolioService', () => {
 
     it('devuelve lista vacía con total=0 cuando no hay items', async () => {
       const { service } = baseListState({
-        listByProfessional: vi
-          .fn()
-          .mockResolvedValue({ items: [], total: 0 }),
+        listByProfessional: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       });
 
       const result = await service.listMyItems('sub-1', {});

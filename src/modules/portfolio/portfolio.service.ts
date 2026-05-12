@@ -8,7 +8,6 @@ import {
 } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import {
-  AiModerationStatus,
   JobStatus,
   PortfolioItemStatus,
   type PortfolioItem,
@@ -213,10 +212,7 @@ export class PortfolioService {
       professionalProfileId,
     );
 
-    if (
-      dto.categoryId !== undefined &&
-      dto.categoryId !== item.categoryId
-    ) {
+    if (dto.categoryId !== undefined && dto.categoryId !== item.categoryId) {
       if (item.verifiedFromJob) {
         throw new ConflictException({
           type: this.problemDetailTypes.url(
@@ -249,9 +245,7 @@ export class PortfolioService {
         ...(dto.description !== undefined
           ? { description: dto.description }
           : {}),
-        ...(dto.categoryId !== undefined
-          ? { categoryId: dto.categoryId }
-          : {}),
+        ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
       },
     );
     return this.toResponseDto(updated);

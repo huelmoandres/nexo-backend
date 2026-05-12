@@ -201,8 +201,7 @@ export class PortfolioRepository {
     if (data.title !== undefined) cleaned['title'] = data.title;
     if (data.description !== undefined)
       cleaned['description'] = data.description;
-    if (data.categoryId !== undefined)
-      cleaned['categoryId'] = data.categoryId;
+    if (data.categoryId !== undefined) cleaned['categoryId'] = data.categoryId;
 
     return this.prisma.portfolioItem.update({
       where: { id: itemId },
