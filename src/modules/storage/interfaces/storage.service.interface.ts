@@ -10,7 +10,8 @@ export interface PresignedPutResult {
  *
  * Ownership de paths (defense-in-depth):
  * - `deleteObjectForUser`: operaciones destructivas de usuario autenticado.
- *   Valida que `key` empiece con `usr_<userId>/` antes de eliminar.
+ *   Valida que `key` empiece con `users/<userId>/` (delega a
+ *   `assertKeyBelongsToUser` de `storage-paths.ts`).
  * - `deleteObjectAsSystem`: bypass de ownership para operaciones internas
  *   (workers BullMQ, cleanup de soft-delete, admin ops). Requiere `reason` y loguea.
  * - `deleteObject`: mantenido por compatibilidad hacia atrás. No debe usarse en
@@ -55,11 +56,12 @@ export interface IStorageService {
   /**
    * Elimina un objeto del bucket validando que el `key` pertenezca al usuario.
    *
-   * La validación de ownership comprueba que `key` comienza con `usr_<userId>/`.
+   * La validación de ownership comprueba que `key` comienza con `users/<userId>/`
+   * vía `assertKeyBelongsToUser` (helper centralizado en `storage-paths.ts`).
    * Si no cumple, lanza `ForbiddenException` con slug `STORAGE_FORBIDDEN_KEY`
    * y emite un log estructurado con `op: 'storage.delete.forbidden'`.
    *
-   * @param key - Objeto a eliminar (debe empezar con `usr_<userId>/`).
+   * @param key - Objeto a eliminar (debe empezar con `users/<userId>/`).
    * @param userId - ID del usuario autenticado dueño del objeto.
    * @param bucket - Cubeta opcional.
    * @throws `ForbiddenException` Si `key` no pertenece a `userId`.

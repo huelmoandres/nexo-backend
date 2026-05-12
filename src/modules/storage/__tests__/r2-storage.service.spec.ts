@@ -253,11 +253,11 @@ describe('R2StorageService', () => {
       mocks.mockSend.mockResolvedValueOnce({});
 
       await expect(
-        svc.assertObjectExists('usr_u1/portfolio/item1/a.jpg'),
+        svc.assertObjectExists('users/u1/portfolio/item1/a.jpg'),
       ).resolves.toBeUndefined();
 
       expect(mocks.MockHeadObjectCommand).toHaveBeenCalledWith(
-        expect.objectContaining({ Key: 'usr_u1/portfolio/item1/a.jpg' }),
+        expect.objectContaining({ Key: 'users/u1/portfolio/item1/a.jpg' }),
       );
     });
 
@@ -335,7 +335,7 @@ describe('R2StorageService', () => {
 
       await expect(
         svc.deleteObjectForUser(
-          'usr_user123/portfolio/item1/a.jpg',
+          'users/user123/portfolio/item1/a.jpg',
           'user123',
           'nexos-public',
         ),
@@ -343,7 +343,7 @@ describe('R2StorageService', () => {
 
       expect(mocks.MockDeleteObjectCommand).toHaveBeenCalledWith({
         Bucket: 'nexos-public',
-        Key: 'usr_user123/portfolio/item1/a.jpg',
+        Key: 'users/user123/portfolio/item1/a.jpg',
       });
     });
 
@@ -351,7 +351,7 @@ describe('R2StorageService', () => {
       const svc = buildService(buildConfig());
       mocks.mockSend.mockResolvedValueOnce({});
 
-      await svc.deleteObjectForUser('usr_u1/portfolio/i1/f.jpg', 'u1');
+      await svc.deleteObjectForUser('users/u1/portfolio/i1/f.jpg', 'u1');
 
       expect(mocks.MockDeleteObjectCommand).toHaveBeenCalledWith(
         expect.objectContaining({ Bucket: 'nexos-kyc' }),
@@ -362,11 +362,11 @@ describe('R2StorageService', () => {
       const svc = buildService(buildConfig());
 
       await expect(
-        svc.deleteObjectForUser('usr_OTRO/portfolio/item1/a.jpg', 'user123'),
+        svc.deleteObjectForUser('users/OTRO/portfolio/item1/a.jpg', 'user123'),
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('lanza ForbiddenException cuando el key no empieza con usr_', async () => {
+    it('lanza ForbiddenException cuando el key no empieza con users/', async () => {
       const svc = buildService(buildConfig());
 
       await expect(
@@ -378,7 +378,7 @@ describe('R2StorageService', () => {
       const svc = buildService(buildConfig({ r2Endpoint: '' }));
 
       await expect(
-        svc.deleteObjectForUser('usr_u1/portfolio/i/f.jpg', 'u1'),
+        svc.deleteObjectForUser('users/u1/portfolio/i/f.jpg', 'u1'),
       ).rejects.toThrow(ServiceUnavailableException);
     });
   });
@@ -390,7 +390,7 @@ describe('R2StorageService', () => {
 
       await expect(
         svc.deleteObjectAsSystem(
-          'usr_u1/portfolio/item1/a.jpg',
+          'users/u1/portfolio/item1/a.jpg',
           'nexos-public',
           'portfolio-cleanup: soft-delete',
         ),
@@ -398,7 +398,7 @@ describe('R2StorageService', () => {
 
       expect(mocks.MockDeleteObjectCommand).toHaveBeenCalledWith({
         Bucket: 'nexos-public',
-        Key: 'usr_u1/portfolio/item1/a.jpg',
+        Key: 'users/u1/portfolio/item1/a.jpg',
       });
     });
 

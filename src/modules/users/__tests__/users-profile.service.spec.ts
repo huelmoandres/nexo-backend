@@ -350,7 +350,34 @@ describe('UsersProfileService', () => {
     );
   });
 
-  it('presignDocument usa application/octet-stream para extension no soportada', async () => {
+  it('presignDocument rechaza extensiones fuera del set permitido (KYC_INVALID_FILE_EXTENSION)', async () => {
+    const generatePresignedPutUrl = vi
+      .fn()
+      .mockResolvedValue({ uploadUrl: 'https://up' });
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue({
+        ...baseUser,
+        professionalProfile: { id: 'p1' },
+      }),
+      updateProfessionalDocumentKey: vi.fn(),
+    };
+    const service = new UsersProfileService(
+      repo as never,
+      { generatePresignedPutUrl } as never,
+      problemDetailTypes,
+      makeUsersConfig(),
+    );
+
+    await expect(
+      service.presignDocument('sub', {
+        documentKind: PresignDocumentKind.SELFIE,
+        fileExtension: 'webp',
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(generatePresignedPutUrl).not.toHaveBeenCalled();
+  });
+
+  it('presignDocument usa application/pdf para .pdf', async () => {
     const generatePresignedPutUrl = vi
       .fn()
       .mockResolvedValue({ uploadUrl: 'https://up' });
@@ -369,11 +396,11 @@ describe('UsersProfileService', () => {
     );
 
     await service.presignDocument('sub', {
-      documentKind: PresignDocumentKind.SELFIE,
-      fileExtension: 'webp',
+      documentKind: PresignDocumentKind.IDENTITY_CARD,
+      fileExtension: 'pdf',
     });
     expect(generatePresignedPutUrl).toHaveBeenCalledWith(
-      expect.objectContaining({ contentType: 'application/octet-stream' }),
+      expect.objectContaining({ contentType: 'application/pdf' }),
     );
   });
 

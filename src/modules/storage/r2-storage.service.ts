@@ -1,5 +1,4 @@
 import {
-  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -21,6 +20,7 @@ import type {
   IStorageService,
   PresignedPutResult,
 } from './interfaces/storage.service.interface';
+import { assertKeyBelongsToUser } from './storage-paths';
 
 /**
  * Implementación real de almacenamiento sobre Cloudflare R2 (S3-compatible).
@@ -152,7 +152,11 @@ export class R2StorageService implements IStorageService {
   /**
    * Elimina un objeto del bucket validando que el `key` pertenezca al usuario.
    *
-   * @param key Objeto a eliminar. Debe empezar con `usr_<userId>/`.
+   * Delega la validación de ownership a `assertKeyBelongsToUser` de
+   * `storage-paths.ts` (única fuente de verdad para la convención
+   * `users/<userId>/`).
+   *
+   * @param key Objeto a eliminar. Debe empezar con `users/<userId>/`.
    * @param userId ID del usuario autenticado.
    * @param bucket Bucket objetivo; si se omite usa `r2BucketKyc`.
    * @throws ForbiddenException Si el key no pertenece al userId.
@@ -163,19 +167,15 @@ export class R2StorageService implements IStorageService {
     userId: string,
     bucket?: string,
   ): Promise<void> {
-    if (!key.startsWith(`usr_${userId}/`)) {
+    try {
+      assertKeyBelongsToUser(key, userId);
+    } catch (err) {
       this.logger.warn({
         op: 'storage.delete.forbidden',
         userId,
         keyPrefix: key.slice(0, 40),
       });
-      throw new ForbiddenException({
-        type: 'about:blank',
-        title: 'Forbidden',
-        status: 403,
-        code: 'STORAGE_FORBIDDEN_KEY',
-        detail: 'The storage key does not belong to the authenticated user.',
-      });
+      throw err;
     }
     this.assertConfigured();
     const b = bucket ?? this.config.r2BucketKyc;
