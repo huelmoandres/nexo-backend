@@ -20,6 +20,7 @@ describe('PortfolioRepository', () => {
         create: vi.fn(),
         findFirst: vi.fn(),
         update: vi.fn(),
+        updateMany: vi.fn(),
       },
       portfolioPhoto: {
         count: vi.fn(),
@@ -463,6 +464,37 @@ describe('PortfolioRepository', () => {
         where: { id: 'item-1' },
         data: {},
       });
+    });
+  });
+
+  describe('softDeleteItem', () => {
+    it('marca deletedAt con updateMany filtrando id+pro+deletedAt:null', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.updateMany.mockResolvedValue({ count: 1 });
+
+      const affected = await repo.softDeleteItem('item-1', 'prof-1');
+
+      expect(prisma.portfolioItem.updateMany).toHaveBeenCalledTimes(1);
+      const callArg = prisma.portfolioItem.updateMany.mock.calls[0][0] as {
+        where: { id: string; professionalId: string; deletedAt: null };
+        data: { deletedAt: Date };
+      };
+      expect(callArg.where).toEqual({
+        id: 'item-1',
+        professionalId: 'prof-1',
+        deletedAt: null,
+      });
+      expect(callArg.data.deletedAt).toBeInstanceOf(Date);
+      expect(affected).toBe(1);
+    });
+
+    it('devuelve 0 cuando el item no existe o ya estaba soft-deleted', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.updateMany.mockResolvedValue({ count: 0 });
+
+      const affected = await repo.softDeleteItem('item-x', 'prof-1');
+
+      expect(affected).toBe(0);
     });
   });
 });

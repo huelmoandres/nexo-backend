@@ -27,9 +27,14 @@ describe('PortfolioService', () => {
     addPhotoWithReorder: ReturnType<typeof vi.fn>;
     deletePhotoWithReorder: ReturnType<typeof vi.fn>;
     updateItem: ReturnType<typeof vi.fn>;
+    softDeleteItem: ReturnType<typeof vi.fn>;
   };
+  type QueueMock = { enqueue: ReturnType<typeof vi.fn> };
 
-  const makeService = (overrides: Partial<RepoMocks> = {}) => {
+  const makeService = (
+    overrides: Partial<RepoMocks> = {},
+    queueOverride?: QueueMock,
+  ) => {
     const repo: RepoMocks = {
       findProfessionalBySupabaseUid: vi.fn(),
       findActiveCategoryById: vi.fn(),
@@ -41,16 +46,22 @@ describe('PortfolioService', () => {
       addPhotoWithReorder: vi.fn(),
       deletePhotoWithReorder: vi.fn(),
       updateItem: vi.fn(),
+      softDeleteItem: vi.fn(),
       ...overrides,
     };
     const config = { maxPhotosPerItem: 10 };
+    const cleanupQueue: QueueMock = queueOverride ?? {
+      enqueue: vi.fn().mockResolvedValue(undefined),
+    };
     return {
       service: new PortfolioService(
         repo as never,
         problemDetailTypes,
         config as never,
+        cleanupQueue as never,
       ),
       repo,
+      cleanupQueue,
     };
   };
 
@@ -601,6 +612,53 @@ describe('PortfolioService', () => {
 
       expect(repo.updateItem).not.toHaveBeenCalled();
       expect(result.id).toBe('item-1');
+    });
+  });
+
+  describe('softDeleteItem', () => {
+    const baseSoftDeleteState = (extras: Partial<RepoMocks> = {}) =>
+      makeService({
+        findProfessionalBySupabaseUid: vi.fn().mockResolvedValue({
+          userId: 'user-1',
+          professionalProfileId: 'prof-1',
+        }),
+        findItemForOwner: vi
+          .fn()
+          .mockResolvedValue({ ...baseItem, deletedAt: null }),
+        softDeleteItem: vi.fn().mockResolvedValue(1),
+        ...extras,
+      });
+
+    it('happy path: marca soft-delete y encola cleanup', async () => {
+      const { service, repo, cleanupQueue } = baseSoftDeleteState();
+
+      await service.softDeleteItem('sub-1', 'item-1');
+
+      expect(repo.softDeleteItem).toHaveBeenCalledWith('item-1', 'prof-1');
+      expect(cleanupQueue.enqueue).toHaveBeenCalledWith({
+        professionalId: 'prof-1',
+        itemId: 'item-1',
+      });
+    });
+
+    it('no encola si el repo devuelve 0 (idempotente)', async () => {
+      const { service, cleanupQueue } = baseSoftDeleteState({
+        softDeleteItem: vi.fn().mockResolvedValue(0),
+      });
+
+      await service.softDeleteItem('sub-1', 'item-1');
+
+      expect(cleanupQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('rechaza con 404 si el item no es del owner', async () => {
+      const { service } = baseSoftDeleteState({
+        findItemForOwner: vi.fn().mockResolvedValue(null),
+      });
+
+      await expect(
+        service.softDeleteItem('sub-1', 'item-x'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

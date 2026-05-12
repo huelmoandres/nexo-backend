@@ -9,6 +9,7 @@ describe('PortfolioController', () => {
       addPhoto: vi.fn(),
       deletePhoto: vi.fn(),
       updateItem: vi.fn(),
+      softDeleteItem: vi.fn(),
     };
     return {
       controller: new PortfolioController(service as never),
@@ -97,6 +98,18 @@ describe('PortfolioController', () => {
 
       expect(service.updateItem).toHaveBeenCalledWith('sub-1', 'item-1', dto);
       expect(result).toEqual(expected);
+    });
+  });
+
+  describe('DELETE /items/:id (softDeleteItem)', () => {
+    it('delega en service.softDeleteItem y devuelve undefined', async () => {
+      const { controller, service } = makeController();
+      service.softDeleteItem.mockResolvedValue(undefined);
+
+      const result = await controller.softDeleteItem('sub-1', 'item-1');
+
+      expect(service.softDeleteItem).toHaveBeenCalledWith('sub-1', 'item-1');
+      expect(result).toBeUndefined();
     });
   });
 

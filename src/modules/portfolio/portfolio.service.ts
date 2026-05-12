@@ -27,6 +27,10 @@ import {
   PORTFOLIO_PROBLEM_SLUGS,
 } from './portfolio.constants';
 import { PortfolioRepository } from './portfolio.repository';
+import {
+  IPortfolioCleanupQueue,
+  PORTFOLIO_CLEANUP_QUEUE_TOKEN,
+} from './queues/portfolio-cleanup.queue';
 
 /**
  * Lógica de negocio del módulo `portfolio` (CRUD owner).
@@ -45,6 +49,8 @@ export class PortfolioService {
     private readonly problemDetailTypes: ProblemDetailTypeService,
     @Inject(portfolioConfig.KEY)
     private readonly config: ConfigType<typeof portfolioConfig>,
+    @Inject(PORTFOLIO_CLEANUP_QUEUE_TOKEN)
+    private readonly cleanupQueue: IPortfolioCleanupQueue,
   ) {}
 
   /**
@@ -232,6 +238,38 @@ export class PortfolioService {
       },
     );
     return this.toResponseDto(updated);
+  }
+
+  /**
+   * Soft-delete de un PortfolioItem del pro autenticado.
+   *
+   * Flujo:
+   * 1. Resuelve owner.
+   * 2. Verifica ownership del item (404 si no existe o es de otro pro).
+   * 3. Aplica el soft-delete idempotente (`deletedAt = now()` solo si
+   *    estaba en `null`).
+   * 4. Si la fila fue efectivamente marcada (count > 0), encola el job
+   *    `portfolio-cleanup` para que el worker borre las fotos físicas
+   *    en R2 de forma asíncrona.
+   *
+   * Idempotencia: llamar dos veces para el mismo item devuelve sin
+   * error pero solo encola en la primera (count > 0).
+   */
+  async softDeleteItem(supabaseUid: string, itemId: string): Promise<void> {
+    const professionalProfileId =
+      await this.resolveProfessionalProfileId(supabaseUid);
+    await this.assertItemOwned(itemId, professionalProfileId);
+
+    const count = await this.repository.softDeleteItem(
+      itemId,
+      professionalProfileId,
+    );
+    if (count > 0) {
+      await this.cleanupQueue.enqueue({
+        professionalId: professionalProfileId,
+        itemId,
+      });
+    }
   }
 
   /**

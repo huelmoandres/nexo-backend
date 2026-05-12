@@ -5,6 +5,10 @@ import { RolesGuard } from '@modules/users/guards/roles.guard';
 import { PortfolioController } from './portfolio.controller';
 import { PortfolioRepository } from './portfolio.repository';
 import { PortfolioService } from './portfolio.service';
+import {
+  LoggingPortfolioCleanupQueue,
+  PORTFOLIO_CLEANUP_QUEUE_TOKEN,
+} from './queues/portfolio-cleanup.queue';
 
 /**
  * Módulo `portfolio`: gestión owner del portfolio público del profesional.
@@ -20,6 +24,10 @@ import { PortfolioService } from './portfolio.service';
     PortfolioRepository,
     AuthorizationService,
     RolesGuard,
+    {
+      provide: PORTFOLIO_CLEANUP_QUEUE_TOKEN,
+      useClass: LoggingPortfolioCleanupQueue,
+    },
   ],
   exports: [PortfolioService],
 })

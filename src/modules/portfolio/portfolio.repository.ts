@@ -209,6 +209,28 @@ export class PortfolioRepository {
   }
 
   /**
+   * Soft-delete idempotente de un PortfolioItem.
+   *
+   * Usa `updateMany` con `deletedAt: null` en el `where` para no
+   * pisar el timestamp si el item ya estaba borrado: devuelve `count: 0`
+   * y el service decide si lanzar 404 o tratar como no-op.
+   *
+   * Las fotos físicas en R2 NO se borran aquí; eso lo encola el service
+   * a través de `IPortfolioCleanupQueue` cuando el `updateMany` afectó
+   * realmente una fila.
+   */
+  async softDeleteItem(
+    itemId: string,
+    professionalId: string,
+  ): Promise<number> {
+    const { count } = await this.prisma.portfolioItem.updateMany({
+      where: { id: itemId, professionalId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    return count;
+  }
+
+  /**
    * Borra una foto y compacta los `displayOrder` posteriores en la misma
    * transacción para mantener el invariante "1..N sin huecos".
    *

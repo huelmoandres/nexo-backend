@@ -167,6 +167,32 @@ export class PortfolioController {
     return this.portfolioService.addPhoto(sub, itemId, dto);
   }
 
+  @Delete('items/:id')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth('supabase-jwt')
+  @ApiOperation({
+    summary: 'Soft-delete idempotente de un PortfolioItem',
+    description:
+      'Marca deletedAt y encola portfolio-cleanup para borrar las fotos ' +
+      'físicas en R2 de forma asíncrona. Llamadas repetidas devuelven 204 ' +
+      'sin re-encolar.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Item soft-deleted' })
+  @ApiResponse({
+    status: 404,
+    description: 'PORTFOLIO_ITEM_NOT_FOUND',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  async softDeleteItem(
+    @CurrentUser('sub') sub: string,
+    @Param('id', ParseUUIDPipe) itemId: string,
+  ): Promise<void> {
+    return this.portfolioService.softDeleteItem(sub, itemId);
+  }
+
   @Delete('items/:id/photos/:photoId')
   @UseGuards(SupabaseAuthGuard, RolesGuard)
   @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
