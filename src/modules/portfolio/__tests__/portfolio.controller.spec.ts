@@ -11,6 +11,7 @@ describe('PortfolioController', () => {
       updateItem: vi.fn(),
       softDeleteItem: vi.fn(),
       publishItem: vi.fn(),
+      listMyItems: vi.fn(),
     };
     return {
       controller: new PortfolioController(service as never),
@@ -98,6 +99,23 @@ describe('PortfolioController', () => {
       const result = await controller.updateItem('sub-1', 'item-1', dto);
 
       expect(service.updateItem).toHaveBeenCalledWith('sub-1', 'item-1', dto);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('GET /items/mine (listMyItems)', () => {
+    it('delega en service.listMyItems pasando sub y query', async () => {
+      const { controller, service } = makeController();
+      const expected = {
+        items: [],
+        meta: { page: 2, pageSize: 5, total: 0 },
+      };
+      service.listMyItems.mockResolvedValue(expected);
+
+      const query = { page: 2, pageSize: 5 };
+      const result = await controller.listMyItems('sub-1', query);
+
+      expect(service.listMyItems).toHaveBeenCalledWith('sub-1', query);
       expect(result).toEqual(expected);
     });
   });

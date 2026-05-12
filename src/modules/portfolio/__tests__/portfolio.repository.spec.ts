@@ -21,6 +21,8 @@ describe('PortfolioRepository', () => {
         findFirst: vi.fn(),
         update: vi.fn(),
         updateMany: vi.fn(),
+        findMany: vi.fn(),
+        count: vi.fn(),
       },
       portfolioPhoto: {
         count: vi.fn(),
@@ -515,6 +517,34 @@ describe('PortfolioRepository', () => {
         orderBy: { displayOrder: 'asc' },
       });
       expect(result).toEqual(expected);
+    });
+  });
+
+  describe('listByProfessional', () => {
+    it('aplica paginación (skip/take) y ordena por createdAt DESC con deletedAt:null', async () => {
+      const { repo, prisma } = makeRepo();
+      const items = [
+        { id: 'item-2', createdAt: new Date('2026-05-02') },
+        { id: 'item-1', createdAt: new Date('2026-05-01') },
+      ];
+      prisma.portfolioItem.findMany.mockResolvedValue(items);
+      prisma.portfolioItem.count.mockResolvedValue(42);
+
+      const result = await repo.listByProfessional('prof-1', {
+        skip: 20,
+        take: 10,
+      });
+
+      expect(prisma.portfolioItem.findMany).toHaveBeenCalledWith({
+        where: { professionalId: 'prof-1', deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        skip: 20,
+        take: 10,
+      });
+      expect(prisma.portfolioItem.count).toHaveBeenCalledWith({
+        where: { professionalId: 'prof-1', deletedAt: null },
+      });
+      expect(result).toEqual({ items, total: 42 });
     });
   });
 

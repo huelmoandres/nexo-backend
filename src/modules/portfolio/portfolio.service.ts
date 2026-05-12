@@ -24,6 +24,8 @@ import {
 } from '@modules/storage/storage-paths';
 import type { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
 import type { CreatePortfolioItemDto } from './dto/create-portfolio-item.dto';
+import type { ListMyPortfolioQueryDto } from './dto/list-my-portfolio-query.dto';
+import type { PaginatedPortfolioItemsDto } from './dto/paginated-portfolio-items.dto';
 import type { PortfolioItemResponseDto } from './dto/portfolio-item-response.dto';
 import type { PortfolioPhotoResponseDto } from './dto/portfolio-photo-response.dto';
 import type { UpdatePortfolioItemDto } from './dto/update-portfolio-item.dto';
@@ -253,6 +255,35 @@ export class PortfolioService {
       },
     );
     return this.toResponseDto(updated);
+  }
+
+  /**
+   * Lista paginada de los items del pro autenticado (incluye DRAFT,
+   * PUBLISHED y HIDDEN_PENDING_REVIEW; excluye soft-deleted).
+   *
+   * Defaults: `page=1`, `pageSize=20`. Ordenado por `createdAt DESC`
+   * (los más nuevos primero).
+   */
+  async listMyItems(
+    supabaseUid: string,
+    query: ListMyPortfolioQueryDto,
+  ): Promise<PaginatedPortfolioItemsDto> {
+    const professionalProfileId =
+      await this.resolveProfessionalProfileId(supabaseUid);
+
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const skip = (page - 1) * pageSize;
+
+    const { items, total } = await this.repository.listByProfessional(
+      professionalProfileId,
+      { skip, take: pageSize },
+    );
+
+    return {
+      items: items.map((it) => this.toResponseDto(it)),
+      meta: { page, pageSize, total },
+    };
   }
 
   /**

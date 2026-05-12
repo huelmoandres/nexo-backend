@@ -211,6 +211,30 @@ export class PortfolioRepository {
   }
 
   /**
+   * Lista paginada de items del profesional, ordenada por `createdAt DESC`.
+   *
+   * Excluye soft-deleted (`deletedAt: null`). Devuelve además el total
+   * para que el service arme la metadata de paginación sin un round-trip
+   * extra.
+   */
+  async listByProfessional(
+    professionalId: string,
+    page: { skip: number; take: number },
+  ): Promise<{ items: PortfolioItem[]; total: number }> {
+    const where = { professionalId, deletedAt: null };
+    const [items, total] = await Promise.all([
+      this.prisma.portfolioItem.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: page.skip,
+        take: page.take,
+      }),
+      this.prisma.portfolioItem.count({ where }),
+    ]);
+    return { items, total };
+  }
+
+  /**
    * Lista las fotos de un item ordenadas por `displayOrder`.
    *
    * Usado por el flujo de publish para iterar HEAD checks y por

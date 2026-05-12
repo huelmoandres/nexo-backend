@@ -30,6 +30,7 @@ describe('PortfolioService', () => {
     softDeleteItem: ReturnType<typeof vi.fn>;
     findPhotosByItemId: ReturnType<typeof vi.fn>;
     transitionToPublished: ReturnType<typeof vi.fn>;
+    listByProfessional: ReturnType<typeof vi.fn>;
   };
   type QueueMock = { enqueue: ReturnType<typeof vi.fn> };
   type StorageMock = { assertObjectExists: ReturnType<typeof vi.fn> };
@@ -66,6 +67,7 @@ describe('PortfolioService', () => {
       softDeleteItem: vi.fn(),
       findPhotosByItemId: vi.fn(),
       transitionToPublished: vi.fn(),
+      listByProfessional: vi.fn(),
       ...overrides,
     };
     const config = {
@@ -942,6 +944,57 @@ describe('PortfolioService', () => {
       await expect(service.publishItem('sub-1', 'item-1')).rejects.toThrow(
         /boom/,
       );
+    });
+  });
+
+  describe('listMyItems', () => {
+    const baseListState = (extras: Partial<RepoMocks> = {}) =>
+      makeService({
+        findProfessionalBySupabaseUid: vi.fn().mockResolvedValue({
+          userId: 'user-1',
+          professionalProfileId: 'prof-1',
+        }),
+        listByProfessional: vi
+          .fn()
+          .mockResolvedValue({ items: [baseItem], total: 1 }),
+        ...extras,
+      });
+
+    it('happy path: aplica defaults page=1, pageSize=20 (skip=0, take=20)', async () => {
+      const { service, repo } = baseListState();
+
+      const result = await service.listMyItems('sub-1', {});
+
+      expect(repo.listByProfessional).toHaveBeenCalledWith('prof-1', {
+        skip: 0,
+        take: 20,
+      });
+      expect(result.meta).toEqual({ page: 1, pageSize: 20, total: 1 });
+      expect(result.items).toHaveLength(1);
+    });
+
+    it('aplica page/pageSize provistos (skip = (page-1)*pageSize)', async () => {
+      const { service, repo } = baseListState();
+
+      await service.listMyItems('sub-1', { page: 3, pageSize: 5 });
+
+      expect(repo.listByProfessional).toHaveBeenCalledWith('prof-1', {
+        skip: 10,
+        take: 5,
+      });
+    });
+
+    it('devuelve lista vacía con total=0 cuando no hay items', async () => {
+      const { service } = baseListState({
+        listByProfessional: vi
+          .fn()
+          .mockResolvedValue({ items: [], total: 0 }),
+      });
+
+      const result = await service.listMyItems('sub-1', {});
+
+      expect(result.items).toEqual([]);
+      expect(result.meta.total).toBe(0);
     });
   });
 });

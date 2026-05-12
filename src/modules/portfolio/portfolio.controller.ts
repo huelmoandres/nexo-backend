@@ -2,12 +2,14 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -26,6 +28,11 @@ import { Roles } from '@modules/users/decorators/roles.decorator';
 import { RolesGuard } from '@modules/users/guards/roles.guard';
 import { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
 import { CreatePortfolioItemDto } from './dto/create-portfolio-item.dto';
+import { ListMyPortfolioQueryDto } from './dto/list-my-portfolio-query.dto';
+import {
+  PaginatedPortfolioItemsDto,
+  PortfolioPaginationMeta,
+} from './dto/paginated-portfolio-items.dto';
 import { PortfolioItemResponseDto } from './dto/portfolio-item-response.dto';
 import { PortfolioPhotoResponseDto } from './dto/portfolio-photo-response.dto';
 import { UpdatePortfolioItemDto } from './dto/update-portfolio-item.dto';
@@ -41,6 +48,8 @@ import { PortfolioService } from './portfolio.service';
 @ApiExtraModels(
   PortfolioItemResponseDto,
   PortfolioPhotoResponseDto,
+  PaginatedPortfolioItemsDto,
+  PortfolioPaginationMeta,
   ProblemDetail,
 )
 @Controller('portfolio')
@@ -83,6 +92,29 @@ export class PortfolioController {
     @Body() dto: CreatePortfolioItemDto,
   ): Promise<PortfolioItemResponseDto> {
     return this.portfolioService.createItem(sub, dto);
+  }
+
+  @Get('items/mine')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('supabase-jwt')
+  @ApiOperation({
+    summary: 'Lista paginada de los items del pro autenticado',
+    description:
+      'Incluye DRAFT, PUBLISHED y HIDDEN_PENDING_REVIEW; excluye ' +
+      'soft-deleted. Ordenado por createdAt DESC.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada',
+    type: PaginatedPortfolioItemsDto,
+  })
+  async listMyItems(
+    @CurrentUser('sub') sub: string,
+    @Query() query: ListMyPortfolioQueryDto,
+  ): Promise<PaginatedPortfolioItemsDto> {
+    return this.portfolioService.listMyItems(sub, query);
   }
 
   @Patch('items/:id')
