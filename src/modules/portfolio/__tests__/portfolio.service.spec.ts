@@ -28,12 +28,29 @@ describe('PortfolioService', () => {
     deletePhotoWithReorder: ReturnType<typeof vi.fn>;
     updateItem: ReturnType<typeof vi.fn>;
     softDeleteItem: ReturnType<typeof vi.fn>;
+    findPhotosByItemId: ReturnType<typeof vi.fn>;
+    transitionToPublished: ReturnType<typeof vi.fn>;
   };
   type QueueMock = { enqueue: ReturnType<typeof vi.fn> };
+  type StorageMock = { assertObjectExists: ReturnType<typeof vi.fn> };
+  type CacheMock = {
+    isExistsCached: ReturnType<typeof vi.fn>;
+    markExists: ReturnType<typeof vi.fn>;
+  };
+  type ModerationMock = { moderate: ReturnType<typeof vi.fn> };
 
   const makeService = (
     overrides: Partial<RepoMocks> = {},
-    queueOverride?: QueueMock,
+    deps: {
+      queue?: QueueMock;
+      storage?: StorageMock;
+      cache?: CacheMock;
+      moderation?: ModerationMock;
+      configOverrides?: Partial<{
+        maxPhotosPerItem: number;
+        photosHeadTimeoutMs: number;
+      }>;
+    } = {},
   ) => {
     const repo: RepoMocks = {
       findProfessionalBySupabaseUid: vi.fn(),
@@ -47,11 +64,30 @@ describe('PortfolioService', () => {
       deletePhotoWithReorder: vi.fn(),
       updateItem: vi.fn(),
       softDeleteItem: vi.fn(),
+      findPhotosByItemId: vi.fn(),
+      transitionToPublished: vi.fn(),
       ...overrides,
     };
-    const config = { maxPhotosPerItem: 10 };
-    const cleanupQueue: QueueMock = queueOverride ?? {
+    const config = {
+      maxPhotosPerItem: 10,
+      photosHeadTimeoutMs: 2000,
+      ...(deps.configOverrides ?? {}),
+    };
+    const cleanupQueue: QueueMock = deps.queue ?? {
       enqueue: vi.fn().mockResolvedValue(undefined),
+    };
+    const storage: StorageMock = deps.storage ?? {
+      assertObjectExists: vi.fn().mockResolvedValue(undefined),
+    };
+    const cache: CacheMock = deps.cache ?? {
+      isExistsCached: vi.fn().mockResolvedValue(false),
+      markExists: vi.fn().mockResolvedValue(undefined),
+    };
+    const moderation: ModerationMock = deps.moderation ?? {
+      moderate: vi.fn().mockResolvedValue({
+        status: AiModerationStatus.OK,
+        modelRef: 'stub:none:v0',
+      }),
     };
     return {
       service: new PortfolioService(
@@ -59,9 +95,15 @@ describe('PortfolioService', () => {
         problemDetailTypes,
         config as never,
         cleanupQueue as never,
+        storage as never,
+        cache as never,
+        moderation as never,
       ),
       repo,
       cleanupQueue,
+      storage,
+      cache,
+      moderation,
     };
   };
 
@@ -659,6 +701,247 @@ describe('PortfolioService', () => {
       await expect(
         service.softDeleteItem('sub-1', 'item-x'),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('publishItem', () => {
+    const draftItem = {
+      ...baseItem,
+      status: PortfolioItemStatus.DRAFT,
+      verifiedFromJob: false,
+      deletedAt: null,
+    };
+    const photo1 = {
+      id: 'photo-1',
+      portfolioItemId: 'item-1',
+      fileKey: 'users/prof-1/portfolio/item-1/a.webp',
+      caption: null,
+      displayOrder: 1,
+      aiFlagged: false,
+      createdAt: new Date(),
+    };
+    const photo2 = { ...photo1, id: 'photo-2', fileKey: 'users/prof-1/portfolio/item-1/b.webp', displayOrder: 2 };
+
+    const basePublishState = (
+      overrides: Partial<RepoMocks> = {},
+      deps: Parameters<typeof makeService>[1] = {},
+    ) =>
+      makeService(
+        {
+          findProfessionalBySupabaseUid: vi.fn().mockResolvedValue({
+            userId: 'user-1',
+            professionalProfileId: 'prof-1',
+          }),
+          findItemForOwner: vi.fn().mockResolvedValue(draftItem),
+          findPhotosByItemId: vi.fn().mockResolvedValue([photo1, photo2]),
+          transitionToPublished: vi.fn().mockImplementation((id, data) =>
+            Promise.resolve({
+              ...draftItem,
+              id,
+              status: PortfolioItemStatus.PUBLISHED,
+              publishedAt: new Date(),
+              aiModerationStatus: data.aiModerationStatus,
+              aiModerationModelRef: data.aiModerationModelRef,
+            }),
+          ),
+          ...overrides,
+        },
+        deps,
+      );
+
+    it('happy path: HEAD OK para todas las fotos, modera y publica', async () => {
+      const { service, repo, storage, cache, moderation } = basePublishState();
+
+      const result = await service.publishItem('sub-1', 'item-1');
+
+      expect(storage.assertObjectExists).toHaveBeenCalledTimes(2);
+      expect(cache.markExists).toHaveBeenCalledTimes(2);
+      expect(moderation.moderate).toHaveBeenCalledOnce();
+      expect(repo.transitionToPublished).toHaveBeenCalledWith('item-1', {
+        aiModerationStatus: AiModerationStatus.OK,
+        aiModerationModelRef: 'stub:none:v0',
+      });
+      expect(result.status).toBe(PortfolioItemStatus.PUBLISHED);
+    });
+
+    it('cache hit en todas las fotos: omite HEAD checks', async () => {
+      const { service, storage, cache } = basePublishState({}, {
+        cache: {
+          isExistsCached: vi.fn().mockResolvedValue(true),
+          markExists: vi.fn().mockResolvedValue(undefined),
+        },
+      });
+
+      await service.publishItem('sub-1', 'item-1');
+
+      expect(storage.assertObjectExists).not.toHaveBeenCalled();
+      expect(cache.markExists).not.toHaveBeenCalled();
+    });
+
+    it('item no DRAFT: lanza 409 PORTFOLIO_ITEM_NOT_DRAFT', async () => {
+      const { service } = basePublishState({
+        findItemForOwner: vi.fn().mockResolvedValue({
+          ...draftItem,
+          status: PortfolioItemStatus.PUBLISHED,
+        }),
+      });
+
+      try {
+        await service.publishItem('sub-1', 'item-1');
+        expect.fail('debió lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ConflictException);
+        expect(
+          ((err as ConflictException).getResponse() as { code: string }).code,
+        ).toBe('PORTFOLIO_ITEM_NOT_DRAFT');
+      }
+    });
+
+    it('item sin fotos: lanza 409 PORTFOLIO_PHOTOS_REQUIRED', async () => {
+      const { service } = basePublishState({
+        findPhotosByItemId: vi.fn().mockResolvedValue([]),
+      });
+
+      try {
+        await service.publishItem('sub-1', 'item-1');
+        expect.fail('debió lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ConflictException);
+        expect(
+          ((err as ConflictException).getResponse() as { code: string }).code,
+        ).toBe('PORTFOLIO_PHOTOS_REQUIRED');
+      }
+    });
+
+    it('una foto 404 en R2: lanza 409 PORTFOLIO_PHOTOS_NOT_READY con photoIds', async () => {
+      const notFound = new NotFoundException('no');
+      const { service } = basePublishState(
+        {},
+        {
+          storage: {
+            assertObjectExists: vi
+              .fn()
+              .mockImplementation((key: string) =>
+                key === photo2.fileKey
+                  ? Promise.reject(notFound)
+                  : Promise.resolve(),
+              ),
+          },
+        },
+      );
+
+      try {
+        await service.publishItem('sub-1', 'item-1');
+        expect.fail('debió lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ConflictException);
+        const body = (err as ConflictException).getResponse() as {
+          code: string;
+          photoIds: string[];
+        };
+        expect(body.code).toBe('PORTFOLIO_PHOTOS_NOT_READY');
+        expect(body.photoIds).toEqual(['photo-2']);
+      }
+    });
+
+    it('storage 503 transitorio: 1 retry exitoso publica el item', async () => {
+      const { ServiceUnavailableException } = await import('@nestjs/common');
+      const assertSpy = vi
+        .fn()
+        .mockRejectedValueOnce(new ServiceUnavailableException('5xx'))
+        .mockResolvedValue(undefined);
+      const { service, repo } = basePublishState(
+        {
+          findPhotosByItemId: vi.fn().mockResolvedValue([photo1]),
+        },
+        { storage: { assertObjectExists: assertSpy } },
+      );
+
+      const result = await service.publishItem('sub-1', 'item-1');
+
+      expect(assertSpy).toHaveBeenCalledTimes(2);
+      expect(repo.transitionToPublished).toHaveBeenCalledOnce();
+      expect(result.status).toBe(PortfolioItemStatus.PUBLISHED);
+    });
+
+    it('storage 503 persistente: retry falla → 503 PHOTOS_STORAGE_UNAVAILABLE', async () => {
+      const { ServiceUnavailableException } = await import('@nestjs/common');
+      const assertSpy = vi
+        .fn()
+        .mockRejectedValue(new ServiceUnavailableException('5xx'));
+      const { service } = basePublishState(
+        {
+          findPhotosByItemId: vi.fn().mockResolvedValue([photo1]),
+        },
+        { storage: { assertObjectExists: assertSpy } },
+      );
+
+      try {
+        await service.publishItem('sub-1', 'item-1');
+        expect.fail('debió lanzar');
+      } catch (err) {
+        const { ServiceUnavailableException: SUE } = await import(
+          '@nestjs/common'
+        );
+        expect(err).toBeInstanceOf(SUE);
+        expect(
+          ((err as InstanceType<typeof SUE>).getResponse() as {
+            code: string;
+          }).code,
+        ).toBe('PORTFOLIO_PHOTOS_STORAGE_UNAVAILABLE');
+      }
+      expect(assertSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('rechaza con 404 si el item no es del owner', async () => {
+      const { service } = basePublishState({
+        findItemForOwner: vi.fn().mockResolvedValue(null),
+      });
+
+      await expect(service.publishItem('sub-1', 'item-x')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('retry de 503 que termina con NotFound: trata como photo not ready', async () => {
+      const { ServiceUnavailableException } = await import('@nestjs/common');
+      const assertSpy = vi
+        .fn()
+        .mockRejectedValueOnce(new ServiceUnavailableException('5xx'))
+        .mockRejectedValueOnce(new NotFoundException('no'));
+      const { service } = basePublishState(
+        {
+          findPhotosByItemId: vi.fn().mockResolvedValue([photo1]),
+        },
+        { storage: { assertObjectExists: assertSpy } },
+      );
+
+      try {
+        await service.publishItem('sub-1', 'item-1');
+        expect.fail('debió lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ConflictException);
+        const body = (err as ConflictException).getResponse() as {
+          code: string;
+          photoIds: string[];
+        };
+        expect(body.code).toBe('PORTFOLIO_PHOTOS_NOT_READY');
+        expect(body.photoIds).toEqual([photo1.id]);
+      }
+    });
+
+    it('error inesperado en HEAD se propaga (no es 404 ni 503)', async () => {
+      const assertSpy = vi.fn().mockRejectedValue(new Error('boom'));
+      const { service } = basePublishState(
+        {
+          findPhotosByItemId: vi.fn().mockResolvedValue([photo1]),
+        },
+        { storage: { assertObjectExists: assertSpy } },
+      );
+
+      await expect(service.publishItem('sub-1', 'item-1')).rejects.toThrow(
+        /boom/,
+      );
     });
   });
 });

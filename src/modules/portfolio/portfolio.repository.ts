@@ -1,9 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type {
-  Category,
-  Job,
-  PortfolioItem,
-  PortfolioPhoto,
+import {
+  AiModerationStatus,
+  PortfolioItemStatus,
+  type Category,
+  type Job,
+  type PortfolioItem,
+  type PortfolioPhoto,
 } from '@prisma/client';
 import { PrismaService } from '@prisma/prisma.service';
 
@@ -205,6 +207,46 @@ export class PortfolioRepository {
     return this.prisma.portfolioItem.update({
       where: { id: itemId },
       data: cleaned,
+    });
+  }
+
+  /**
+   * Lista las fotos de un item ordenadas por `displayOrder`.
+   *
+   * Usado por el flujo de publish para iterar HEAD checks y por
+   * lecturas públicas/admin. No filtra por `deletedAt` porque el
+   * modelo `PortfolioPhoto` no soporta soft-delete: si el item está
+   * soft-deleted, este método se llama tras validar el item activo.
+   */
+  async findPhotosByItemId(itemId: string): Promise<PortfolioPhoto[]> {
+    return this.prisma.portfolioPhoto.findMany({
+      where: { portfolioItemId: itemId },
+      orderBy: { displayOrder: 'asc' },
+    });
+  }
+
+  /**
+   * Transición DRAFT → PUBLISHED con metadatos de moderación.
+   *
+   * `publishedAt` se setea en este punto. El service garantiza haber
+   * validado HEAD checks de todas las fotos y haber consultado al
+   * `IContentModerationProvider` antes de llamar a este método.
+   */
+  async transitionToPublished(
+    itemId: string,
+    data: {
+      aiModerationStatus: AiModerationStatus;
+      aiModerationModelRef: string;
+    },
+  ): Promise<PortfolioItem> {
+    return this.prisma.portfolioItem.update({
+      where: { id: itemId },
+      data: {
+        status: PortfolioItemStatus.PUBLISHED,
+        publishedAt: new Date(),
+        aiModerationStatus: data.aiModerationStatus,
+        aiModerationModelRef: data.aiModerationModelRef,
+      },
     });
   }
 

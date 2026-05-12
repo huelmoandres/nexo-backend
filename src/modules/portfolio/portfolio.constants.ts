@@ -18,6 +18,10 @@ export const PORTFOLIO_ERROR_CODES = {
   PHOTOS_LIMIT_REACHED: 'PORTFOLIO_PHOTOS_LIMIT_REACHED',
   CATEGORY_FROZEN_POST_VERIFICATION:
     'PORTFOLIO_CATEGORY_FROZEN_POST_VERIFICATION',
+  ITEM_NOT_DRAFT: 'PORTFOLIO_ITEM_NOT_DRAFT',
+  PHOTOS_REQUIRED: 'PORTFOLIO_PHOTOS_REQUIRED',
+  PHOTOS_NOT_READY: 'PORTFOLIO_PHOTOS_NOT_READY',
+  PHOTOS_STORAGE_UNAVAILABLE: 'PORTFOLIO_PHOTOS_STORAGE_UNAVAILABLE',
 } as const;
 
 /** Slugs URL para `ProblemDetailTypeService`. */
@@ -34,4 +38,11 @@ export const PORTFOLIO_PROBLEM_SLUGS = {
   PHOTOS_LIMIT_REACHED: 'portfolio-photos-limit-reached',
   CATEGORY_FROZEN_POST_VERIFICATION:
     'portfolio-category-frozen-post-verification',
+  ITEM_NOT_DRAFT: 'portfolio-item-not-draft',
+  PHOTOS_REQUIRED: 'portfolio-photos-required',
+  PHOTOS_NOT_READY: 'portfolio-photos-not-ready',
+  PHOTOS_STORAGE_UNAVAILABLE: 'portfolio-photos-storage-unavailable',
 } as const;
+
+/** Token DI del cliente Redis dedicado al módulo Portfolio. */
+export const PORTFOLIO_REDIS_CLIENT = Symbol('PORTFOLIO_REDIS_CLIENT');

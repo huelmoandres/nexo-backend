@@ -25,6 +25,7 @@ describe('PortfolioRepository', () => {
       portfolioPhoto: {
         count: vi.fn(),
         findFirst: vi.fn(),
+        findMany: vi.fn(),
       },
       $transaction: vi
         .fn()
@@ -495,6 +496,54 @@ describe('PortfolioRepository', () => {
       const affected = await repo.softDeleteItem('item-x', 'prof-1');
 
       expect(affected).toBe(0);
+    });
+  });
+
+  describe('findPhotosByItemId', () => {
+    it('lista todas las fotos del item ordenadas por displayOrder', async () => {
+      const { repo, prisma } = makeRepo();
+      const expected = [
+        { id: 'p1', portfolioItemId: 'item-1', displayOrder: 1 },
+        { id: 'p2', portfolioItemId: 'item-1', displayOrder: 2 },
+      ];
+      prisma.portfolioPhoto.findMany.mockResolvedValue(expected);
+
+      const result = await repo.findPhotosByItemId('item-1');
+
+      expect(prisma.portfolioPhoto.findMany).toHaveBeenCalledWith({
+        where: { portfolioItemId: 'item-1' },
+        orderBy: { displayOrder: 'asc' },
+      });
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('transitionToPublished', () => {
+    it('marca status=PUBLISHED + publishedAt + ai status/modelRef', async () => {
+      const { repo, prisma } = makeRepo();
+      const updated = { id: 'item-1', status: 'PUBLISHED' };
+      prisma.portfolioItem.update.mockResolvedValue(updated);
+
+      const result = await repo.transitionToPublished('item-1', {
+        aiModerationStatus: 'APPROVED' as never,
+        aiModerationModelRef: 'stub:none:v0',
+      });
+
+      const callArg = prisma.portfolioItem.update.mock.calls[0][0] as {
+        where: { id: string };
+        data: {
+          status: string;
+          publishedAt: Date;
+          aiModerationStatus: string;
+          aiModerationModelRef: string;
+        };
+      };
+      expect(callArg.where).toEqual({ id: 'item-1' });
+      expect(callArg.data.status).toBe('PUBLISHED');
+      expect(callArg.data.publishedAt).toBeInstanceOf(Date);
+      expect(callArg.data.aiModerationStatus).toBe('APPROVED');
+      expect(callArg.data.aiModerationModelRef).toBe('stub:none:v0');
+      expect(result).toEqual(updated);
     });
   });
 });

@@ -4,13 +4,18 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import {
+  AiModerationStatus,
   JobStatus,
+  PortfolioItemStatus,
   type PortfolioItem,
   type PortfolioPhoto,
 } from '@prisma/client';
+import { IStorageService } from '@modules/storage/interfaces/storage.service.interface';
+import { STORAGE_SERVICE_TOKEN } from '@modules/storage/storage.constants';
 import { ProblemDetailTypeService } from '@common/problem-detail/problem-detail-type.service';
 import { portfolioConfig } from '@config/portfolio.config';
 import {
@@ -31,6 +36,11 @@ import {
   IPortfolioCleanupQueue,
   PORTFOLIO_CLEANUP_QUEUE_TOKEN,
 } from './queues/portfolio-cleanup.queue';
+import {
+  CONTENT_MODERATION_PROVIDER_TOKEN,
+  IContentModerationProvider,
+} from './services/content-moderation.provider';
+import { PortfolioStorageCacheService } from './services/portfolio-storage-cache.service';
 
 /**
  * Lógica de negocio del módulo `portfolio` (CRUD owner).
@@ -51,6 +61,11 @@ export class PortfolioService {
     private readonly config: ConfigType<typeof portfolioConfig>,
     @Inject(PORTFOLIO_CLEANUP_QUEUE_TOKEN)
     private readonly cleanupQueue: IPortfolioCleanupQueue,
+    @Inject(STORAGE_SERVICE_TOKEN)
+    private readonly storage: IStorageService,
+    private readonly storageCache: PortfolioStorageCacheService,
+    @Inject(CONTENT_MODERATION_PROVIDER_TOKEN)
+    private readonly moderation: IContentModerationProvider,
   ) {}
 
   /**
@@ -238,6 +253,151 @@ export class PortfolioService {
       },
     );
     return this.toResponseDto(updated);
+  }
+
+  /**
+   * Publica un PortfolioItem: valida fotos disponibles en R2, ejecuta
+   * la moderación de contenido y transiciona DRAFT → PUBLISHED.
+   *
+   * Flujo (spec §F):
+   * 1. Item debe estar en `DRAFT` con ≥1 foto.
+   * 2. Para cada `fileKey`: si está en `storage:exists:*` cache, OK;
+   *    si no, HEAD check con timeout `photosHeadTimeoutMs`. Resultado
+   *    positivo se cachea.
+   * 3. Discrimina errores:
+   *    - `NotFoundException` → acumula `photoId`. Si hay ≥1: 409
+   *      `PORTFOLIO_PHOTOS_NOT_READY` con `photoIds`.
+   *    - `ServiceUnavailableException`/timeout → 1 retry con backoff.
+   *      Si vuelve a fallar: 503 `PORTFOLIO_PHOTOS_STORAGE_UNAVAILABLE`.
+   * 4. Modera (stub `APPROVED`). En implementaciones reales puede
+   *    forzar `HIDDEN_PENDING_REVIEW` si falla (fail-safe del spec §F).
+   * 5. Transiciona a `PUBLISHED` con `publishedAt` y `aiModeration*`.
+   */
+  async publishItem(
+    supabaseUid: string,
+    itemId: string,
+  ): Promise<PortfolioItemResponseDto> {
+    const professionalProfileId =
+      await this.resolveProfessionalProfileId(supabaseUid);
+    const item = await this.assertItemOwnedAndReturn(
+      itemId,
+      professionalProfileId,
+    );
+
+    if (item.status !== PortfolioItemStatus.DRAFT) {
+      throw new ConflictException({
+        type: this.problemDetailTypes.url(
+          PORTFOLIO_PROBLEM_SLUGS.ITEM_NOT_DRAFT,
+        ),
+        title: 'El item no está en DRAFT',
+        status: 409,
+        detail: `Para publicar, el item debe estar en DRAFT. Estado actual: ${item.status}.`,
+        code: PORTFOLIO_ERROR_CODES.ITEM_NOT_DRAFT,
+      });
+    }
+
+    const photos = await this.repository.findPhotosByItemId(itemId);
+    if (photos.length === 0) {
+      throw new ConflictException({
+        type: this.problemDetailTypes.url(
+          PORTFOLIO_PROBLEM_SLUGS.PHOTOS_REQUIRED,
+        ),
+        title: 'El item no tiene fotos',
+        status: 409,
+        detail: 'Para publicar, el item debe tener al menos una foto.',
+        code: PORTFOLIO_ERROR_CODES.PHOTOS_REQUIRED,
+      });
+    }
+
+    await this.verifyPhotosAvailable(photos);
+
+    const moderation = await this.moderation.moderate({
+      text: `${item.title}\n${item.description}`,
+      photoFileKeys: photos.map((p) => p.fileKey),
+    });
+
+    const updated = await this.repository.transitionToPublished(itemId, {
+      aiModerationStatus: moderation.status,
+      aiModerationModelRef: moderation.modelRef,
+    });
+    return this.toResponseDto(updated);
+  }
+
+  /**
+   * Verifica que cada foto exista en R2 vía HEAD (con cache positiva).
+   *
+   * - Errores `NotFoundException` se acumulan y se traducen a 409
+   *   `PORTFOLIO_PHOTOS_NOT_READY` con `photoIds` afectados.
+   * - Errores `ServiceUnavailableException` reintentan 1 vez con
+   *   backoff; si el retry también falla, 503 `PHOTOS_STORAGE_UNAVAILABLE`.
+   */
+  private async verifyPhotosAvailable(photos: PortfolioPhoto[]): Promise<void> {
+    const notReadyPhotoIds: string[] = [];
+
+    for (const photo of photos) {
+      const cached = await this.storageCache.isExistsCached(photo.fileKey);
+      if (cached) continue;
+
+      const verified = await this.assertObjectExistsWithRetry(photo.fileKey);
+      if (verified === 'not-found') {
+        notReadyPhotoIds.push(photo.id);
+      } else {
+        await this.storageCache.markExists(photo.fileKey);
+      }
+    }
+
+    if (notReadyPhotoIds.length > 0) {
+      throw new ConflictException({
+        type: this.problemDetailTypes.url(
+          PORTFOLIO_PROBLEM_SLUGS.PHOTOS_NOT_READY,
+        ),
+        title: 'Fotos no disponibles en storage',
+        status: 409,
+        detail:
+          'Algunas fotos aún no terminaron de subirse. Reintentá luego de subirlas.',
+        code: PORTFOLIO_ERROR_CODES.PHOTOS_NOT_READY,
+        photoIds: notReadyPhotoIds,
+      });
+    }
+  }
+
+  /**
+   * Llama a `storage.assertObjectExists` con 1 retry ante 5xx.
+   *
+   * @returns `'ok'` si la foto existe, `'not-found'` si R2 devolvió 404.
+   * @throws `ServiceUnavailableException` cuando ambos intentos fallan
+   *         con 5xx; el caller lo deja propagar.
+   */
+  private async assertObjectExistsWithRetry(
+    fileKey: string,
+  ): Promise<'ok' | 'not-found'> {
+    try {
+      await this.storage.assertObjectExists(fileKey);
+      return 'ok';
+    } catch (err) {
+      if (err instanceof NotFoundException) {
+        return 'not-found';
+      }
+      if (err instanceof ServiceUnavailableException) {
+        try {
+          await this.storage.assertObjectExists(fileKey);
+          return 'ok';
+        } catch (retryErr) {
+          if (retryErr instanceof NotFoundException) return 'not-found';
+          throw new ServiceUnavailableException({
+            type: this.problemDetailTypes.url(
+              PORTFOLIO_PROBLEM_SLUGS.PHOTOS_STORAGE_UNAVAILABLE,
+            ),
+            title: 'Storage no disponible',
+            status: 503,
+            detail:
+              'No fue posible verificar la disponibilidad de las fotos en storage. Reintentá en unos segundos.',
+            code: PORTFOLIO_ERROR_CODES.PHOTOS_STORAGE_UNAVAILABLE,
+          });
+        }
+      }
+      throw err;
+    }
   }
 
   /**

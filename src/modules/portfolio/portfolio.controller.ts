@@ -167,6 +167,48 @@ export class PortfolioController {
     return this.portfolioService.addPhoto(sub, itemId, dto);
   }
 
+  @Post('items/:id/publish')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('supabase-jwt')
+  @ApiOperation({
+    summary: 'Publica un PortfolioItem',
+    description:
+      'Valida HEAD de cada foto en R2 (con cache Redis 60s), modera el ' +
+      'contenido y transiciona DRAFT → PUBLISHED con publishedAt y ' +
+      'aiModerationStatus. Errores 404 de R2 acumulan en photoIds.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Item publicado',
+    type: PortfolioItemResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'PORTFOLIO_ITEM_NOT_FOUND',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'PORTFOLIO_ITEM_NOT_DRAFT, PORTFOLIO_PHOTOS_REQUIRED o ' +
+      'PORTFOLIO_PHOTOS_NOT_READY (con photoIds)',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'PORTFOLIO_PHOTOS_STORAGE_UNAVAILABLE',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  async publishItem(
+    @CurrentUser('sub') sub: string,
+    @Param('id', ParseUUIDPipe) itemId: string,
+  ): Promise<PortfolioItemResponseDto> {
+    return this.portfolioService.publishItem(sub, itemId);
+  }
+
   @Delete('items/:id')
   @UseGuards(SupabaseAuthGuard, RolesGuard)
   @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
