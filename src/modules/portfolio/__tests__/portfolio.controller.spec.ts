@@ -1,0 +1,176 @@
+import { describe, expect, it, vi } from 'vitest';
+import { AiModerationStatus, PortfolioItemStatus } from '@prisma/client';
+import { PortfolioController } from '../portfolio.controller';
+
+describe('PortfolioController', () => {
+  const makeController = () => {
+    const service = {
+      createItem: vi.fn(),
+      addPhoto: vi.fn(),
+      deletePhoto: vi.fn(),
+      updateItem: vi.fn(),
+      softDeleteItem: vi.fn(),
+      publishItem: vi.fn(),
+      listMyItems: vi.fn(),
+    };
+    return {
+      controller: new PortfolioController(service as never),
+      service,
+    };
+  };
+
+  describe('POST /items (createItem)', () => {
+    it('delega en service.createItem pasando sub y dto', async () => {
+      const { controller, service } = makeController();
+      const expected = {
+        id: 'item-1',
+        professionalId: 'prof-1',
+        categoryId: 'cat-1',
+        title: 'Reforma de cocina',
+        description: 'Reforma con mesada de cuarzo.',
+        status: PortfolioItemStatus.DRAFT,
+        jobId: null,
+        verifiedFromJob: false,
+        aiModerationStatus: AiModerationStatus.PENDING,
+        publishedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      service.createItem.mockResolvedValue(expected);
+
+      const dto = {
+        title: 'Reforma de cocina',
+        description: 'Reforma con mesada de cuarzo.',
+        categoryId: 'cat-1',
+      };
+      const result = await controller.createItem('sub-1', dto);
+
+      expect(service.createItem).toHaveBeenCalledWith('sub-1', dto);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('POST /items/:id/photos (addPhoto)', () => {
+    it('delega en service.addPhoto pasando sub, itemId y dto', async () => {
+      const { controller, service } = makeController();
+      const expected = {
+        id: 'photo-1',
+        portfolioItemId: 'item-1',
+        fileKey:
+          'users/p/portfolio/item-1/550e8400-e29b-41d4-a716-446655440000.webp',
+        caption: null,
+        displayOrder: 1,
+        aiFlagged: false,
+        createdAt: new Date(),
+      };
+      service.addPhoto.mockResolvedValue(expected);
+
+      const dto = {
+        fileKey:
+          'users/p/portfolio/item-1/550e8400-e29b-41d4-a716-446655440000.webp',
+      };
+      const result = await controller.addPhoto('sub-1', 'item-1', dto);
+
+      expect(service.addPhoto).toHaveBeenCalledWith('sub-1', 'item-1', dto);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('PATCH /items/:id (updateItem)', () => {
+    it('delega en service.updateItem pasando sub, itemId y dto', async () => {
+      const { controller, service } = makeController();
+      const expected = {
+        id: 'item-1',
+        professionalId: 'prof-1',
+        categoryId: 'cat-2',
+        title: 'Editado',
+        description: 'Descripción editada con más de diez caracteres.',
+        status: PortfolioItemStatus.DRAFT,
+        jobId: null,
+        verifiedFromJob: false,
+        aiModerationStatus: AiModerationStatus.PENDING,
+        publishedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      service.updateItem.mockResolvedValue(expected);
+
+      const dto = { title: 'Editado', categoryId: 'cat-2' };
+      const result = await controller.updateItem('sub-1', 'item-1', dto);
+
+      expect(service.updateItem).toHaveBeenCalledWith('sub-1', 'item-1', dto);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('GET /items/mine (listMyItems)', () => {
+    it('delega en service.listMyItems pasando sub y query', async () => {
+      const { controller, service } = makeController();
+      const expected = {
+        items: [],
+        meta: { page: 2, pageSize: 5, total: 0 },
+      };
+      service.listMyItems.mockResolvedValue(expected);
+
+      const query = { page: 2, pageSize: 5 };
+      const result = await controller.listMyItems('sub-1', query);
+
+      expect(service.listMyItems).toHaveBeenCalledWith('sub-1', query);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('POST /items/:id/publish (publishItem)', () => {
+    it('delega en service.publishItem pasando sub e itemId', async () => {
+      const { controller, service } = makeController();
+      const expected = {
+        id: 'item-1',
+        professionalId: 'prof-1',
+        categoryId: 'cat-1',
+        title: 'X',
+        description: 'YYYYYYYYYY',
+        status: PortfolioItemStatus.PUBLISHED,
+        jobId: null,
+        verifiedFromJob: false,
+        aiModerationStatus: AiModerationStatus.OK,
+        publishedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      service.publishItem.mockResolvedValue(expected);
+
+      const result = await controller.publishItem('sub-1', 'item-1');
+
+      expect(service.publishItem).toHaveBeenCalledWith('sub-1', 'item-1');
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('DELETE /items/:id (softDeleteItem)', () => {
+    it('delega en service.softDeleteItem y devuelve undefined', async () => {
+      const { controller, service } = makeController();
+      service.softDeleteItem.mockResolvedValue(undefined);
+
+      const result = await controller.softDeleteItem('sub-1', 'item-1');
+
+      expect(service.softDeleteItem).toHaveBeenCalledWith('sub-1', 'item-1');
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('DELETE /items/:id/photos/:photoId (deletePhoto)', () => {
+    it('delega y devuelve undefined (204)', async () => {
+      const { controller, service } = makeController();
+      service.deletePhoto.mockResolvedValue(undefined);
+
+      const result = await controller.deletePhoto('sub-1', 'item-1', 'photo-1');
+
+      expect(service.deletePhoto).toHaveBeenCalledWith(
+        'sub-1',
+        'item-1',
+        'photo-1',
+      );
+      expect(result).toBeUndefined();
+    });
+  });
+});
