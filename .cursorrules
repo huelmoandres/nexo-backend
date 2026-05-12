@@ -14,7 +14,20 @@ Antes de escribir la primera línea de código de cualquier módulo, DEBES verif
 2. **Configuración centralizada:** Todo valor configurable del módulo tiene su entrada en `src/config/<nombre>.config.ts`. Ningún número mágico, URL o secret en el código.
 3. **Registro en INDEX:** El módulo está listado en `.harness/INDEX.md`. Si no aparece, agrégalo.
 
-## 3. REGLAS DE ACCIÓN POR MÓDULO
+## 3. PROTOCOLO DE CAMBIOS (Docs-First)
+Regla permanente desde 2026-05-12. Antes de **agregar, modificar o eliminar** un módulo o cualquier cosa documentada, DEBES actualizar primero la documentación correspondiente. La doc va siempre adelante del código.
+
+1. **Agregar módulo:** crear `/.harness/specs/<mod>-module.md` + `/.harness/evals/<mod>-module-eval.md`, registrar en `INDEX.md` y `SESSION_STATE.md`. Solo después tocar `src/modules/<mod>/`.
+2. **Modificar módulo documentado:** actualizar las secciones afectadas del spec/eval/rules **antes** de cambiar código.
+3. **Eliminar / deprecar:** marcar deprecation en la doc y actualizar `SESSION_STATE.md`. Solo después remover código.
+4. **Cambiar infra transversal** (Prisma, Auth, Storage, Money, RFC 7807, Redis, BullMQ): actualizar el `rule` correspondiente en `/.harness/rules/`.
+5. **Orden de commits obligatorio:** `docs(...)` antes que `feat(...)` / `refactor(...)` / `fix(...)`. Nunca en el mismo commit.
+
+Excepciones: refactors internos sin cambio de contrato, fixes de typo, cambios solo en tests que reflejan doc existente.
+
+Doctrina completa: `/.harness/rules/docs-first.md`.
+
+## 4. REGLAS DE ACCIÓN POR MÓDULO
 - **Auth & Users:** Referencia obligatoria a `/.harness/specs/auth-module.md` y `users-module.md`. Cumplir con la sincronización Supabase-PostgreSQL.
 - **Escrow y Pagos:** Referencia obligatoria a `docs/explanation/escrow-logic.md`. Prohibido bypass de estados de la State Machine.
 - **Urgencias:** Referencia obligatoria a `/.harness/specs/urgency-module.md`. Uso estricto de PostGIS y Weighted Broadcast por segundos.
@@ -24,7 +37,7 @@ Antes de escribir la primera línea de código de cualquier módulo, DEBES verif
 - **Chat:** Referencia obligatoria a `/.harness/specs/chat-module.md`. MongoDB exclusivo para mensajes, nunca PostgreSQL.
 - **Archivos:** Referencia obligatoria a `/.harness/specs/storage-rules.md`. Nunca URLs directas de S3/R2, siempre URLs firmadas.
 
-## 4. ESTÁNDARES TÉCNICOS INNEGOCIABLES
+## 5. ESTÁNDARES TÉCNICOS INNEGOCIABLES
 - **Errores:** Implementación estricta de **RFC 7807** usando los slugs definidos en `api-standards.md`. Prohibido usar códigos numéricos internos.
 - **Configuración:** Todo valor dinámico debe residir en `src/config/` y ser validado al inicio. Ver reglas en `docs/reference/coding-guidelines.md`.
 - **Documentación:** Aplicar TSDoc en todas las funciones. No dejes código muerto o comentado.

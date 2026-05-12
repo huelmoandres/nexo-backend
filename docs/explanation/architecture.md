@@ -15,7 +15,9 @@ Actualmente el backend implementa de forma activa estos módulos Nest:
 - `CategoriesModule`
 - `SearchModule`
 
-Dominios como `jobs`, `escrow`, `urgencies`, `disputes`, `search`, `reviews` y `payments` forman parte del roadmap y del modelo objetivo. Su presencia en documentación o schema no implica que estén productivos como módulos HTTP en la versión actual.
+Dominios como `jobs`, `escrow`, `urgencies`, `disputes`, `reviews`, `chat`, `portfolio` y `notifications` forman parte del roadmap y del modelo objetivo. Su presencia en documentación o schema no implica que estén productivos como módulos HTTP en la versión actual.
+
+El `PortfolioModule` es marketing pre-transacción (vidriera del profesional) y no maneja dinero ni transacciones. Spec: [.harness/specs/portfolio-module.md](../../.harness/specs/portfolio-module.md). Distinto de `WorkEvidence` (forense para disputas) y de `Review` (post-transacción).
 
 ## 2. Ecosistema de Datos: Estrategia de Doble Base de Datos
 Cada tipo de dato tiene su lugar asignado. **ESTRICTAMENTE PROHIBIDO** mezclar responsabilidades entre sistemas de persistencia.
@@ -53,7 +55,7 @@ Repositorio para toda evidencia física del marketplace. El backend **nunca** si
 
 | Bucket | Contenido | Acceso |
 |---|---|---|
-| `nexos-public` | Fotos de perfil | URL pública |
+| `nexos-public` | Fotos de perfil y portfolio del profesional | URL pública |
 | `nexos-evidencias` | Fotos Before/After, recibos | URL firmada 15 min |
 | `nexos-kyc` | Cédulas, selfies KYC | URL firmada 15 min |
 | `nexos-internal` | Reportes de administración | URL firmada 5 min |
@@ -141,3 +143,14 @@ Cuando el usuario sube documentos KYC, el endpoint responde `202 Accepted` inmed
 
 ### Cola 4: `push-notifications` (Notificaciones Generales)
 Cola genérica para el envío de notificaciones push que no son urgencias (ej. "Tu reseña fue validada", "Disputa actualizada", "KYC aprobado"). Centraliza toda la lógica de Expo Push Notifications evitando llamadas directas al SDK desde los Services.
+
+### Cola 5: `portfolio-moderate` (Moderación IA del Portfolio)
+Se encola al publicar o editar un `PortfolioItem`. El worker invoca un `ContentModerationProvider` (OpenAI Moderation, AWS Rekognition, pluggable) **siempre envuelto por `SanitizingModerationProviderDecorator`** para que el raw del SDK nunca toque logs, Sentry ni la DB con PII.
+
+Comportamiento fail-closed: si el provider falla por timeout/5xx, el item queda en `HIDDEN_PENDING_REVIEW` y reintenta hasta agotar un cap absoluto de 10 minutos. Nunca un fallo IA publica contenido sin revisar.
+
+### Cola 6: `portfolio-consent-reminder` (Recordatorio de Verificación)
+Job con delay de 3 días que envía recordatorio al cliente cuando el profesional pidió verificación y el consent sigue `PENDING`. Implementa outbox pattern con dos campos (`reminderAttemptedAt` + `reminderSentAt`) y zombie reclaim a los 5 minutos para garantizar at-least-once con dedup.
+
+### Cola 7: `portfolio-cleanup` (Limpieza de Soft-Delete)
+Al hacer soft-delete de un `PortfolioItem`, se encola este job que: (a) borra el prefijo `usr_<professionalId>/portfolio/<itemId>/` completo en R2 vía `ListObjectsV2 + DeleteObjects`; (b) limpia las keys correspondientes de la caché Redis `storage:exists:*` (con `UNLINK` ≥ Redis 4 o `DEL` como fallback); (c) persiste `cleanedUpAt`. El worker corre con un usuario Redis `nexos-cleanup` cuyo ACL está scoped al patrón `~storage:exists:*`, sin acceso a otras colas. Detalles en [.harness/specs/portfolio-module.md](../../.harness/specs/portfolio-module.md).

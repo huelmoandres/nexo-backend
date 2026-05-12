@@ -22,13 +22,14 @@ Este patrón garantiza que si HRProgrammers decide cambiar de proveedor de almac
 | Tipo de archivo | Bucket | Modo de acceso | TTL de URL firmada |
 |---|---|---|---|
 | Foto de perfil de usuario | `nexos-public` | URL pública permanente | N/A |
+| Foto de portfolio del profesional | `nexos-public` | URL pública permanente | N/A |
 | Foto Before/After de trabajo | `nexos-evidencias` | URL firmada temporal | 15 minutos |
 | Documento KYC (cédula frontal/dorso, selfie) | `nexos-kyc` | URL firmada temporal | 15 minutos |
 | Recibo de materiales | `nexos-evidencias` | URL firmada temporal | 15 minutos |
 | Exports internos (reportes de admin) | `nexos-internal` | URL firmada temporal | 5 minutos |
 
 ### Regla Absoluta:
-> El backend **NUNCA** devuelve una URL directa de R2/S3 (`https://<bucket>.r2.cloudflarestorage.com/<key>`). Toda URL privada pasa por `generatePresignedGetUrl()` antes de ser devuelta al cliente.
+> El backend **NUNCA** devuelve una URL directa de R2/S3 (`https://<bucket>.r2.cloudflarestorage.com/<key>`) para contenido privado. Toda URL privada pasa por `generatePresignedGetUrl()` antes de ser devuelta al cliente. Las fotos de perfil y portfolio sí usan URL pública del bucket público, cacheable en CDN.
 
 ---
 
@@ -40,14 +41,31 @@ El `key` (ruta dentro del bucket) sigue este formato para garantizar unicidad y 
 <userId>/<tipo>/<uuid>.<ext>
 ```
 
+Para portfolio, el formato anida el `itemId` para soportar el cleanup masivo por prefijo:
+
+```
+<userId>/portfolio/<itemId>/<uuid>.<ext>
+```
+
 Ejemplos:
 ```
 usr_abc123/kyc/550e8400-e29b-41d4-a716-446655440000.jpg
 usr_abc123/evidence/before/7c9e6679-7425-40de-944b-e07fc1f90ae7.jpg
 usr_abc123/receipts/a81bc81b-dead-4e5d-abff-90865d1e13b1.pdf
+usr_abc123/portfolio/8f14e45f-ceea-467a-9575-d0e0f2c1d4a1/d6a73b0a-22e8-4a8d-8a3f-9f0d9c2a6e1f.jpg
 ```
 
 El cliente nunca genera el `key`. Lo genera el backend en el `StorageService` antes de emitir la URL de pre-signed PUT.
+
+### Regex de validación del `key` (consumido por módulos)
+
+Cualquier módulo que persista un `key` (p. ej. portfolio al recibir el `fileKey` del cliente) debe validarlo contra una regex que matchee el patrón canónico **y** que el segmento `usr_<id>` coincida con `req.user.sub`. Ejemplo para portfolio:
+
+```
+^usr_[A-Za-z0-9_-]+/portfolio/[A-Za-z0-9-]+/[0-9a-f-]{36}\.(jpg|jpeg|png|webp)$
+```
+
+Si no matchea: `400 VALIDATION_ERROR`. Si el `usr_<id>` no es del autenticado: `403 STORAGE_FORBIDDEN_KEY`.
 
 ---
 
@@ -123,6 +141,8 @@ El frontend envía el `key` (no la URL) al backend para persistir la referencia.
 - **Lógica:** Genera el `key` con la naming convention, devuelve la URL prefirmada PUT y el `key`.
 - **Respuesta:** `{ uploadUrl: string, key: string, expiresInSeconds: 300 }`.
 
+Tipos permitidos: `kyc | evidence_before | evidence_after | receipt | profile | portfolio`.
+
 ---
 
 ## 8. Configuración (src/config/storage.config.ts)
@@ -147,6 +167,48 @@ export default registerAs('storage', () => ({
 
 ## 9. Reglas de Código para el Agente
 - **NUNCA** importar `@aws-sdk/client-s3` fuera del `StorageModule`. Todos los demás módulos inyectan `StorageService`.
-- **NUNCA** devolver una URL del bucket directa. Siempre pasar por `generatePresignedGetUrl()`.
+- **NUNCA** devolver una URL del bucket directa para contenido privado. Siempre pasar por `generatePresignedGetUrl()`. Las fotos de perfil y portfolio pueden devolver URL pública del bucket público.
 - Los nombres de buckets son configuración, no strings hardcodeados en el código.
 - El binario del archivo **nunca** llega al backend de NestJS. El backend solo maneja `key` strings y genera URLs prefirmadas.
+
+---
+
+## 10. Ownership de Paths (Defense-in-Depth Transversal)
+
+### 10.1 Principio
+
+Toda operación destructiva sobre objetos del bucket (`deleteObject`, `deleteObjects`, list-y-delete masivo) que parte de un usuario autenticado **DEBE** ser interceptada por el `StorageService` y rechazada si el `key` no pertenece al usuario. Concretamente:
+
+- Si el `key` no empieza con `usr_<userId>/` → rechazar con `403 STORAGE_FORBIDDEN_KEY` y log estructurado en Pino con `op: 'storage.delete.forbidden'`, `userId`, `key` truncado.
+- Si el `key` no matchea el patrón canónico (regex de la sección 4) → rechazar con `400 VALIDATION_ERROR`.
+- Si el `key` matchea pero el `usr_<id>` no es el del autenticado → mismo `403 STORAGE_FORBIDDEN_KEY`.
+
+Este check aplica a `deleteObject`, `deleteObjects`, y a cualquier wrapper futuro de listado-y-delete masivo (p. ej. el `portfolio-cleanup` worker que borra por prefijo).
+
+### 10.2 Excepción: identidad de sistema
+
+Las operaciones internas que corren con identidad de sistema (cleanup de soft-delete agendado, exports de admin, retención automatizada) **pueden** bypassear el check, pero deben:
+
+1. Invocarse desde un método dedicado del `StorageService` (`deleteObjectAsSystem(...)`) que es **distinto** del path normal.
+2. Loguear un evento de audit en Pino con `op: 'storage.delete.system'`, `actor: 'system'`, `reason`, `key`.
+3. Estar limitadas a invocarse desde processors BullMQ o handlers admin, nunca desde código HTTP que recibe `req.user`.
+
+### 10.3 Emisión de URLs prefirmadas PUT
+
+El `key` lo genera siempre el backend a partir del `userId` del JWT. **NUNCA** se acepta un `key` enviado por el cliente al pedir una URL PUT (el cliente solo manda `fileType` y `ext`). Esto ya es la práctica desde la sección 4; queda explícito acá como regla de ownership.
+
+### 10.4 Persistencia de `fileKey` recibido del cliente
+
+Cuando un módulo recibe un `fileKey` ya subido (porque el cliente completó el PUT y ahora persiste la referencia), el módulo **DEBE**:
+
+1. Validar regex contra el patrón canónico del tipo de archivo.
+2. Validar que el segmento `usr_<id>` coincide con `req.user.sub`.
+3. Validar que el `fileKey` no esté ya persistido en otra fila (si el dominio lo requiere; p. ej. `PortfolioPhoto.fileKey` es `@unique`).
+
+Si alguna validación falla, `400 VALIDATION_ERROR` o `403 STORAGE_FORBIDDEN_KEY` según el caso.
+
+### 10.5 Tests obligatorios
+
+- Test unitario de `StorageService.deleteObject` que verifica el rechazo con `key` foráneo.
+- Test e2e que un endpoint que persiste `fileKey` (p. ej. portfolio) rechaza un `fileKey` foráneo en el body.
+- Test de integración del `portfolio-cleanup` que solo borra objetos cuyo prefijo es del profesional dueño del item.
