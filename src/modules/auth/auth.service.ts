@@ -8,7 +8,7 @@ import {
 import { ConfigType } from '@nestjs/config';
 import { AuditAction, Role, User } from '@prisma/client';
 import Redis from 'ioredis';
-import { ProblemDetailTypeService } from '@common/problem-detail/problem-detail-type.service';
+import { buildProblem } from '@common/errors/problem.factory';
 import { PrismaService } from '@prisma/prisma.service';
 import { authConfig } from '@config/auth.config';
 import { REDIS_AUTH_CLIENT } from './auth.constants';
@@ -28,7 +28,6 @@ export class AuthService {
     private readonly prisma: PrismaService,
     @Inject(REDIS_AUTH_CLIENT)
     private readonly redisClient: Redis,
-    private readonly problemDetailTypes: ProblemDetailTypeService,
     @Inject(authConfig.KEY)
     private readonly config: ConfigType<typeof authConfig>,
   ) {}
@@ -49,13 +48,12 @@ export class AuthService {
   ): Promise<{ user: User; created: boolean }> {
     const supabaseUid = payload.sub;
     if (!supabaseUid) {
-      throw new UnauthorizedException({
-        type: this.problemDetailTypes.url('auth-invalid-token'),
-        title: 'Token inválido',
-        status: 401,
-        detail: 'No se encontró el identificador del usuario en el JWT.',
-        code: 'AUTH_INVALID_TOKEN',
-      });
+      throw new UnauthorizedException(
+        buildProblem(
+          'AUTH_INVALID_TOKEN',
+          'No se encontró el identificador del usuario en el JWT.',
+        ),
+      );
     }
 
     const existingUser = await this.prisma.user.findUnique({
@@ -108,13 +106,9 @@ export class AuthService {
   async logout(rawToken: string, payload: AuthenticatedUser): Promise<void> {
     const exp = payload.exp;
     if (!exp) {
-      throw new UnauthorizedException({
-        type: this.problemDetailTypes.url('auth-invalid-token'),
-        title: 'Token inválido',
-        status: 401,
-        detail: 'El token no contiene expiración.',
-        code: 'AUTH_INVALID_TOKEN',
-      });
+      throw new UnauthorizedException(
+        buildProblem('AUTH_INVALID_TOKEN', 'El token no contiene expiración.'),
+      );
     }
 
     const now = Math.floor(Date.now() / 1000);
@@ -130,13 +124,12 @@ export class AuthService {
       );
     } catch (error) {
       this.logger.error('No se pudo persistir token en blocklist Redis', error);
-      throw new InternalServerErrorException({
-        type: this.problemDetailTypes.url('internal-server-error'),
-        title: 'Error interno del servidor',
-        status: 500,
-        detail: 'No se pudo invalidar el token en Redis.',
-        code: 'INTERNAL_SERVER_ERROR',
-      });
+      throw new InternalServerErrorException(
+        buildProblem(
+          'INTERNAL_SERVER_ERROR',
+          'No se pudo invalidar el token en Redis.',
+        ),
+      );
     }
   }
 }

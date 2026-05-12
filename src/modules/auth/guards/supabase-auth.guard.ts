@@ -7,7 +7,7 @@ import {
 import { ConfigType } from '@nestjs/config';
 import { AuthGuard } from '@nestjs/passport';
 import Redis from 'ioredis';
-import { ProblemDetailTypeService } from '@common/problem-detail/problem-detail-type.service';
+import { buildProblem } from '@common/errors/problem.factory';
 import { authConfig } from '@config/auth.config';
 import { REDIS_AUTH_CLIENT } from '../auth.constants';
 import { AuthenticatedUser } from '../interfaces/authenticated-user.interface';
@@ -53,7 +53,6 @@ export class SupabaseAuthGuard extends AuthGuard('jwt') {
   constructor(
     @Inject(REDIS_AUTH_CLIENT)
     private readonly redisClient: Redis,
-    private readonly problemDetailTypes: ProblemDetailTypeService,
     @Inject(authConfig.KEY)
     private readonly config: ConfigType<typeof authConfig>,
   ) {
@@ -72,8 +71,7 @@ export class SupabaseAuthGuard extends AuthGuard('jwt') {
     if (!token) {
       throw this.unauthorized(
         'AUTH_TOKEN_MISSING',
-        'Token no proporcionado',
-        'Token no proporcionado',
+        'Se requiere el header Authorization: Bearer <token>.',
       );
     }
 
@@ -83,8 +81,7 @@ export class SupabaseAuthGuard extends AuthGuard('jwt') {
     if (isRevoked) {
       throw this.unauthorized(
         'AUTH_TOKEN_REVOKED',
-        'Sesion cerrada',
-        'Sesion cerrada',
+        'Este token fue invalidado al cerrar sesión.',
       );
     }
 
@@ -114,7 +111,7 @@ export class SupabaseAuthGuard extends AuthGuard('jwt') {
         showCause && cause !== null
           ? `Token invalido (${cause}).`
           : 'Token invalido';
-      throw this.unauthorized('AUTH_INVALID_TOKEN', 'Token invalido', detail);
+      throw this.unauthorized('AUTH_INVALID_TOKEN', detail);
     }
 
     return user;
@@ -130,16 +127,9 @@ export class SupabaseAuthGuard extends AuthGuard('jwt') {
   }
 
   private unauthorized(
-    code: string,
-    title: string,
+    code: 'AUTH_TOKEN_MISSING' | 'AUTH_TOKEN_REVOKED' | 'AUTH_INVALID_TOKEN',
     detail: string,
   ): UnauthorizedException {
-    return new UnauthorizedException({
-      type: this.problemDetailTypes.fromScreamingCode(code),
-      title,
-      status: 401,
-      detail,
-      code,
-    });
+    return new UnauthorizedException(buildProblem(code, detail));
   }
 }

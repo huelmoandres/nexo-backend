@@ -4,18 +4,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import { createProblemDetailTypeMock } from '@test/mocks';
 import { UsersCompanyService } from '../services/users-company.service';
 
 describe('UsersCompanyService', () => {
-  const problemDetailTypes = createProblemDetailTypeMock();
   const baseUser = { id: 'u1' };
 
   it('lanza USER_NOT_FOUND si no existe usuario', async () => {
     const repo = {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue(null),
     };
-    const service = new UsersCompanyService(repo as never, problemDetailTypes);
+    const service = new UsersCompanyService(repo as never);
 
     await expect(
       service.createCompany('sub', { name: 'ACME', rut: '000000000000' }, {}),
@@ -26,7 +24,7 @@ describe('UsersCompanyService', () => {
     const repo = {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue(baseUser),
     };
-    const service = new UsersCompanyService(repo as never, problemDetailTypes);
+    const service = new UsersCompanyService(repo as never);
 
     await expect(
       service.createCompany('sub', { name: 'ACME', rut: '000000000001' }, {}),
@@ -38,7 +36,7 @@ describe('UsersCompanyService', () => {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue(baseUser),
       findCompanyByAdminId: vi.fn().mockResolvedValue({ id: 'c1' }),
     };
-    const service = new UsersCompanyService(repo as never, problemDetailTypes);
+    const service = new UsersCompanyService(repo as never);
 
     await expect(
       service.createCompany('sub', { name: 'ACME', rut: '000000000000' }, {}),
@@ -51,7 +49,7 @@ describe('UsersCompanyService', () => {
       findCompanyByAdminId: vi.fn().mockResolvedValue(null),
       findCompanyByRut: vi.fn().mockResolvedValue({ id: 'other' }),
     };
-    const service = new UsersCompanyService(repo as never, problemDetailTypes);
+    const service = new UsersCompanyService(repo as never);
 
     await expect(
       service.createCompany('sub', { name: 'ACME', rut: '000000000000' }, {}),
@@ -70,7 +68,7 @@ describe('UsersCompanyService', () => {
       findCompanyByRut: vi.fn().mockResolvedValue(null),
       createCompanyWithAudit,
     };
-    const service = new UsersCompanyService(repo as never, problemDetailTypes);
+    const service = new UsersCompanyService(repo as never);
 
     const result = await service.createCompany(
       'sub',

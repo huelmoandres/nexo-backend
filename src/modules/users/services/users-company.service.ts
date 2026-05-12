@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ProblemDetailTypeService } from '@common/problem-detail/problem-detail-type.service';
+import { buildProblem } from '@common/errors/problem.factory';
 import type { CompanySummaryDto } from '../dto/company-summary.dto';
 import type { CreateCompanyDto } from '../dto/create-company.dto';
 import type { CompanyCreatedResponseDto } from '../dto/company-created-response.dto';
@@ -17,10 +17,7 @@ import {
 
 @Injectable()
 export class UsersCompanyService {
-  constructor(
-    private readonly usersRepository: UsersRepository,
-    private readonly problemDetailTypes: ProblemDetailTypeService,
-  ) {}
+  constructor(private readonly usersRepository: UsersRepository) {}
 
   async createCompany(
     supabaseUid: string,
@@ -29,48 +26,44 @@ export class UsersCompanyService {
   ): Promise<CompanyCreatedResponseDto> {
     const user = await this.usersRepository.findBySupabaseUidForMe(supabaseUid);
     if (!user) {
-      throw new NotFoundException({
-        type: this.problemDetailTypes.url('user-not-found'),
-        title: 'Usuario no encontrado',
-        status: 404,
-        detail: 'No existe un usuario sincronizado para este token.',
-        code: 'USER_NOT_FOUND',
-      });
+      throw new NotFoundException(
+        buildProblem(
+          'USER_NOT_FOUND',
+          'No existe un usuario sincronizado para este token.',
+        ),
+      );
     }
 
     const rutNormalized = normalizeRutDigits(dto.rut);
     if (!validateUruguayRut12(rutNormalized)) {
-      throw new BadRequestException({
-        type: this.problemDetailTypes.url('rut-invalid'),
-        title: 'RUT invalido',
-        status: 400,
-        detail: 'El RUT no supera la validacion del digito verificador DGI.',
-        code: 'RUT_INVALID',
-      });
+      throw new BadRequestException(
+        buildProblem(
+          'RUT_INVALID',
+          'El RUT no supera la validacion del digito verificador DGI.',
+        ),
+      );
     }
 
     const existingOwn = await this.usersRepository.findCompanyByAdminId(
       user.id,
     );
     if (existingOwn) {
-      throw new ConflictException({
-        type: this.problemDetailTypes.url('user-already-owns-company'),
-        title: 'Empresa ya registrada',
-        status: 409,
-        detail: 'Este usuario ya administro el registro de una empresa.',
-        code: 'USER_ALREADY_OWNS_COMPANY',
-      });
+      throw new ConflictException(
+        buildProblem(
+          'USER_ALREADY_OWNS_COMPANY',
+          'Este usuario ya administro el registro de una empresa.',
+        ),
+      );
     }
 
     const rutTaken = await this.usersRepository.findCompanyByRut(rutNormalized);
     if (rutTaken) {
-      throw new ConflictException({
-        type: this.problemDetailTypes.url('company-rut-duplicate'),
-        title: 'RUT duplicado',
-        status: 409,
-        detail: 'Ya existe una empresa registrada con este RUT.',
-        code: 'COMPANY_RUT_DUPLICATE',
-      });
+      throw new ConflictException(
+        buildProblem(
+          'COMPANY_RUT_DUPLICATE',
+          'Ya existe una empresa registrada con este RUT.',
+        ),
+      );
     }
 
     const company = await this.usersRepository.createCompanyWithAudit({

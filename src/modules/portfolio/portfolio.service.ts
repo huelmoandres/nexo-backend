@@ -15,7 +15,7 @@ import {
 } from '@prisma/client';
 import { IStorageService } from '@modules/storage/interfaces/storage.service.interface';
 import { STORAGE_SERVICE_TOKEN } from '@modules/storage/storage.constants';
-import { ProblemDetailTypeService } from '@common/problem-detail/problem-detail-type.service';
+import { buildProblem } from '@common/errors/problem.factory';
 import { portfolioConfig } from '@config/portfolio.config';
 import {
   PORTFOLIO_PHOTO_KEY_PATTERN,
@@ -28,10 +28,6 @@ import type { PaginatedPortfolioItemsDto } from './dto/paginated-portfolio-items
 import type { PortfolioItemResponseDto } from './dto/portfolio-item-response.dto';
 import type { PortfolioPhotoResponseDto } from './dto/portfolio-photo-response.dto';
 import type { UpdatePortfolioItemDto } from './dto/update-portfolio-item.dto';
-import {
-  PORTFOLIO_ERROR_CODES,
-  PORTFOLIO_PROBLEM_SLUGS,
-} from './portfolio.constants';
 import { PortfolioRepository } from './portfolio.repository';
 import {
   IPortfolioCleanupQueue,
@@ -57,7 +53,6 @@ import { PortfolioStorageCacheService } from './services/portfolio-storage-cache
 export class PortfolioService {
   constructor(
     private readonly repository: PortfolioRepository,
-    private readonly problemDetailTypes: ProblemDetailTypeService,
     @Inject(portfolioConfig.KEY)
     private readonly config: ConfigType<typeof portfolioConfig>,
     @Inject(PORTFOLIO_CLEANUP_QUEUE_TOKEN)
@@ -131,41 +126,34 @@ export class PortfolioService {
     await this.assertItemOwned(itemId, professionalProfileId);
 
     if (!PORTFOLIO_PHOTO_KEY_PATTERN.test(dto.fileKey)) {
-      throw new BadRequestException({
-        type: this.problemDetailTypes.url('validation-error'),
-        title: 'fileKey inválido',
-        status: 400,
-        detail: 'El fileKey no respeta la convención canónica de portfolio.',
-        code: 'VALIDATION_ERROR',
-      });
+      throw new BadRequestException(
+        buildProblem(
+          'VALIDATION_ERROR',
+          'El fileKey no respeta la convención canónica de portfolio.',
+        ),
+      );
     }
 
     assertKeyBelongsToUser(dto.fileKey, professionalProfileId);
 
     const existing = await this.repository.findPhotoByFileKey(dto.fileKey);
     if (existing !== null) {
-      throw new ConflictException({
-        type: this.problemDetailTypes.url(
-          PORTFOLIO_PROBLEM_SLUGS.FILEKEY_DUPLICATE,
+      throw new ConflictException(
+        buildProblem(
+          'PORTFOLIO_FILEKEY_DUPLICATE',
+          'Esta foto ya fue registrada previamente.',
         ),
-        title: 'fileKey duplicado',
-        status: 409,
-        detail: 'Esta foto ya fue registrada previamente.',
-        code: PORTFOLIO_ERROR_CODES.FILEKEY_DUPLICATE,
-      });
+      );
     }
 
     const currentCount = await this.repository.countPhotosByItemId(itemId);
     if (currentCount >= this.config.maxPhotosPerItem) {
-      throw new ConflictException({
-        type: this.problemDetailTypes.url(
-          PORTFOLIO_PROBLEM_SLUGS.PHOTOS_LIMIT_REACHED,
+      throw new ConflictException(
+        buildProblem(
+          'PORTFOLIO_PHOTOS_LIMIT_REACHED',
+          `Máximo ${this.config.maxPhotosPerItem} fotos por item.`,
         ),
-        title: 'Límite de fotos alcanzado',
-        status: 409,
-        detail: `Máximo ${this.config.maxPhotosPerItem} fotos por item.`,
-        code: PORTFOLIO_ERROR_CODES.PHOTOS_LIMIT_REACHED,
-      });
+      );
     }
 
     const photo = await this.repository.addPhotoWithReorder({
@@ -214,16 +202,12 @@ export class PortfolioService {
 
     if (dto.categoryId !== undefined && dto.categoryId !== item.categoryId) {
       if (item.verifiedFromJob) {
-        throw new ConflictException({
-          type: this.problemDetailTypes.url(
-            PORTFOLIO_PROBLEM_SLUGS.CATEGORY_FROZEN_POST_VERIFICATION,
-          ),
-          title: 'Categoría congelada post-verificación',
-          status: 409,
-          detail:
+        throw new ConflictException(
+          buildProblem(
+            'PORTFOLIO_CATEGORY_FROZEN_POST_VERIFICATION',
             'La categoría no puede cambiarse en un item ya verificado por un cliente.',
-          code: PORTFOLIO_ERROR_CODES.CATEGORY_FROZEN_POST_VERIFICATION,
-        });
+          ),
+        );
       }
       await this.assertCategoryExists(dto.categoryId);
     }
@@ -310,28 +294,22 @@ export class PortfolioService {
     );
 
     if (item.status !== PortfolioItemStatus.DRAFT) {
-      throw new ConflictException({
-        type: this.problemDetailTypes.url(
-          PORTFOLIO_PROBLEM_SLUGS.ITEM_NOT_DRAFT,
+      throw new ConflictException(
+        buildProblem(
+          'PORTFOLIO_ITEM_NOT_DRAFT',
+          `Para publicar, el item debe estar en DRAFT. Estado actual: ${item.status}.`,
         ),
-        title: 'El item no está en DRAFT',
-        status: 409,
-        detail: `Para publicar, el item debe estar en DRAFT. Estado actual: ${item.status}.`,
-        code: PORTFOLIO_ERROR_CODES.ITEM_NOT_DRAFT,
-      });
+      );
     }
 
     const photos = await this.repository.findPhotosByItemId(itemId);
     if (photos.length === 0) {
-      throw new ConflictException({
-        type: this.problemDetailTypes.url(
-          PORTFOLIO_PROBLEM_SLUGS.PHOTOS_REQUIRED,
+      throw new ConflictException(
+        buildProblem(
+          'PORTFOLIO_PHOTOS_REQUIRED',
+          'Para publicar, el item debe tener al menos una foto.',
         ),
-        title: 'El item no tiene fotos',
-        status: 409,
-        detail: 'Para publicar, el item debe tener al menos una foto.',
-        code: PORTFOLIO_ERROR_CODES.PHOTOS_REQUIRED,
-      });
+      );
     }
 
     await this.verifyPhotosAvailable(photos);
@@ -372,17 +350,13 @@ export class PortfolioService {
     }
 
     if (notReadyPhotoIds.length > 0) {
-      throw new ConflictException({
-        type: this.problemDetailTypes.url(
-          PORTFOLIO_PROBLEM_SLUGS.PHOTOS_NOT_READY,
-        ),
-        title: 'Fotos no disponibles en storage',
-        status: 409,
-        detail:
+      throw new ConflictException(
+        buildProblem(
+          'PORTFOLIO_PHOTOS_NOT_READY',
           'Algunas fotos aún no terminaron de subirse. Reintentá luego de subirlas.',
-        code: PORTFOLIO_ERROR_CODES.PHOTOS_NOT_READY,
-        photoIds: notReadyPhotoIds,
-      });
+          { photoIds: notReadyPhotoIds },
+        ),
+      );
     }
   }
 
@@ -409,16 +383,12 @@ export class PortfolioService {
           return 'ok';
         } catch (retryErr) {
           if (retryErr instanceof NotFoundException) return 'not-found';
-          throw new ServiceUnavailableException({
-            type: this.problemDetailTypes.url(
-              PORTFOLIO_PROBLEM_SLUGS.PHOTOS_STORAGE_UNAVAILABLE,
-            ),
-            title: 'Storage no disponible',
-            status: 503,
-            detail:
+          throw new ServiceUnavailableException(
+            buildProblem(
+              'PORTFOLIO_PHOTOS_STORAGE_UNAVAILABLE',
               'No fue posible verificar la disponibilidad de las fotos en storage. Reintentá en unos segundos.',
-            code: PORTFOLIO_ERROR_CODES.PHOTOS_STORAGE_UNAVAILABLE,
-          });
+            ),
+          );
         }
       }
       throw err;
@@ -492,25 +462,20 @@ export class PortfolioService {
     const owner =
       await this.repository.findProfessionalBySupabaseUid(supabaseUid);
     if (!owner) {
-      throw new NotFoundException({
-        type: this.problemDetailTypes.url('user-not-found'),
-        title: 'Usuario no encontrado',
-        status: 404,
-        detail: 'No existe un usuario sincronizado para este token.',
-        code: PORTFOLIO_ERROR_CODES.USER_NOT_FOUND,
-      });
+      throw new NotFoundException(
+        buildProblem(
+          'USER_NOT_FOUND',
+          'No existe un usuario sincronizado para este token.',
+        ),
+      );
     }
     if (!owner.professionalProfileId) {
-      throw new NotFoundException({
-        type: this.problemDetailTypes.url(
-          PORTFOLIO_PROBLEM_SLUGS.PROFESSIONAL_PROFILE_NOT_FOUND,
-        ),
-        title: 'Perfil profesional no encontrado',
-        status: 404,
-        detail:
+      throw new NotFoundException(
+        buildProblem(
+          'PROFESSIONAL_PROFILE_NOT_FOUND',
           'Necesitas un perfil profesional activo para gestionar portfolio.',
-        code: PORTFOLIO_ERROR_CODES.PROFESSIONAL_PROFILE_NOT_FOUND,
-      });
+        ),
+      );
     }
     return owner.professionalProfileId;
   }
@@ -518,15 +483,12 @@ export class PortfolioService {
   private async assertCategoryExists(categoryId: string): Promise<void> {
     const category = await this.repository.findActiveCategoryById(categoryId);
     if (!category) {
-      throw new NotFoundException({
-        type: this.problemDetailTypes.url(
-          PORTFOLIO_PROBLEM_SLUGS.CATEGORY_NOT_FOUND,
+      throw new NotFoundException(
+        buildProblem(
+          'PORTFOLIO_CATEGORY_NOT_FOUND',
+          `No existe una categoría activa con el ID "${categoryId}".`,
         ),
-        title: 'Categoría no encontrada',
-        status: 404,
-        detail: `No existe una categoría activa con el ID "${categoryId}".`,
-        code: PORTFOLIO_ERROR_CODES.CATEGORY_NOT_FOUND,
-      });
+      );
     }
   }
 
@@ -540,40 +502,28 @@ export class PortfolioService {
       professionalProfileId,
     );
     if (!job) {
-      throw new NotFoundException({
-        type: this.problemDetailTypes.url(
-          PORTFOLIO_PROBLEM_SLUGS.JOB_NOT_FOUND,
-        ),
-        title: 'Job no encontrado',
-        status: 404,
-        detail:
+      throw new NotFoundException(
+        buildProblem(
+          'PORTFOLIO_JOB_NOT_FOUND',
           'El trabajo no existe o no pertenece al profesional autenticado.',
-        code: PORTFOLIO_ERROR_CODES.JOB_NOT_FOUND,
-      });
+        ),
+      );
     }
     if (job.status !== JobStatus.CLOSED) {
-      throw new ConflictException({
-        type: this.problemDetailTypes.url(
-          PORTFOLIO_PROBLEM_SLUGS.JOB_NOT_CLOSED,
-        ),
-        title: 'Job no cerrado',
-        status: 409,
-        detail:
+      throw new ConflictException(
+        buildProblem(
+          'PORTFOLIO_JOB_NOT_CLOSED',
           'Solo trabajos en estado CLOSED pueden vincularse a un PortfolioItem.',
-        code: PORTFOLIO_ERROR_CODES.JOB_NOT_CLOSED,
-      });
+        ),
+      );
     }
     if (job.categoryId !== itemCategoryId) {
-      throw new ConflictException({
-        type: this.problemDetailTypes.url(
-          PORTFOLIO_PROBLEM_SLUGS.CATEGORY_MISMATCH_JOB,
-        ),
-        title: 'Categoría no coincide con la del Job',
-        status: 409,
-        detail:
+      throw new ConflictException(
+        buildProblem(
+          'PORTFOLIO_CATEGORY_MISMATCH_JOB',
           'La categoría del PortfolioItem debe coincidir con la categoría del Job vinculado.',
-        code: PORTFOLIO_ERROR_CODES.CATEGORY_MISMATCH_JOB,
-      });
+        ),
+      );
     }
   }
 
@@ -593,15 +543,12 @@ export class PortfolioService {
       professionalProfileId,
     );
     if (!item) {
-      throw new NotFoundException({
-        type: this.problemDetailTypes.url(
-          PORTFOLIO_PROBLEM_SLUGS.ITEM_NOT_FOUND,
+      throw new NotFoundException(
+        buildProblem(
+          'PORTFOLIO_ITEM_NOT_FOUND',
+          'El item no existe o no pertenece al pro autenticado.',
         ),
-        title: 'PortfolioItem no encontrado',
-        status: 404,
-        detail: 'El item no existe o no pertenece al pro autenticado.',
-        code: PORTFOLIO_ERROR_CODES.ITEM_NOT_FOUND,
-      });
+      );
     }
     return item;
   }

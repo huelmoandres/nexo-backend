@@ -5,12 +5,10 @@ import {
 } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { userFactory } from '@test/factories';
-import { createProblemDetailTypeMock } from '@test/mocks';
 import { PresignDocumentKind } from '../dto/presign-document.dto';
 import { UsersProfileService } from '../services/users-profile.service';
 
 describe('UsersProfileService', () => {
-  const problemDetailTypes = createProblemDetailTypeMock();
   const makeUsersConfig = () => ({
     roleCacheTtlMs: 30000,
     kycBucket: 'nexos-kyc',
@@ -34,7 +32,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       storage as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -71,7 +68,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       storage as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -94,7 +90,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       { generatePresignedPutUrl: vi.fn() } as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -116,7 +111,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       { generatePresignedPutUrl: vi.fn() } as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -130,7 +124,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       { generatePresignedPutUrl: vi.fn() } as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -152,7 +145,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       { generatePresignedPutUrl: vi.fn() } as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -166,7 +158,7 @@ describe('UsersProfileService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it('createProfessionalProfile lanza CATEGORY_NOT_FOUND', async () => {
+  it('createProfessionalProfile lanza INVALID_CATEGORY_IDS', async () => {
     const repo = {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue(baseUser),
       hasProfessionalProfile: vi.fn().mockResolvedValue(false),
@@ -175,7 +167,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       { generatePresignedPutUrl: vi.fn() } as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -207,7 +198,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       { generatePresignedPutUrl: vi.fn() } as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -238,7 +228,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       { generatePresignedPutUrl: vi.fn() } as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -258,7 +247,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       { generatePresignedPutUrl: vi.fn() } as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -276,7 +264,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       { generatePresignedPutUrl: vi.fn() } as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -302,7 +289,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       { generatePresignedPutUrl } as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -334,7 +320,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       { generatePresignedPutUrl } as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -364,7 +349,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       { generatePresignedPutUrl } as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -391,7 +375,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       { generatePresignedPutUrl } as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -419,7 +402,6 @@ describe('UsersProfileService', () => {
     const service = new UsersProfileService(
       repo as never,
       { generatePresignedPutUrl } as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 

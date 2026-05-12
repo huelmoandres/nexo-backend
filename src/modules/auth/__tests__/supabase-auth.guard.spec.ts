@@ -1,12 +1,10 @@
 import { ExecutionContext } from '@nestjs/common';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { createProblemDetailTypeMock } from '@test/mocks';
 import { SupabaseAuthGuard } from '../guards/supabase-auth.guard';
 
 describe('SupabaseAuthGuard', () => {
   let redisClient: { get: ReturnType<typeof vi.fn> };
   let guard: SupabaseAuthGuard;
-  const problemDetailTypes = createProblemDetailTypeMock();
   const mockAuthConfig = {
     supabaseJwtSecret: '',
     supabaseUrl: '',
@@ -19,11 +17,7 @@ describe('SupabaseAuthGuard', () => {
     redisClient = {
       get: vi.fn(),
     };
-    guard = new SupabaseAuthGuard(
-      redisClient as never,
-      problemDetailTypes,
-      mockAuthConfig,
-    );
+    guard = new SupabaseAuthGuard(redisClient as never, mockAuthConfig);
   });
 
   it('lanza AUTH_TOKEN_MISSING cuando no hay bearer token', async () => {

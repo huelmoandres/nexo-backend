@@ -29,6 +29,10 @@ No usar códigos numéricos internos. Toda respuesta de error debe seguir esta e
 
 El campo `code` usa **SCREAMING_SNAKE_CASE**. El campo `type` es siempre `{base}/<kebab-case-del-code>`, donde `base` por defecto es `https://nexos.com/errors` (mismo significado que `code`, distinto formato para URI). El origen se configura con la variable de entorno `PROBLEM_DETAIL_TYPE_BASE_URL` (ver `src/config/app.config.ts`); no confundir con URLs de Cloudflare R2 ni con el API del producto — son identificadores estables de documentación (RFC 7807).
 
+## 2.0 Catálogo en código
+
+La lista canónica de `code`, `status`, `title` y `slug` vive en `src/common/errors/error-catalog.ts` (constante `ERRORS`). Los servicios deben construir cuerpos RFC 7807 con `buildProblem` / `problemException` desde `src/common/errors/problem.factory.ts`. Las tablas de este documento deben mantenerse alineadas con ese archivo al añadir o cambiar errores.
+
 ## 2.1 Slugs canónicos — Autenticación y validación
 
 Estos slugs son la **fuente de verdad**. Cualquier otro nombre de error para el mismo caso está prohibido.
@@ -106,8 +110,6 @@ Estos slugs son la **fuente de verdad**. Cualquier otro nombre de error para el 
 }
 ```
 
-> Los slugs de dominio (usuarios, escrow, disputas, etc.) se documentan en este mismo archivo a medida que se añaden; **no** se definen en specs de módulo ni en código sin actualizar primero esta referencia.
-
 ## 2.2 Slugs canónicos — Usuarios y perfiles
 
 | `code` | HTTP | Cuándo usar |
@@ -118,7 +120,52 @@ Estos slugs son la **fuente de verdad**. Cualquier otro nombre de error para el 
 | `USER_ALREADY_OWNS_COMPANY` | 409 | El usuario ya es administrador de una empresa. |
 | `PROFESSIONAL_PROFILE_EXISTS` | 409 | El usuario ya tiene un `ProfessionalProfile`. |
 | `PROFESSIONAL_PROFILE_NOT_FOUND` | 404 | Se requiere perfil profesional (p. ej. presign de documentos) y no existe. |
-| `CATEGORY_NOT_FOUND` | 400 | Algún `categoryId` no existe (validación antes de persistir). |
+| `INVALID_CATEGORY_IDS` | 400 | Algún `categoryId` del DTO de perfil no existe (validación antes de persistir). |
+| `KYC_INVALID_FILE_EXTENSION` | 400 | Extensión de archivo no permitida en flujos KYC/presign. |
+
+## 2.3 Slugs canónicos — Categorías (dominio global)
+
+| `code` | HTTP | Cuándo usar |
+|--------|------|-------------|
+| `CATEGORY_NOT_FOUND` | 404 | La categoría solicitada por id/slug no existe. |
+| `CATEGORY_SLUG_DUPLICATE` | 409 | El slug propuesto ya está en uso. |
+
+## 2.4 Slugs canónicos — Storage
+
+| `code` | HTTP | Cuándo usar |
+|--------|------|-------------|
+| `STORAGE_FORBIDDEN_KEY` | 403 | La clave R2 no pertenece al usuario o viola prefijos permitidos. |
+
+## 2.5 Slugs canónicos — Portfolio
+
+| `code` | HTTP | Cuándo usar |
+|--------|------|-------------|
+| `PORTFOLIO_ITEM_NOT_FOUND` | 404 | Item de portfolio inexistente o no accesible. |
+| `PORTFOLIO_PHOTO_NOT_FOUND` | 404 | Foto inexistente o no pertenece al item. |
+| `PORTFOLIO_CATEGORY_NOT_FOUND` | 404 | Categoría de portfolio inexistente. |
+| `PORTFOLIO_JOB_NOT_FOUND` | 404 | Job de verificación inexistente. |
+| `PORTFOLIO_JOB_NOT_CLOSED` | 409 | Se requiere job cerrado y no lo está. |
+| `PORTFOLIO_CATEGORY_MISMATCH_JOB` | 409 | Categoría del item no coincide con la del job. |
+| `PORTFOLIO_CATEGORY_FROZEN_POST_VERIFICATION` | 409 | No se puede cambiar categoría tras verificación. |
+| `PORTFOLIO_FILEKEY_DUPLICATE` | 409 | `fileKey` duplicado en el mismo item. |
+| `PORTFOLIO_PHOTOS_LIMIT_REACHED` | 409 | Se alcanzó el máximo de fotos por item. |
+| `PORTFOLIO_ITEM_NOT_DRAFT` | 409 | Operación solo permitida en borrador. |
+| `PORTFOLIO_PHOTOS_REQUIRED` | 409 | Publicar sin fotos. |
+| `PORTFOLIO_PHOTOS_NOT_READY` | 409 | Fotos aún no visibles en storage (HEAD). |
+| `PORTFOLIO_PHOTOS_STORAGE_UNAVAILABLE` | 503 | Storage no responde al comprobar fotos. |
+
+## 2.6 Slugs genéricos (filtro global y excepciones sin catálogo)
+
+| `code` | HTTP | Cuándo usar |
+|--------|------|-------------|
+| `BAD_REQUEST` | 400 | Fallback cuando no hay código más específico. |
+| `UNAUTHORIZED` | 401 | Fallback 401. |
+| `FORBIDDEN` | 403 | Fallback 403. |
+| `NOT_FOUND` | 404 | Fallback 404. |
+| `CONFLICT` | 409 | Fallback 409. |
+| `UNPROCESSABLE_ENTITY` | 422 | Fallback 422. |
+| `INTERNAL_SERVER_ERROR` | 500 | Errores no controlados; cuerpo RFC 7807 en producción. |
+| `HTTP_ERROR` | 500 | Variante genérica de error HTTP mapeado. |
 
 ## 3. Paginación Estándar
 Cualquier endpoint que devuelva una lista debe incluir el objeto `meta`:

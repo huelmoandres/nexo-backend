@@ -7,6 +7,7 @@ import {
   type PortfolioItem,
   type PortfolioPhoto,
 } from '@prisma/client';
+import { buildProblem } from '@common/errors/problem.factory';
 import { PrismaService } from '@prisma/prisma.service';
 
 /**
@@ -313,13 +314,12 @@ export class PortfolioRepository {
         select: { id: true, displayOrder: true },
       });
       if (!photo) {
-        throw new NotFoundException({
-          type: 'about:blank',
-          title: 'Foto no encontrada',
-          status: 404,
-          detail: 'La foto no existe o no pertenece al item indicado.',
-          code: 'PORTFOLIO_PHOTO_NOT_FOUND',
-        });
+        throw new NotFoundException(
+          buildProblem(
+            'PORTFOLIO_PHOTO_NOT_FOUND',
+            'La foto no existe o no pertenece al item indicado.',
+          ),
+        );
       }
 
       await tx.portfolioPhoto.delete({ where: { id: photo.id } });

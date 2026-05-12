@@ -1,11 +1,9 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
-import { createProblemDetailTypeMock } from '@test/mocks';
 import { AuthorizationService } from '../services/authorization.service';
 
 describe('AuthorizationService', () => {
-  const problemDetailTypes = createProblemDetailTypeMock();
   const makeUsersConfig = () => ({
     roleCacheTtlMs: 30000,
     kycBucket: 'nexos-kyc',
@@ -15,7 +13,6 @@ describe('AuthorizationService', () => {
     const prisma = { user: { findFirst: vi.fn() } };
     const service = new AuthorizationService(
       prisma as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -30,7 +27,6 @@ describe('AuthorizationService', () => {
     };
     const service = new AuthorizationService(
       prisma as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -45,7 +41,6 @@ describe('AuthorizationService', () => {
     };
     const service = new AuthorizationService(
       prisma as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
@@ -59,7 +54,6 @@ describe('AuthorizationService', () => {
     const prisma = { user: { findFirst } };
     const service = new AuthorizationService(
       prisma as never,
-      problemDetailTypes,
       makeUsersConfig(),
     );
 
