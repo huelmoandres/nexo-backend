@@ -117,7 +117,7 @@ model PortfolioPhoto {
   portfolioItemId String
   portfolioItem   PortfolioItem @relation(fields: [portfolioItemId], references: [id])
 
-  /// Key R2/S3 con naming canónico: usr_<professionalId>/portfolio/<itemId>/<uuid>.<ext>
+  /// Key R2/S3 con naming canónico: users/<professionalId>/portfolio/<itemId>/<uuid>.<ext>
   /// Único globalmente (impide colisiones de cache vs delete).
   fileKey         String   @unique
   caption         String?
@@ -200,7 +200,7 @@ model PortfolioModerationLog {
   - `Job.status === 'CLOSED'`
   - `Job.categoryId === PortfolioItem.categoryId` (coherencia anti-fraude reputacional)
 - Una vez `verifiedFromJob = true`, son **INMUTABLES**: `jobId` y `categoryId`.
-- `PortfolioPhoto.fileKey` matchea regex `^usr_[A-Za-z0-9_-]+/portfolio/[A-Za-z0-9-]+/[0-9a-f-]{36}\.(jpg|jpeg|png|webp)$`.
+- `PortfolioPhoto.fileKey` matchea regex `PORTFOLIO_PHOTO_KEY_PATTERN` (exportado por `src/modules/storage/storage-paths.ts`): `^users/[A-Za-z0-9_-]+/portfolio/[A-Za-z0-9-]+/[0-9a-f-]{36}\.(jpg|jpeg|png|webp)$`.
 - `displayOrder` es siempre la secuencia compacta `1..N` sin huecos por `portfolioItemId`.
 - `aiModerationModelRef` matchea regex `^[a-z0-9_]+:[a-z0-9_-]+:[a-z0-9._-]+$`.
 
@@ -294,7 +294,7 @@ Todos prefijados con `/api/portfolio` (prefix global del proyecto).
 - **Ruta:** `POST /portfolio/items/:id/photos`
 - **DTO (`AddPortfolioPhotoDto`):** `fileKey` (string con regex canónica), `caption?` (max 280), `displayOrder?` (int).
 - **Validaciones:**
-  - `fileKey` matchea regex `^usr_[A-Za-z0-9_-]+/portfolio/[A-Za-z0-9-]+/[0-9a-f-]{36}\.(jpg|jpeg|png|webp)$` y el segmento `usr_<id>` coincide con `req.user.sub`. Si no: `400 VALIDATION_ERROR`.
+  - `fileKey` matchea `PORTFOLIO_PHOTO_KEY_PATTERN` y `assertKeyBelongsToUser(fileKey, req.user.sub)` no lanza. Si no matchea: `400 VALIDATION_ERROR`. Si no pertenece al usuario: `403 STORAGE_FORBIDDEN_KEY`. Ambas validaciones viven en `storage-paths.ts` (centralizado).
   - `fileKey` no existe previamente. Si existe: `409 PORTFOLIO_FILEKEY_DUPLICATE`.
   - Si `displayOrder` omitido → `MAX(displayOrder) + 1` calculado **dentro de la transacción**.
   - Si `displayOrder` explícito en posición intermedia → shift +1 atómico de las posteriores.
@@ -338,7 +338,7 @@ Todos prefijados con `/api/portfolio` (prefix global del proyecto).
 - **Ruta:** `DELETE /portfolio/items/:id`
 - **Lógica:**
   1. Soft-delete: `deletedAt = NOW()`.
-  2. Encola `portfolio-cleanup` que borra el prefijo `usr_<professionalId>/portfolio/<itemId>/` completo en R2 + DEL/UNLINK de la caché `storage:exists:*`.
+  2. Encola `portfolio-cleanup` que borra el prefijo `portfolioItemScope(professionalId, itemId)` (`users/<professionalId>/portfolio/<itemId>/`) completo en R2 + DEL/UNLINK de la caché `storage:exists:*`.
 
 #### H. Listar mis items
 - **Ruta:** `GET /portfolio/items/mine`
@@ -498,10 +498,10 @@ Cron BullMQ que cada hora marca como `EXPIRED` los consents con `expiresAt < NOW
 
 Se encola al hacer `DELETE /portfolio/items/:id`. Ejecuta:
 
-1. **R2 / S3:** `ListObjectsV2 + DeleteObjects` sobre el prefijo `usr_<professionalId>/portfolio/<itemId>/`. Borra el "directorio" completo del item.
+1. **R2 / S3:** `ListObjectsV2 + DeleteObjects` sobre el prefijo `portfolioItemScope(professionalId, itemId)` (`users/<professionalId>/portfolio/<itemId>/`). Borra el "directorio" completo del item.
 2. **Redis cache cleanup:**
    - Caso normal (≤10 fotos): recolecta `fileKey`s desde `PortfolioPhoto` antes de borrar las filas, hace `DEL key1 key2 ...` variádico.
-   - Caso masivo (cleanup global futuro): `SCAN MATCH storage:exists:usr_<professionalId>/portfolio/* COUNT 100` cursor-based + `UNLINK` con fallback a `DEL` vía `RedisCompatibilityService` (que detecta versión Redis en bootstrap).
+   - Caso masivo (cleanup global futuro): `SCAN MATCH storage:exists:users/<professionalId>/portfolio/* COUNT 100` cursor-based + `UNLINK` con fallback a `DEL` vía `RedisCompatibilityService` (que detecta versión Redis en bootstrap).
 3. **Persistir** `cleanedUpAt = NOW()` en el item.
 
 ### 7.2 Permisos Redis (mínimo privilegio)
