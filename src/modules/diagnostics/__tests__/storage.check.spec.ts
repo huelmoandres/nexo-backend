@@ -14,6 +14,7 @@ function buildConfig(overrides: Partial<StorageConfig> = {}): StorageConfig {
     r2SecretAccessKey: '',
     r2AccessKeyConfigured: false,
     r2SecretKeyConfigured: false,
+    r2BucketPublic: 'nexos-public',
     r2BucketKyc: 'nexos-kyc',
     presignedUrlTtlSeconds: 900,
     ...overrides,

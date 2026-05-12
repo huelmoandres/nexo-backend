@@ -47,10 +47,11 @@
 
 ## Checklist de Storage y `fileKey`
 
-- [ ] `POST /portfolio/items/:id/photos` rechaza `fileKey` que no matchea regex `^usr_[A-Za-z0-9_-]+/portfolio/[A-Za-z0-9-]+/[0-9a-f-]{36}\.(jpg|jpeg|png|webp)$` → `400 VALIDATION_ERROR`.
-- [ ] `POST /portfolio/items/:id/photos` rechaza `fileKey` cuyo segmento `usr_<id>` no coincide con `req.user.sub` → `403 PORTFOLIO_NOT_OWNER`.
+- [ ] `POST /portfolio/items/:id/photos` rechaza `fileKey` que no matchea `PORTFOLIO_PHOTO_KEY_PATTERN` (`^users/[A-Za-z0-9_-]+/portfolio/[A-Za-z0-9-]+/[0-9a-f-]{36}\.(jpg|jpeg|png|webp)$`) → `400 VALIDATION_ERROR`.
+- [ ] `POST /portfolio/items/:id/photos` rechaza `fileKey` cuyo segmento `users/<id>` no coincide con `req.user.sub` → `403 STORAGE_FORBIDDEN_KEY` (vía `assertKeyBelongsToUser` de `storage-paths.ts`).
 - [ ] `fileKey` duplicado en la DB → `409 PORTFOLIO_FILEKEY_DUPLICATE`.
-- [ ] El `StorageService` rechaza `deleteObject` cuyo `key` no empieza con `usr_<userId>/` (ownership de paths transversal — ver [storage-rules.md](../specs/storage-rules.md) sección 10).
+- [ ] El `StorageService.deleteObjectForUser` rechaza `key` cuyo prefijo no es `users/<userId>/` (ownership transversal — ver [storage-rules.md](../specs/storage-rules.md) §10).
+- [ ] Toda construcción de keys del portfolio pasa por `buildPortfolioPhotoKey` / `portfolioItemScope` de `storage-paths.ts`. No hay template literals con `users/` en otros archivos (revisión manual hasta tener la lint rule).
 - [ ] El `PortfolioService` nunca llama directamente al SDK de R2/S3. Toda interacción pasa por `StorageService`.
 - [ ] El bucket usado es `nexos-public` y las URLs devueltas son públicas permanentes (no firmadas).
 
@@ -126,7 +127,7 @@
 ## Checklist de Cleanup en Soft-Delete
 
 - [ ] `DELETE /portfolio/items/:id` marca `deletedAt` y encola `portfolio-cleanup`.
-- [ ] El worker borra el prefijo `usr_<professionalId>/portfolio/<itemId>/` completo en R2 (`ListObjectsV2 + DeleteObjects`).
+- [ ] El worker borra el prefijo `portfolioItemScope(professionalId, itemId)` (`users/<professionalId>/portfolio/<itemId>/`) completo en R2 (`ListObjectsV2 + DeleteObjects`).
 - [ ] El worker hace `DEL` variádico o `SCAN + UNLINK` de las keys `storage:exists:<fileKey>` de las fotos eliminadas.
 - [ ] El usuario Redis `nexos-cleanup` tiene ACL restringido a `~storage:exists:*` (no global). Test que verifica que un intento de tocar `blocklist:*` desde ese usuario es rechazado.
 - [ ] `RedisCompatibilityService` detecta versión Redis en bootstrap; usa `UNLINK` ≥ 4.0.0 y fallback `DEL` < 4.0.0 con WARN log.

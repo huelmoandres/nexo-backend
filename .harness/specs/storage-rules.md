@@ -35,37 +35,54 @@ Este patrón garantiza que si HRProgrammers decide cambiar de proveedor de almac
 
 ## 4. Naming Convention de Archivos
 
-El `key` (ruta dentro del bucket) sigue este formato para garantizar unicidad y organización:
+El `key` (ruta dentro del bucket) sigue este formato canónico para garantizar unicidad, organización y validación de ownership:
 
 ```
-<userId>/<tipo>/<uuid>.<ext>
+users/<userId>/<tipo>/[<subPath>/]<uuid>.<ext>
 ```
+
+El prefijo `users/<userId>/` es **obligatorio y único** en todo el sistema. La validación de ownership descrita en §10 depende de este invariante.
 
 Para portfolio, el formato anida el `itemId` para soportar el cleanup masivo por prefijo:
 
 ```
-<userId>/portfolio/<itemId>/<uuid>.<ext>
+users/<userId>/portfolio/<itemId>/<uuid>.<ext>
 ```
 
 Ejemplos:
 ```
-usr_abc123/kyc/550e8400-e29b-41d4-a716-446655440000.jpg
-usr_abc123/evidence/before/7c9e6679-7425-40de-944b-e07fc1f90ae7.jpg
-usr_abc123/receipts/a81bc81b-dead-4e5d-abff-90865d1e13b1.pdf
-usr_abc123/portfolio/8f14e45f-ceea-467a-9575-d0e0f2c1d4a1/d6a73b0a-22e8-4a8d-8a3f-9f0d9c2a6e1f.jpg
+users/abc123/kyc/IDENTITY_CARD-550e8400-e29b-41d4-a716-446655440000.jpg
+users/abc123/evidence/before/7c9e6679-7425-40de-944b-e07fc1f90ae7.jpg
+users/abc123/receipts/a81bc81b-dead-4e5d-abff-90865d1e13b1.pdf
+users/abc123/portfolio/8f14e45f-ceea-467a-9575-d0e0f2c1d4a1/d6a73b0a-22e8-4a8d-8a3f-9f0d9c2a6e1f.jpg
 ```
 
-El cliente nunca genera el `key`. Lo genera el backend en el `StorageService` antes de emitir la URL de pre-signed PUT.
+### 4.1 Construcción centralizada: `storage-paths.ts`
 
-### Regex de validación del `key` (consumido por módulos)
+**El cliente nunca genera el `key`. Lo genera el backend.** Y para que ningún módulo construya el path con un `template literal` ad hoc, existe un módulo helper centralizado:
 
-Cualquier módulo que persista un `key` (p. ej. portfolio al recibir el `fileKey` del cliente) debe validarlo contra una regex que matchee el patrón canónico **y** que el segmento `usr_<id>` coincida con `req.user.sub`. Ejemplo para portfolio:
+`src/modules/storage/storage-paths.ts`
 
-```
-^usr_[A-Za-z0-9_-]+/portfolio/[A-Za-z0-9-]+/[0-9a-f-]{36}\.(jpg|jpeg|png|webp)$
-```
+Exporta funciones puras (sin DI, side-effect free) que construyen y validan keys. Toda lógica de paths del repo **DEBE** pasar por este archivo. Funciones obligatorias:
 
-Si no matchea: `400 VALIDATION_ERROR`. Si el `usr_<id>` no es del autenticado: `403 STORAGE_FORBIDDEN_KEY`.
+- `userScope(userId)` → `string` — devuelve `users/<userId>/` (prefijo canónico).
+- `buildKycKey(userId, kind, ext)` → `string` — construye la key de un documento KYC.
+- `buildPortfolioPhotoKey(userId, itemId, ext)` → `string` — construye la key de una foto de portfolio.
+- `portfolioItemScope(userId, itemId)` → `string` — devuelve el prefijo para listar/borrar masivo por item.
+- `assertKeyBelongsToUser(key, userId)` → `void` — lanza si el `key` no empieza con `userScope(userId)`. Reutilizado por `StorageService.deleteObjectForUser` y por DTOs que reciben `fileKey` del cliente.
+- `parseUserIdFromKey(key)` → `string | null` — extrae el `userId` o devuelve null si el path es inválido.
+
+También exporta las **regex de validación** como constantes:
+
+- `KYC_KEY_PATTERN` — `^users/[A-Za-z0-9_-]+/kyc/[A-Z_]+-[0-9a-f-]{36}\.(jpg|jpeg|png|pdf)$`
+- `PORTFOLIO_PHOTO_KEY_PATTERN` — `^users/[A-Za-z0-9_-]+/portfolio/[A-Za-z0-9-]+/[0-9a-f-]{36}\.(jpg|jpeg|png|webp)$`
+
+Si un módulo persiste `fileKey` recibido del cliente, lo valida primero con el pattern correspondiente. Sin match → `400 VALIDATION_ERROR`. Si el segmento `<userId>` no es del autenticado → `403 STORAGE_FORBIDDEN_KEY`.
+
+### 4.2 Reglas
+
+- Lint rule `no-restricted-syntax` rechaza `TemplateLiteral` que matchee `/^users\//` fuera de `storage-paths.ts` y sus tests (a implementar como follow-up; convención por revisión hasta entonces).
+- Cuando se agrega un nuevo tipo de archivo, **primero** se agrega su builder y su regex en `storage-paths.ts`, **después** se consume desde el módulo de negocio.
 
 ---
 
@@ -179,9 +196,11 @@ export default registerAs('storage', () => ({
 
 Toda operación destructiva sobre objetos del bucket (`deleteObject`, `deleteObjects`, list-y-delete masivo) que parte de un usuario autenticado **DEBE** ser interceptada por el `StorageService` y rechazada si el `key` no pertenece al usuario. Concretamente:
 
-- Si el `key` no empieza con `usr_<userId>/` → rechazar con `403 STORAGE_FORBIDDEN_KEY` y log estructurado en Pino con `op: 'storage.delete.forbidden'`, `userId`, `key` truncado.
+- Si el `key` no empieza con `userScope(userId)` (es decir `users/<userId>/`) → rechazar con `403 STORAGE_FORBIDDEN_KEY` y log estructurado en Pino con `op: 'storage.delete.forbidden'`, `userId`, `key` truncado.
 - Si el `key` no matchea el patrón canónico (regex de la sección 4) → rechazar con `400 VALIDATION_ERROR`.
-- Si el `key` matchea pero el `usr_<id>` no es el del autenticado → mismo `403 STORAGE_FORBIDDEN_KEY`.
+- Si el `key` matchea pero el `<userId>` no es el del autenticado → mismo `403 STORAGE_FORBIDDEN_KEY`.
+
+La validación es **delegada** al helper `assertKeyBelongsToUser(key, userId)` de `storage-paths.ts`. Ningún módulo replica la comparación `startsWith` manualmente.
 
 Este check aplica a `deleteObject`, `deleteObjects`, y a cualquier wrapper futuro de listado-y-delete masivo (p. ej. el `portfolio-cleanup` worker que borra por prefijo).
 
@@ -195,14 +214,14 @@ Las operaciones internas que corren con identidad de sistema (cleanup de soft-de
 
 ### 10.3 Emisión de URLs prefirmadas PUT
 
-El `key` lo genera siempre el backend a partir del `userId` del JWT. **NUNCA** se acepta un `key` enviado por el cliente al pedir una URL PUT (el cliente solo manda `fileType` y `ext`). Esto ya es la práctica desde la sección 4; queda explícito acá como regla de ownership.
+El `key` lo genera siempre el backend a partir del `userId` del JWT usando los builders de `storage-paths.ts`. **NUNCA** se acepta un `key` enviado por el cliente al pedir una URL PUT (el cliente solo manda `fileType` y `ext`). Esto queda explícito acá como regla de ownership.
 
 ### 10.4 Persistencia de `fileKey` recibido del cliente
 
 Cuando un módulo recibe un `fileKey` ya subido (porque el cliente completó el PUT y ahora persiste la referencia), el módulo **DEBE**:
 
-1. Validar regex contra el patrón canónico del tipo de archivo.
-2. Validar que el segmento `usr_<id>` coincide con `req.user.sub`.
+1. Validar el `fileKey` con el regex correspondiente exportado por `storage-paths.ts` (`KYC_KEY_PATTERN`, `PORTFOLIO_PHOTO_KEY_PATTERN`, etc.).
+2. Invocar `assertKeyBelongsToUser(fileKey, req.user.sub)`.
 3. Validar que el `fileKey` no esté ya persistido en otra fila (si el dominio lo requiere; p. ej. `PortfolioPhoto.fileKey` es `@unique`).
 
 Si alguna validación falla, `400 VALIDATION_ERROR` o `403 STORAGE_FORBIDDEN_KEY` según el caso.

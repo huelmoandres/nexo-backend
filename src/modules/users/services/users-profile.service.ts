@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -11,6 +10,7 @@ import { ProblemDetailTypeService } from '@common/problem-detail/problem-detail-
 import { usersConfig } from '@config/users.config';
 import type { IStorageService } from '@modules/storage/interfaces/storage.service.interface';
 import { STORAGE_SERVICE_TOKEN } from '@modules/storage/storage.constants';
+import { buildKycKey } from '@modules/storage/storage-paths';
 import type { CreateProfessionalProfileDto } from '../dto/create-professional-profile.dto';
 import type { PresignDocumentDto } from '../dto/presign-document.dto';
 import { PresignDocumentKind } from '../dto/presign-document.dto';
@@ -135,7 +135,19 @@ export class UsersProfileService {
     }
 
     const ext = (dto.fileExtension ?? 'jpg').toLowerCase();
-    const key = `users/${user.id}/kyc/${dto.documentKind}-${randomUUID()}.${ext}`;
+    let key: string;
+    try {
+      key = buildKycKey(user.id, dto.documentKind, ext);
+    } catch {
+      throw new BadRequestException({
+        type: this.problemDetailTypes.url('invalid-file-extension'),
+        title: 'Extensión de archivo inválida',
+        status: 400,
+        detail:
+          'Las extensiones permitidas para documentos KYC son: jpg, jpeg, png, pdf.',
+        code: 'KYC_INVALID_FILE_EXTENSION',
+      });
+    }
 
     const { uploadUrl } = await this.storage.generatePresignedPutUrl({
       key,
@@ -145,7 +157,7 @@ export class UsersProfileService {
           ? 'image/jpeg'
           : ext === 'png'
             ? 'image/png'
-            : 'application/octet-stream',
+            : 'application/pdf',
     });
 
     if (dto.documentKind === PresignDocumentKind.IDENTITY_CARD) {
