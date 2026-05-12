@@ -10,6 +10,7 @@ import { registerAs } from '@nestjs/config';
  *   - `R2_ENDPOINT`           — URL S3-compatible para R2 (no secreto).
  *   - `R2_ACCESS_KEY_ID`      — credencial (presencia se verifica, valor no se loguea).
  *   - `R2_SECRET_ACCESS_KEY`  — secreto; sólo se chequea presencia.
+ *   - `R2_BUCKET_PUBLIC`      — bucket público para fotos de perfil y portfolio.
  *   - `R2_BUCKET_KYC`         — bucket por defecto para KYC.
  *   - `STORAGE_PRESIGNED_URL_TTL` — TTL en segundos para URLs firmadas (default: 900).
  */
@@ -43,6 +44,13 @@ export const storageConfig = registerAs('storage', () => ({
   /** Indica si el `secretAccessKey` está configurado (para diagnóstico). */
   r2SecretKeyConfigured:
     (process.env['R2_SECRET_ACCESS_KEY'] ?? '').trim() !== '',
+
+  /**
+   * Bucket público para contenido de acceso irrestricto (fotos de perfil, portfolio).
+   * Los objetos en este bucket tienen URL pública permanente cacheable en CDN.
+   * NUNCA almacenar documentos KYC, evidencias o datos sensibles aquí.
+   */
+  r2BucketPublic: process.env['R2_BUCKET_PUBLIC'] ?? 'nexos-public',
 
   /** Bucket por defecto para verificaciones KYC. */
   r2BucketKyc: process.env['R2_BUCKET_KYC'] ?? 'nexos-kyc',

@@ -8,6 +8,7 @@ import { authConfig } from '@config/auth.config';
 import { categoriesConfig } from '@config/categories.config';
 import { diagnosticsConfig } from '@config/diagnostics.config';
 import { searchConfig } from '@config/search.config';
+import { portfolioConfig } from '@config/portfolio.config';
 import { storageConfig } from '@config/storage.config';
 import { usersConfig } from '@config/users.config';
 import { validateEnv } from '@config/env.validation';
@@ -28,6 +29,7 @@ import { UsersModule } from '@modules/users/users.module';
         appConfig,
         categoriesConfig,
         diagnosticsConfig,
+        portfolioConfig,
         searchConfig,
         storageConfig,
         usersConfig,

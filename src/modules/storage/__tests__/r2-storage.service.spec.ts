@@ -74,6 +74,7 @@ function buildConfig(
     r2SecretAccessKey: 'super-secret-key',
     r2AccessKeyConfigured: true,
     r2SecretKeyConfigured: true,
+    r2BucketPublic: 'nexos-public',
     r2BucketKyc: 'nexos-kyc',
     presignedUrlTtlSeconds: 900,
     ...overrides,

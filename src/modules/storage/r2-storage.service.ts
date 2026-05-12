@@ -1,6 +1,9 @@
 import {
+  ForbiddenException,
   Inject,
   Injectable,
+  Logger,
+  NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
@@ -10,6 +13,7 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { storageConfig } from '@config/storage.config';
@@ -26,6 +30,7 @@ import type {
  */
 @Injectable()
 export class R2StorageService implements IStorageService {
+  private readonly logger = new Logger(R2StorageService.name);
   private readonly client: S3Client;
   private readonly configured: boolean;
 
@@ -118,8 +123,98 @@ export class R2StorageService implements IStorageService {
   }
 
   /**
+   * Verifica que un objeto existe en el bucket usando `HeadObject`.
+   *
+   * Usado por el flujo de publicación del portfolio para confirmar que todas
+   * las fotos fueron subidas antes de marcar el item como PUBLISHED.
+   *
+   * @param key Identificador del objeto.
+   * @param bucket Bucket origen; si se omite usa `r2BucketKyc`.
+   * @throws NotFoundException Si el objeto no existe (404).
+   * @throws ServiceUnavailableException Si R2 no está configurado o devuelve 5xx.
+   */
+  async assertObjectExists(key: string, bucket?: string): Promise<void> {
+    this.assertConfigured();
+    const b = bucket ?? this.config.r2BucketKyc;
+    try {
+      await this.client.send(new HeadObjectCommand({ Bucket: b, Key: key }));
+    } catch (err) {
+      const code = (err as { name?: string })?.name;
+      if (code === 'NotFound' || code === '404' || code === 'NoSuchKey') {
+        throw new NotFoundException(
+          `Object not found in storage: ${key}`,
+        );
+      }
+      throw new ServiceUnavailableException(
+        `Storage HEAD check failed for key: ${key}`,
+      );
+    }
+  }
+
+  /**
+   * Elimina un objeto del bucket validando que el `key` pertenezca al usuario.
+   *
+   * @param key Objeto a eliminar. Debe empezar con `usr_<userId>/`.
+   * @param userId ID del usuario autenticado.
+   * @param bucket Bucket objetivo; si se omite usa `r2BucketKyc`.
+   * @throws ForbiddenException Si el key no pertenece al userId.
+   * @throws ServiceUnavailableException Si R2 no está configurado.
+   */
+  async deleteObjectForUser(
+    key: string,
+    userId: string,
+    bucket?: string,
+  ): Promise<void> {
+    if (!key.startsWith(`usr_${userId}/`)) {
+      this.logger.warn({
+        op: 'storage.delete.forbidden',
+        userId,
+        keyPrefix: key.slice(0, 40),
+      });
+      throw new ForbiddenException({
+        type: 'about:blank',
+        title: 'Forbidden',
+        status: 403,
+        code: 'STORAGE_FORBIDDEN_KEY',
+        detail: 'The storage key does not belong to the authenticated user.',
+      });
+    }
+    this.assertConfigured();
+    const b = bucket ?? this.config.r2BucketKyc;
+    await this.client.send(new DeleteObjectCommand({ Bucket: b, Key: key }));
+  }
+
+  /**
+   * Elimina un objeto del bucket sin validación de ownership.
+   * Reservado para operaciones internas de sistema (BullMQ workers, cleanup).
+   *
+   * @security-critical No exponer en endpoints HTTP de usuario.
+   *
+   * @param key Objeto a eliminar.
+   * @param bucket Bucket objetivo; si se omite usa `r2BucketKyc`.
+   * @param reason Motivo del borrado (obligatorio para auditoría).
+   * @throws ServiceUnavailableException Si R2 no está configurado.
+   */
+  async deleteObjectAsSystem(
+    key: string,
+    bucket: string | undefined,
+    reason: string,
+  ): Promise<void> {
+    this.assertConfigured();
+    this.logger.log({
+      op: 'storage.delete.system',
+      actor: 'system',
+      reason,
+      keyPrefix: key.slice(0, 40),
+    });
+    const b = bucket ?? this.config.r2BucketKyc;
+    await this.client.send(new DeleteObjectCommand({ Bucket: b, Key: key }));
+  }
+
+  /**
    * Elimina un objeto del bucket indicado.
    *
+   * @deprecated Usar `deleteObjectForUser` o `deleteObjectAsSystem` según contexto.
    * @param key Identificador del objeto.
    * @param bucket Bucket objetivo; si se omite usa `r2BucketKyc`.
    * @throws ServiceUnavailableException Si R2 no está configurado.
