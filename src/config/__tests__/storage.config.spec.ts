@@ -6,6 +6,7 @@ const KEYS = [
   'R2_ENDPOINT',
   'R2_ACCESS_KEY_ID',
   'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET_PUBLIC',
   'R2_BUCKET_KYC',
   'STORAGE_PRESIGNED_URL_TTL',
 ] as const;
@@ -39,6 +40,7 @@ describe('storageConfig', () => {
     expect(cfg.r2SecretAccessKey).toBe('');
     expect(cfg.r2AccessKeyConfigured).toBe(false);
     expect(cfg.r2SecretKeyConfigured).toBe(false);
+    expect(cfg.r2BucketPublic).toBe('nexos-public');
     expect(cfg.r2BucketKyc).toBe('nexos-kyc');
     expect(cfg.presignedUrlTtlSeconds).toBe(900);
   });
@@ -57,6 +59,7 @@ describe('storageConfig', () => {
     process.env['R2_ENDPOINT'] = 'https://custom.r2.example.com';
     process.env['R2_ACCESS_KEY_ID'] = 'AKIA...';
     process.env['R2_SECRET_ACCESS_KEY'] = 'super-secret';
+    process.env['R2_BUCKET_PUBLIC'] = 'my-public-bucket';
     process.env['R2_BUCKET_KYC'] = 'custom-kyc';
     process.env['STORAGE_PRESIGNED_URL_TTL'] = '1800';
 
@@ -67,6 +70,7 @@ describe('storageConfig', () => {
     expect(cfg.r2SecretAccessKey).toBe('super-secret');
     expect(cfg.r2AccessKeyConfigured).toBe(true);
     expect(cfg.r2SecretKeyConfigured).toBe(true);
+    expect(cfg.r2BucketPublic).toBe('my-public-bucket');
     expect(cfg.r2BucketKyc).toBe('custom-kyc');
     expect(cfg.presignedUrlTtlSeconds).toBe(1800);
   });

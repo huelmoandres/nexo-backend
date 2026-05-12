@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ServiceUnavailableException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import type { storageConfig } from '@config/storage.config';
 
@@ -36,6 +40,12 @@ const mocks = vi.hoisted(() => {
   ) {
     Object.assign(this as object, input as object);
   });
+  const MockHeadObjectCommand = vi.fn(function (
+    this: Record<string, unknown>,
+    input: unknown,
+  ) {
+    Object.assign(this as object, input as object);
+  });
   return {
     mockSend,
     mockGetSignedUrl,
@@ -44,6 +54,7 @@ const mocks = vi.hoisted(() => {
     MockGetObjectCommand,
     MockDeleteObjectCommand,
     MockHeadBucketCommand,
+    MockHeadObjectCommand,
   };
 });
 
@@ -53,6 +64,7 @@ vi.mock('@aws-sdk/client-s3', () => ({
   GetObjectCommand: mocks.MockGetObjectCommand,
   DeleteObjectCommand: mocks.MockDeleteObjectCommand,
   HeadBucketCommand: mocks.MockHeadBucketCommand,
+  HeadObjectCommand: mocks.MockHeadObjectCommand,
 }));
 
 vi.mock('@aws-sdk/s3-request-presigner', () => ({
@@ -232,6 +244,181 @@ describe('R2StorageService', () => {
       await expect(svc.deleteObject('x')).rejects.toThrow(
         ServiceUnavailableException,
       );
+    });
+  });
+
+  describe('assertObjectExists', () => {
+    it('resuelve sin error cuando HeadObject tiene éxito', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockResolvedValueOnce({});
+
+      await expect(
+        svc.assertObjectExists('usr_u1/portfolio/item1/a.jpg'),
+      ).resolves.toBeUndefined();
+
+      expect(mocks.MockHeadObjectCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ Key: 'usr_u1/portfolio/item1/a.jpg' }),
+      );
+    });
+
+    it('usa el bucket por defecto cuando no se especifica', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockResolvedValueOnce({});
+
+      await svc.assertObjectExists('some/key.jpg');
+
+      expect(mocks.MockHeadObjectCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ Bucket: 'nexos-kyc' }),
+      );
+    });
+
+    it('usa el bucket explícito cuando se especifica', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockResolvedValueOnce({});
+
+      await svc.assertObjectExists('some/key.jpg', 'nexos-public');
+
+      expect(mocks.MockHeadObjectCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ Bucket: 'nexos-public' }),
+      );
+    });
+
+    it('lanza NotFoundException cuando el objeto no existe (NotFound)', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockRejectedValueOnce({ name: 'NotFound' });
+
+      await expect(svc.assertObjectExists('missing.jpg')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('lanza NotFoundException cuando el objeto no existe (NoSuchKey)', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockRejectedValueOnce({ name: 'NoSuchKey' });
+
+      await expect(svc.assertObjectExists('missing.jpg')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('lanza NotFoundException cuando el objeto no existe (404)', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockRejectedValueOnce({ name: '404' });
+
+      await expect(svc.assertObjectExists('missing.jpg')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('lanza ServiceUnavailableException para errores distintos de 404', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockRejectedValueOnce({ name: 'InternalError' });
+
+      await expect(svc.assertObjectExists('key.jpg')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('lanza ServiceUnavailableException cuando no está configurado', async () => {
+      const svc = buildService(buildConfig({ r2Endpoint: '' }));
+
+      await expect(svc.assertObjectExists('key.jpg')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+  });
+
+  describe('deleteObjectForUser', () => {
+    it('elimina el objeto cuando el key pertenece al usuario', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockResolvedValueOnce({});
+
+      await expect(
+        svc.deleteObjectForUser(
+          'usr_user123/portfolio/item1/a.jpg',
+          'user123',
+          'nexos-public',
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(mocks.MockDeleteObjectCommand).toHaveBeenCalledWith({
+        Bucket: 'nexos-public',
+        Key: 'usr_user123/portfolio/item1/a.jpg',
+      });
+    });
+
+    it('usa el bucket por defecto cuando no se especifica', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockResolvedValueOnce({});
+
+      await svc.deleteObjectForUser('usr_u1/portfolio/i1/f.jpg', 'u1');
+
+      expect(mocks.MockDeleteObjectCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ Bucket: 'nexos-kyc' }),
+      );
+    });
+
+    it('lanza ForbiddenException cuando el key no pertenece al usuario', async () => {
+      const svc = buildService(buildConfig());
+
+      await expect(
+        svc.deleteObjectForUser('usr_OTRO/portfolio/item1/a.jpg', 'user123'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('lanza ForbiddenException cuando el key no empieza con usr_', async () => {
+      const svc = buildService(buildConfig());
+
+      await expect(
+        svc.deleteObjectForUser('public/some-file.jpg', 'user123'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('lanza ServiceUnavailableException cuando no está configurado', async () => {
+      const svc = buildService(buildConfig({ r2Endpoint: '' }));
+
+      await expect(
+        svc.deleteObjectForUser('usr_u1/portfolio/i/f.jpg', 'u1'),
+      ).rejects.toThrow(ServiceUnavailableException);
+    });
+  });
+
+  describe('deleteObjectAsSystem', () => {
+    it('elimina el objeto sin validar ownership y resuelve', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockResolvedValueOnce({});
+
+      await expect(
+        svc.deleteObjectAsSystem(
+          'usr_u1/portfolio/item1/a.jpg',
+          'nexos-public',
+          'portfolio-cleanup: soft-delete',
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(mocks.MockDeleteObjectCommand).toHaveBeenCalledWith({
+        Bucket: 'nexos-public',
+        Key: 'usr_u1/portfolio/item1/a.jpg',
+      });
+    });
+
+    it('usa bucket por defecto cuando se pasa undefined', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockResolvedValueOnce({});
+
+      await svc.deleteObjectAsSystem('key.jpg', undefined, 'cleanup');
+
+      expect(mocks.MockDeleteObjectCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ Bucket: 'nexos-kyc' }),
+      );
+    });
+
+    it('lanza ServiceUnavailableException cuando no está configurado', async () => {
+      const svc = buildService(buildConfig({ r2Endpoint: '' }));
+
+      await expect(
+        svc.deleteObjectAsSystem('key.jpg', undefined, 'cleanup'),
+      ).rejects.toThrow(ServiceUnavailableException);
     });
   });
 

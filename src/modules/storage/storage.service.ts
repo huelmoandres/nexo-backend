@@ -46,7 +46,7 @@ export class StorageService implements IStorageService {
   }
 
   /** {@inheritDoc IStorageService.deleteObjectForUser} */
-  deleteObjectForUser(
+  async deleteObjectForUser(
     key: string,
     userId: string,
     _bucket?: string,
@@ -65,11 +65,10 @@ export class StorageService implements IStorageService {
         detail: 'The storage key does not belong to the authenticated user.',
       });
     }
-    return Promise.resolve();
   }
 
   /** {@inheritDoc IStorageService.deleteObjectAsSystem} */
-  deleteObjectAsSystem(
+  async deleteObjectAsSystem(
     key: string,
     _bucket: string | undefined,
     reason: string,
@@ -80,7 +79,6 @@ export class StorageService implements IStorageService {
       reason,
       keyPrefix: key.slice(0, 40),
     });
-    return Promise.resolve();
   }
 
   /** {@inheritDoc IStorageService.deleteObject} */
