@@ -8,6 +8,7 @@ describe('PortfolioController', () => {
       createItem: vi.fn(),
       addPhoto: vi.fn(),
       deletePhoto: vi.fn(),
+      updateItem: vi.fn(),
     };
     return {
       controller: new PortfolioController(service as never),
@@ -68,6 +69,33 @@ describe('PortfolioController', () => {
       const result = await controller.addPhoto('sub-1', 'item-1', dto);
 
       expect(service.addPhoto).toHaveBeenCalledWith('sub-1', 'item-1', dto);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('PATCH /items/:id (updateItem)', () => {
+    it('delega en service.updateItem pasando sub, itemId y dto', async () => {
+      const { controller, service } = makeController();
+      const expected = {
+        id: 'item-1',
+        professionalId: 'prof-1',
+        categoryId: 'cat-2',
+        title: 'Editado',
+        description: 'Descripción editada con más de diez caracteres.',
+        status: PortfolioItemStatus.DRAFT,
+        jobId: null,
+        verifiedFromJob: false,
+        aiModerationStatus: AiModerationStatus.PENDING,
+        publishedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      service.updateItem.mockResolvedValue(expected);
+
+      const dto = { title: 'Editado', categoryId: 'cat-2' };
+      const result = await controller.updateItem('sub-1', 'item-1', dto);
+
+      expect(service.updateItem).toHaveBeenCalledWith('sub-1', 'item-1', dto);
       expect(result).toEqual(expected);
     });
   });

@@ -19,6 +19,7 @@ describe('PortfolioRepository', () => {
       portfolioItem: {
         create: vi.fn(),
         findFirst: vi.fn(),
+        update: vi.fn(),
       },
       portfolioPhoto: {
         count: vi.fn(),
@@ -405,6 +406,63 @@ describe('PortfolioRepository', () => {
       }
       expect(tx.portfolioPhoto.delete).not.toHaveBeenCalled();
       expect(tx.portfolioPhoto.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateItem', () => {
+    it('llama prisma.portfolioItem.update con id + data parcial', async () => {
+      const { repo, prisma } = makeRepo();
+      const updated = { id: 'item-1', title: 'X', categoryId: 'cat-2' };
+      prisma.portfolioItem.update.mockResolvedValue(updated);
+
+      const result = await repo.updateItem('item-1', 'prof-1', {
+        title: 'X',
+        categoryId: 'cat-2',
+      });
+
+      expect(prisma.portfolioItem.update).toHaveBeenCalledWith({
+        where: { id: 'item-1' },
+        data: { title: 'X', categoryId: 'cat-2' },
+      });
+      expect(result).toEqual(updated);
+    });
+
+    it('elimina claves undefined del payload (omite campos no provistos)', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.update.mockResolvedValue({ id: 'item-1' });
+
+      await repo.updateItem('item-1', 'prof-1', { title: 'X' });
+
+      expect(prisma.portfolioItem.update).toHaveBeenCalledWith({
+        where: { id: 'item-1' },
+        data: { title: 'X' },
+      });
+    });
+
+    it('actualiza solo description', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.update.mockResolvedValue({ id: 'item-1' });
+
+      await repo.updateItem('item-1', 'prof-1', {
+        description: 'Nueva descripción válida.',
+      });
+
+      expect(prisma.portfolioItem.update).toHaveBeenCalledWith({
+        where: { id: 'item-1' },
+        data: { description: 'Nueva descripción válida.' },
+      });
+    });
+
+    it('payload vacío llama update con data vacío', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.update.mockResolvedValue({ id: 'item-1' });
+
+      await repo.updateItem('item-1', 'prof-1', {});
+
+      expect(prisma.portfolioItem.update).toHaveBeenCalledWith({
+        where: { id: 'item-1' },
+        data: {},
+      });
     });
   });
 });

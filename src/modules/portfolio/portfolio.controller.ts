@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -27,6 +28,7 @@ import { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
 import { CreatePortfolioItemDto } from './dto/create-portfolio-item.dto';
 import { PortfolioItemResponseDto } from './dto/portfolio-item-response.dto';
 import { PortfolioPhotoResponseDto } from './dto/portfolio-photo-response.dto';
+import { UpdatePortfolioItemDto } from './dto/update-portfolio-item.dto';
 import { PortfolioService } from './portfolio.service';
 
 /**
@@ -81,6 +83,42 @@ export class PortfolioController {
     @Body() dto: CreatePortfolioItemDto,
   ): Promise<PortfolioItemResponseDto> {
     return this.portfolioService.createItem(sub, dto);
+  }
+
+  @Patch('items/:id')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('supabase-jwt')
+  @ApiOperation({
+    summary: 'Actualizar campos de un PortfolioItem',
+    description:
+      'Permite editar title, description y categoryId. Si el item está ' +
+      'verifiedFromJob=true, la categoría queda congelada (409 si difiere). ' +
+      'jobId NO es editable por API; protegido también a nivel DB por trigger.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Item actualizado',
+    type: PortfolioItemResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'PORTFOLIO_ITEM_NOT_FOUND o PORTFOLIO_CATEGORY_NOT_FOUND',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'PORTFOLIO_CATEGORY_FROZEN_POST_VERIFICATION',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  async updateItem(
+    @CurrentUser('sub') sub: string,
+    @Param('id', ParseUUIDPipe) itemId: string,
+    @Body() dto: UpdatePortfolioItemDto,
+  ): Promise<PortfolioItemResponseDto> {
+    return this.portfolioService.updateItem(sub, itemId, dto);
   }
 
   @Post('items/:id/photos')

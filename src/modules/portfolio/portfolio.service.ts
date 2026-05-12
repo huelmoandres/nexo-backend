@@ -21,6 +21,7 @@ import type { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
 import type { CreatePortfolioItemDto } from './dto/create-portfolio-item.dto';
 import type { PortfolioItemResponseDto } from './dto/portfolio-item-response.dto';
 import type { PortfolioPhotoResponseDto } from './dto/portfolio-photo-response.dto';
+import type { UpdatePortfolioItemDto } from './dto/update-portfolio-item.dto';
 import {
   PORTFOLIO_ERROR_CODES,
   PORTFOLIO_PROBLEM_SLUGS,
@@ -157,6 +158,83 @@ export class PortfolioService {
   }
 
   /**
+   * Actualiza campos parciales (`title`, `description`, `categoryId`) de
+   * un `PortfolioItem` del pro autenticado.
+   *
+   * Reglas:
+   * - Si el item está `verifiedFromJob = true` y `dto.categoryId` difiere
+   *   del actual, lanza `409 PORTFOLIO_CATEGORY_FROZEN_POST_VERIFICATION`.
+   *   La categoría queda congelada para preservar la semántica del badge.
+   * - Si `dto.categoryId` difiere y el item NO está verificado, valida
+   *   que la categoría exista (404 PORTFOLIO_CATEGORY_NOT_FOUND si no).
+   * - Si todos los campos del DTO son `undefined`, devuelve el item
+   *   actual sin tocar la DB (no-op idempotente).
+   * - `jobId` queda protegido por el trigger DB; este endpoint no lo
+   *   expone, así que el invariante se mantiene a nivel API.
+   *
+   * Re-moderación: si el item estaba `PUBLISHED` y se cambian campos
+   * de contenido, debería encolarse `portfolio-moderate`. La integración
+   * con BullMQ vive en un PR futuro; por ahora el método solo registra
+   * la intención.
+   */
+  async updateItem(
+    supabaseUid: string,
+    itemId: string,
+    dto: UpdatePortfolioItemDto,
+  ): Promise<PortfolioItemResponseDto> {
+    const professionalProfileId =
+      await this.resolveProfessionalProfileId(supabaseUid);
+
+    const item = await this.assertItemOwnedAndReturn(
+      itemId,
+      professionalProfileId,
+    );
+
+    if (
+      dto.categoryId !== undefined &&
+      dto.categoryId !== item.categoryId
+    ) {
+      if (item.verifiedFromJob) {
+        throw new ConflictException({
+          type: this.problemDetailTypes.url(
+            PORTFOLIO_PROBLEM_SLUGS.CATEGORY_FROZEN_POST_VERIFICATION,
+          ),
+          title: 'Categoría congelada post-verificación',
+          status: 409,
+          detail:
+            'La categoría no puede cambiarse en un item ya verificado por un cliente.',
+          code: PORTFOLIO_ERROR_CODES.CATEGORY_FROZEN_POST_VERIFICATION,
+        });
+      }
+      await this.assertCategoryExists(dto.categoryId);
+    }
+
+    const hasChanges =
+      dto.title !== undefined ||
+      dto.description !== undefined ||
+      dto.categoryId !== undefined;
+
+    if (!hasChanges) {
+      return this.toResponseDto(item);
+    }
+
+    const updated = await this.repository.updateItem(
+      itemId,
+      professionalProfileId,
+      {
+        ...(dto.title !== undefined ? { title: dto.title } : {}),
+        ...(dto.description !== undefined
+          ? { description: dto.description }
+          : {}),
+        ...(dto.categoryId !== undefined
+          ? { categoryId: dto.categoryId }
+          : {}),
+      },
+    );
+    return this.toResponseDto(updated);
+  }
+
+  /**
    * Borra una foto del item, compactando `displayOrder` en la misma
    * transacción Prisma (re-order atómico vía `decrement`).
    *
@@ -280,6 +358,13 @@ export class PortfolioService {
     itemId: string,
     professionalProfileId: string,
   ): Promise<void> {
+    await this.assertItemOwnedAndReturn(itemId, professionalProfileId);
+  }
+
+  private async assertItemOwnedAndReturn(
+    itemId: string,
+    professionalProfileId: string,
+  ): Promise<PortfolioItem> {
     const item = await this.repository.findItemForOwner(
       itemId,
       professionalProfileId,
@@ -295,6 +380,7 @@ export class PortfolioService {
         code: PORTFOLIO_ERROR_CODES.ITEM_NOT_FOUND,
       });
     }
+    return item;
   }
 
   private toPhotoResponseDto(photo: PortfolioPhoto): PortfolioPhotoResponseDto {

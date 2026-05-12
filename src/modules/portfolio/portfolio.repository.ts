@@ -176,6 +176,39 @@ export class PortfolioRepository {
   }
 
   /**
+   * Actualiza campos parciales de un `PortfolioItem`.
+   *
+   * Las validaciones de ownership y freeze-post-verification viven en el
+   * service: este método asume que ya pasaron. Solo aplica el `update`
+   * con los campos provistos (claves `undefined` se omiten).
+   *
+   * El trigger DB `portfolio_item_freeze_after_verification_trg` protege
+   * `jobId` (y `categoryId` a nivel storage) si `verifiedFromJob = true`,
+   * aunque el DTO público no expone `jobId`.
+   */
+  async updateItem(
+    itemId: string,
+    _professionalId: string,
+    data: {
+      title?: string;
+      description?: string;
+      categoryId?: string;
+    },
+  ): Promise<PortfolioItem> {
+    const cleaned: Record<string, unknown> = {};
+    if (data.title !== undefined) cleaned['title'] = data.title;
+    if (data.description !== undefined)
+      cleaned['description'] = data.description;
+    if (data.categoryId !== undefined)
+      cleaned['categoryId'] = data.categoryId;
+
+    return this.prisma.portfolioItem.update({
+      where: { id: itemId },
+      data: cleaned,
+    });
+  }
+
+  /**
    * Borra una foto y compacta los `displayOrder` posteriores en la misma
    * transacción para mantener el invariante "1..N sin huecos".
    *

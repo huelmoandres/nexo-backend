@@ -26,6 +26,7 @@ describe('PortfolioService', () => {
     findPhotoByFileKey: ReturnType<typeof vi.fn>;
     addPhotoWithReorder: ReturnType<typeof vi.fn>;
     deletePhotoWithReorder: ReturnType<typeof vi.fn>;
+    updateItem: ReturnType<typeof vi.fn>;
   };
 
   const makeService = (overrides: Partial<RepoMocks> = {}) => {
@@ -39,6 +40,7 @@ describe('PortfolioService', () => {
       findPhotoByFileKey: vi.fn(),
       addPhotoWithReorder: vi.fn(),
       deletePhotoWithReorder: vi.fn(),
+      updateItem: vi.fn(),
       ...overrides,
     };
     const config = { maxPhotosPerItem: 10 };
@@ -457,6 +459,148 @@ describe('PortfolioService', () => {
       await expect(
         service.deletePhoto('sub-1', 'item-1', 'photo-x'),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('updateItem', () => {
+    const baseUpdateState = (
+      itemOverrides: Record<string, unknown> = {},
+      extras: Partial<RepoMocks> = {},
+    ) =>
+      makeService({
+        findProfessionalBySupabaseUid: vi.fn().mockResolvedValue({
+          userId: 'user-1',
+          professionalProfileId: 'prof-1',
+        }),
+        findItemForOwner: vi.fn().mockResolvedValue({
+          id: 'item-1',
+          professionalId: 'prof-1',
+          categoryId: 'cat-1',
+          title: 'Original',
+          description: 'Descripción original con más de diez caracteres.',
+          status: PortfolioItemStatus.DRAFT,
+          jobId: null,
+          verifiedFromJob: false,
+          aiModerationStatus: AiModerationStatus.PENDING,
+          publishedAt: null,
+          createdAt: new Date('2026-05-01T00:00:00Z'),
+          updatedAt: new Date('2026-05-01T00:00:00Z'),
+          ...itemOverrides,
+        }),
+        findActiveCategoryById: vi
+          .fn()
+          .mockResolvedValue({ id: 'cat-2', name: 'Electricidad' }),
+        updateItem: vi.fn().mockImplementation((id, _prof, data) =>
+          Promise.resolve({
+            id,
+            professionalId: 'prof-1',
+            categoryId: data.categoryId ?? 'cat-1',
+            title: data.title ?? 'Original',
+            description:
+              data.description ??
+              'Descripción original con más de diez caracteres.',
+            status: PortfolioItemStatus.DRAFT,
+            jobId: null,
+            verifiedFromJob: itemOverrides.verifiedFromJob ?? false,
+            aiModerationStatus: AiModerationStatus.PENDING,
+            publishedAt: null,
+            createdAt: new Date('2026-05-01T00:00:00Z'),
+            updatedAt: new Date(),
+          }),
+        ),
+        ...extras,
+      });
+
+    it('happy path: actualiza title y description (no toca categoryId)', async () => {
+      const { service, repo } = baseUpdateState();
+
+      const result = await service.updateItem('sub-1', 'item-1', {
+        title: 'Nuevo título',
+        description: 'Nueva descripción con más de diez caracteres válidos.',
+      });
+
+      expect(repo.updateItem).toHaveBeenCalledWith('item-1', 'prof-1', {
+        title: 'Nuevo título',
+        description: 'Nueva descripción con más de diez caracteres válidos.',
+      });
+      expect(repo.findActiveCategoryById).not.toHaveBeenCalled();
+      expect(result.title).toBe('Nuevo título');
+    });
+
+    it('happy path: cambia categoryId cuando NO está verified (valida que existe)', async () => {
+      const { service, repo } = baseUpdateState();
+
+      await service.updateItem('sub-1', 'item-1', { categoryId: 'cat-2' });
+
+      expect(repo.findActiveCategoryById).toHaveBeenCalledWith('cat-2');
+      expect(repo.updateItem).toHaveBeenCalledWith('item-1', 'prof-1', {
+        categoryId: 'cat-2',
+      });
+    });
+
+    it('no llama findActiveCategoryById si categoryId enviado == actual', async () => {
+      const { service, repo } = baseUpdateState();
+
+      await service.updateItem('sub-1', 'item-1', { categoryId: 'cat-1' });
+
+      expect(repo.findActiveCategoryById).not.toHaveBeenCalled();
+    });
+
+    it('rechaza si verifiedFromJob=true y categoryId diferente al actual', async () => {
+      const { service } = baseUpdateState({ verifiedFromJob: true });
+
+      try {
+        await service.updateItem('sub-1', 'item-1', { categoryId: 'cat-2' });
+        expect.fail('debió lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ConflictException);
+        const body = (err as ConflictException).getResponse() as {
+          code: string;
+        };
+        expect(body.code).toBe('PORTFOLIO_CATEGORY_FROZEN_POST_VERIFICATION');
+      }
+    });
+
+    it('permite enviar categoryId == actual incluso si está verified (no-op idempotente)', async () => {
+      const { service, repo } = baseUpdateState({ verifiedFromJob: true });
+
+      await service.updateItem('sub-1', 'item-1', {
+        categoryId: 'cat-1',
+        title: 'editado',
+      });
+
+      expect(repo.updateItem).toHaveBeenCalled();
+    });
+
+    it('rechaza si la nueva categoría no existe (404)', async () => {
+      const { service } = baseUpdateState(
+        {},
+        { findActiveCategoryById: vi.fn().mockResolvedValue(null) },
+      );
+
+      await expect(
+        service.updateItem('sub-1', 'item-1', { categoryId: 'cat-x' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rechaza si el item no es del owner (404)', async () => {
+      const { service } = baseUpdateState(
+        {},
+        { findItemForOwner: vi.fn().mockResolvedValue(null) },
+      );
+
+      await expect(
+        service.updateItem('sub-1', 'item-x', { title: 'X' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('DTO vacío: no llama repo.updateItem y mapea el item actual', async () => {
+      const { service, repo } = baseUpdateState();
+
+      const result = await service.updateItem('sub-1', 'item-1', {});
+
+      expect(repo.updateItem).not.toHaveBeenCalled();
+      expect(result.id).toBe('item-1');
     });
   });
 });

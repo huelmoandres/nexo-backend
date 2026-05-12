@@ -16,6 +16,8 @@ export const PORTFOLIO_ERROR_CODES = {
   NOT_OWNER: 'PORTFOLIO_NOT_OWNER',
   FILEKEY_DUPLICATE: 'PORTFOLIO_FILEKEY_DUPLICATE',
   PHOTOS_LIMIT_REACHED: 'PORTFOLIO_PHOTOS_LIMIT_REACHED',
+  CATEGORY_FROZEN_POST_VERIFICATION:
+    'PORTFOLIO_CATEGORY_FROZEN_POST_VERIFICATION',
 } as const;
 
 /** Slugs URL para `ProblemDetailTypeService`. */
@@ -30,4 +32,6 @@ export const PORTFOLIO_PROBLEM_SLUGS = {
   NOT_OWNER: 'portfolio-not-owner',
   FILEKEY_DUPLICATE: 'portfolio-filekey-duplicate',
   PHOTOS_LIMIT_REACHED: 'portfolio-photos-limit-reached',
+  CATEGORY_FROZEN_POST_VERIFICATION:
+    'portfolio-category-frozen-post-verification',
 } as const;
