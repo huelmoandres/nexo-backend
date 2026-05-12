@@ -2,13 +2,11 @@ import { AuditAction } from '@prisma/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '@prisma/prisma.service';
 import { userFactory } from '@test/factories';
-import { createProblemDetailTypeMock } from '@test/mocks';
 import { AuthService } from '../auth.service';
 
 const FIXED_NOW = new Date('2026-01-15T12:00:00.000Z');
 const FIXED_NOW_SECONDS = Math.floor(FIXED_NOW.getTime() / 1000);
 
-const problemDetailTypes = createProblemDetailTypeMock();
 const makeAuthConfig = () => ({
   supabaseJwtSecret: '',
   supabaseUrl: '',
@@ -55,7 +53,6 @@ describe('AuthService', () => {
     const service = new AuthService(
       prismaMock,
       redisMock as never,
-      problemDetailTypes,
       makeAuthConfig(),
     );
     const result = await service.syncUser(
@@ -102,7 +99,6 @@ describe('AuthService', () => {
     const service = new AuthService(
       prismaMock,
       redisMock as never,
-      problemDetailTypes,
       makeAuthConfig(),
     );
     const result = await service.syncUser(
@@ -138,7 +134,6 @@ describe('AuthService', () => {
       const service = new AuthService(
         prismaMock,
         redisMock as never,
-        problemDetailTypes,
         makeAuthConfig(),
       );
       await service.logout('raw-token', { sub: 'supabase-1', exp });
@@ -168,7 +163,6 @@ describe('AuthService', () => {
       const service = new AuthService(
         prismaMock,
         redisMock as never,
-        problemDetailTypes,
         makeAuthConfig(),
       );
       await service.logout('raw-token', {
@@ -197,7 +191,6 @@ describe('AuthService', () => {
     const service = new AuthService(
       prismaMock,
       redisMock as never,
-      problemDetailTypes,
       makeAuthConfig(),
     );
 
@@ -225,7 +218,6 @@ describe('AuthService', () => {
     const service = new AuthService(
       prismaMock,
       redisMock as never,
-      problemDetailTypes,
       makeAuthConfig(),
     );
 
@@ -250,7 +242,6 @@ describe('AuthService', () => {
     const service = new AuthService(
       prismaMock,
       redisMock as never,
-      problemDetailTypes,
       makeAuthConfig(),
     );
 

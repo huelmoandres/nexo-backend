@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
-import { ProblemDetailTypeService } from '@common/problem-detail/problem-detail-type.service';
+import { buildProblem } from '@common/errors/problem.factory';
 import { usersConfig } from '@config/users.config';
 import type { IStorageService } from '@modules/storage/interfaces/storage.service.interface';
 import { STORAGE_SERVICE_TOKEN } from '@modules/storage/storage.constants';
@@ -31,7 +31,6 @@ export class UsersProfileService {
     private readonly usersRepository: UsersRepository,
     @Inject(STORAGE_SERVICE_TOKEN)
     private readonly storage: IStorageService,
-    private readonly problemDetailTypes: ProblemDetailTypeService,
     @Inject(usersConfig.KEY)
     private readonly config: ConfigType<typeof usersConfig>,
   ) {}
@@ -39,13 +38,12 @@ export class UsersProfileService {
   async getMe(supabaseUid: string): Promise<UserResponseDto> {
     const user = await this.usersRepository.findBySupabaseUidForMe(supabaseUid);
     if (!user) {
-      throw new NotFoundException({
-        type: this.problemDetailTypes.url('user-not-found'),
-        title: 'Usuario no encontrado',
-        status: 404,
-        detail: 'No existe un usuario sincronizado para este token.',
-        code: 'USER_NOT_FOUND',
-      });
+      throw new NotFoundException(
+        buildProblem(
+          'USER_NOT_FOUND',
+          'No existe un usuario sincronizado para este token.',
+        ),
+      );
     }
     return this.mapUserToResponse(user);
   }
@@ -56,37 +54,34 @@ export class UsersProfileService {
   ): Promise<ProfessionalProfileCreatedResponseDto> {
     const user = await this.usersRepository.findBySupabaseUidForMe(supabaseUid);
     if (!user) {
-      throw new NotFoundException({
-        type: this.problemDetailTypes.url('user-not-found'),
-        title: 'Usuario no encontrado',
-        status: 404,
-        detail: 'No existe un usuario sincronizado para este token.',
-        code: 'USER_NOT_FOUND',
-      });
+      throw new NotFoundException(
+        buildProblem(
+          'USER_NOT_FOUND',
+          'No existe un usuario sincronizado para este token.',
+        ),
+      );
     }
 
     const exists = await this.usersRepository.hasProfessionalProfile(user.id);
     if (exists) {
-      throw new ConflictException({
-        type: this.problemDetailTypes.url('professional-profile-exists'),
-        title: 'Perfil ya existente',
-        status: 409,
-        detail: 'Este usuario ya tiene un perfil profesional.',
-        code: 'PROFESSIONAL_PROFILE_EXISTS',
-      });
+      throw new ConflictException(
+        buildProblem(
+          'PROFESSIONAL_PROFILE_EXISTS',
+          'Este usuario ya tiene un perfil profesional.',
+        ),
+      );
     }
 
     const categoryCount = await this.usersRepository.countCategoriesByIds(
       dto.categoryIds,
     );
     if (categoryCount !== dto.categoryIds.length) {
-      throw new BadRequestException({
-        type: this.problemDetailTypes.url('category-not-found'),
-        title: 'Categoria invalida',
-        status: 400,
-        detail: 'Uno o mas categoryId no existen.',
-        code: 'CATEGORY_NOT_FOUND',
-      });
+      throw new BadRequestException(
+        buildProblem(
+          'INVALID_CATEGORY_IDS',
+          'Uno o mas categoryId no existen.',
+        ),
+      );
     }
 
     const profile =
@@ -115,23 +110,21 @@ export class UsersProfileService {
   ): Promise<PresignDocumentResponseDto> {
     const user = await this.usersRepository.findBySupabaseUidForMe(supabaseUid);
     if (!user) {
-      throw new NotFoundException({
-        type: this.problemDetailTypes.url('user-not-found'),
-        title: 'Usuario no encontrado',
-        status: 404,
-        detail: 'No existe un usuario sincronizado para este token.',
-        code: 'USER_NOT_FOUND',
-      });
+      throw new NotFoundException(
+        buildProblem(
+          'USER_NOT_FOUND',
+          'No existe un usuario sincronizado para este token.',
+        ),
+      );
     }
 
     if (!user.professionalProfile) {
-      throw new NotFoundException({
-        type: this.problemDetailTypes.url('professional-profile-not-found'),
-        title: 'Perfil profesional no encontrado',
-        status: 404,
-        detail: 'Debes crear tu perfil profesional antes de subir documentos.',
-        code: 'PROFESSIONAL_PROFILE_NOT_FOUND',
-      });
+      throw new NotFoundException(
+        buildProblem(
+          'PROFESSIONAL_PROFILE_NOT_FOUND',
+          'Debes crear tu perfil profesional antes de subir documentos.',
+        ),
+      );
     }
 
     const ext = (dto.fileExtension ?? 'jpg').toLowerCase();
@@ -139,14 +132,12 @@ export class UsersProfileService {
     try {
       key = buildKycKey(user.id, dto.documentKind, ext);
     } catch {
-      throw new BadRequestException({
-        type: this.problemDetailTypes.url('invalid-file-extension'),
-        title: 'Extensión de archivo inválida',
-        status: 400,
-        detail:
+      throw new BadRequestException(
+        buildProblem(
+          'KYC_INVALID_FILE_EXTENSION',
           'Las extensiones permitidas para documentos KYC son: jpg, jpeg, png, pdf.',
-        code: 'KYC_INVALID_FILE_EXTENSION',
-      });
+        ),
+      );
     }
 
     const { uploadUrl } = await this.storage.generatePresignedPutUrl({

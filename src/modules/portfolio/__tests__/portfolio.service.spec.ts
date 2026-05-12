@@ -10,12 +10,9 @@ import {
   AiModerationStatus,
 } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
-import { createProblemDetailTypeMock } from '@test/mocks';
 import { PortfolioService } from '../portfolio.service';
 
 describe('PortfolioService', () => {
-  const problemDetailTypes = createProblemDetailTypeMock();
-
   type RepoMocks = {
     findProfessionalBySupabaseUid: ReturnType<typeof vi.fn>;
     findActiveCategoryById: ReturnType<typeof vi.fn>;
@@ -94,7 +91,6 @@ describe('PortfolioService', () => {
     return {
       service: new PortfolioService(
         repo as never,
-        problemDetailTypes,
         config as never,
         cleanupQueue as never,
         storage as never,

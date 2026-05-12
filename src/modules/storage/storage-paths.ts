@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { buildProblem } from '@common/errors/problem.factory';
 
 /**
  * Helpers centralizados para construir y validar `key`s de object storage.
@@ -134,13 +135,12 @@ export function parseUserIdFromKey(key: string): string | null {
  */
 export function assertKeyBelongsToUser(key: string, userId: string): void {
   if (!key.startsWith(userScope(userId))) {
-    throw new ForbiddenException({
-      type: 'about:blank',
-      title: 'Forbidden',
-      status: 403,
-      code: 'STORAGE_FORBIDDEN_KEY',
-      detail: 'The storage key does not belong to the authenticated user.',
-    });
+    throw new ForbiddenException(
+      buildProblem(
+        'STORAGE_FORBIDDEN_KEY',
+        'The storage key does not belong to the authenticated user.',
+      ),
+    );
   }
 }
 

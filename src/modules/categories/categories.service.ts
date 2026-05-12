@@ -7,7 +7,7 @@ import {
 import { ConfigType } from '@nestjs/config';
 import type { Category } from '@prisma/client';
 import type Redis from 'ioredis';
-import { ProblemDetailTypeService } from '@common/problem-detail/problem-detail-type.service';
+import { buildProblem } from '@common/errors/problem.factory';
 import { categoriesConfig } from '@config/categories.config';
 import { REDIS_AUTH_CLIENT } from '@modules/auth/auth.constants';
 import type { CategoryResponseDto } from './dto/category-response.dto';
@@ -31,7 +31,6 @@ import { CategoriesRepository } from './categories.repository';
 export class CategoriesService {
   constructor(
     private readonly categoriesRepository: CategoriesRepository,
-    private readonly problemDetailTypes: ProblemDetailTypeService,
     @Inject(REDIS_AUTH_CLIENT) private readonly redis: Redis,
     @Inject(categoriesConfig.KEY)
     private readonly config: ConfigType<typeof categoriesConfig>,
@@ -102,13 +101,12 @@ export class CategoriesService {
     if (dto.slug !== undefined) {
       const existing = await this.categoriesRepository.findBySlug(dto.slug);
       if (existing && existing.id !== id) {
-        throw new ConflictException({
-          type: this.problemDetailTypes.url('category-slug-duplicate'),
-          title: 'Slug duplicado',
-          status: 409,
-          detail: `Ya existe una categoría con el slug "${dto.slug}".`,
-          code: 'CATEGORY_SLUG_DUPLICATE',
-        });
+        throw new ConflictException(
+          buildProblem(
+            'CATEGORY_SLUG_DUPLICATE',
+            `Ya existe una categoría con el slug "${dto.slug}".`,
+          ),
+        );
       }
     }
 
@@ -140,26 +138,24 @@ export class CategoriesService {
   private async assertSlugAvailable(slug: string): Promise<void> {
     const existing = await this.categoriesRepository.findBySlug(slug);
     if (existing) {
-      throw new ConflictException({
-        type: this.problemDetailTypes.url('category-slug-duplicate'),
-        title: 'Slug duplicado',
-        status: 409,
-        detail: `Ya existe una categoría con el slug "${slug}".`,
-        code: 'CATEGORY_SLUG_DUPLICATE',
-      });
+      throw new ConflictException(
+        buildProblem(
+          'CATEGORY_SLUG_DUPLICATE',
+          `Ya existe una categoría con el slug "${slug}".`,
+        ),
+      );
     }
   }
 
   private async assertCategoryExists(id: string): Promise<void> {
     const category = await this.categoriesRepository.findById(id);
     if (!category) {
-      throw new NotFoundException({
-        type: this.problemDetailTypes.url('category-not-found'),
-        title: 'Categoría no encontrada',
-        status: 404,
-        detail: `No existe una categoría activa con el ID "${id}".`,
-        code: 'CATEGORY_NOT_FOUND',
-      });
+      throw new NotFoundException(
+        buildProblem(
+          'CATEGORY_NOT_FOUND',
+          `No existe una categoría activa con el ID "${id}".`,
+        ),
+      );
     }
   }
 

@@ -3,7 +3,7 @@ import { ConfigType } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import * as jwt from 'jsonwebtoken';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { ProblemDetailTypeService } from '@common/problem-detail/problem-detail-type.service';
+import { buildProblem } from '@common/errors/problem.factory';
 import { authConfig } from '@config/auth.config';
 import { AuthenticatedUser } from '../interfaces/authenticated-user.interface';
 import { getJwksClient, resolveSupabaseJwksUri } from '../supabase-jwks.util';
@@ -91,7 +91,6 @@ export function createSupabaseJwtSecretProvider(
 export class SupabaseJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
     @Inject(authConfig.KEY) readonly config: ConfigType<typeof authConfig>,
-    private readonly problemDetailTypes: ProblemDetailTypeService,
   ) {
     if (!config.supabaseJwtSecret) {
       throw new Error('SUPABASE_JWT_SECRET is required');
@@ -116,13 +115,12 @@ export class SupabaseJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
    */
   validate(payload: AuthenticatedUser): AuthenticatedUser {
     if (!payload.sub) {
-      throw new UnauthorizedException({
-        type: this.problemDetailTypes.url('auth-invalid-token'),
-        title: 'Token inválido',
-        status: 401,
-        detail: 'El token no contiene el claim sub requerido.',
-        code: 'AUTH_INVALID_TOKEN',
-      });
+      throw new UnauthorizedException(
+        buildProblem(
+          'AUTH_INVALID_TOKEN',
+          'El token no contiene el claim sub requerido.',
+        ),
+      );
     }
 
     return payload;

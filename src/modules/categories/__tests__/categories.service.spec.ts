@@ -1,12 +1,9 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createProblemDetailTypeMock } from '@test/mocks';
 import { categoryFactory } from '@test/factories';
 import { CategoriesService } from '../categories.service';
 
 describe('CategoriesService', () => {
-  const problemDetailTypes = createProblemDetailTypeMock();
-
   const makeRedis = () => ({
     get: vi.fn().mockResolvedValue(null),
     setex: vi.fn().mockResolvedValue('OK'),
@@ -33,7 +30,6 @@ describe('CategoriesService', () => {
     const redis = { ...makeRedis(), ...redisOverrides };
     const service = new CategoriesService(
       repo as never,
-      problemDetailTypes,
       redis as never,
       makeCategoriesConfig(),
     );
@@ -151,7 +147,6 @@ describe('CategoriesService', () => {
       };
       const service = new CategoriesService(
         repo as never,
-        problemDetailTypes,
         redis as never,
         makeCategoriesConfig(),
       );

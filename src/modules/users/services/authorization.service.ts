@@ -7,7 +7,7 @@ import {
 import { ConfigType } from '@nestjs/config';
 import type { Role } from '@prisma/client';
 import { PrismaService } from '@prisma/prisma.service';
-import { ProblemDetailTypeService } from '@common/problem-detail/problem-detail-type.service';
+import { buildProblem } from '@common/errors/problem.factory';
 import { usersConfig } from '@config/users.config';
 
 type CachedRole = { role: Role; expiresAt: number };
@@ -18,7 +18,6 @@ export class AuthorizationService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly problemDetailTypes: ProblemDetailTypeService,
     @Inject(usersConfig.KEY)
     private readonly config: ConfigType<typeof usersConfig>,
   ) {}
@@ -28,24 +27,22 @@ export class AuthorizationService {
     requiredRoles: Role[],
   ): Promise<void> {
     if (!supabaseUid) {
-      throw new ForbiddenException({
-        type: this.problemDetailTypes.url('auth-insufficient-permissions'),
-        title: 'Permisos insuficientes',
-        status: 403,
-        detail: 'No se pudo determinar el usuario autenticado.',
-        code: 'AUTH_INSUFFICIENT_PERMISSIONS',
-      });
+      throw new ForbiddenException(
+        buildProblem(
+          'AUTH_INSUFFICIENT_PERMISSIONS',
+          'No se pudo determinar el usuario autenticado.',
+        ),
+      );
     }
 
     const role = await this.resolveRole(supabaseUid);
     if (!requiredRoles.includes(role)) {
-      throw new ForbiddenException({
-        type: this.problemDetailTypes.url('auth-insufficient-permissions'),
-        title: 'Permisos insuficientes',
-        status: 403,
-        detail: 'Tu rol no permite realizar esta accion.',
-        code: 'AUTH_INSUFFICIENT_PERMISSIONS',
-      });
+      throw new ForbiddenException(
+        buildProblem(
+          'AUTH_INSUFFICIENT_PERMISSIONS',
+          'Tu rol no permite realizar esta accion.',
+        ),
+      );
     }
   }
 
@@ -61,13 +58,12 @@ export class AuthorizationService {
       select: { role: true },
     });
     if (!user) {
-      throw new NotFoundException({
-        type: this.problemDetailTypes.url('user-not-found'),
-        title: 'Usuario no encontrado',
-        status: 404,
-        detail: 'No existe un usuario sincronizado para este token.',
-        code: 'USER_NOT_FOUND',
-      });
+      throw new NotFoundException(
+        buildProblem(
+          'USER_NOT_FOUND',
+          'No existe un usuario sincronizado para este token.',
+        ),
+      );
     }
 
     this.roleCache.set(supabaseUid, {

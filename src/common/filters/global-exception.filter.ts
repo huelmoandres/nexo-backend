@@ -10,6 +10,8 @@ import { ConfigType } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import * as Sentry from '@sentry/nestjs';
 import { ProblemDetail } from '@common/dto/problem-detail.dto';
+import { ERRORS } from '@common/errors/error-catalog';
+import type { ErrorCode } from '@common/errors/error-codes';
 import { ProblemDetailTypeService } from '@common/problem-detail/problem-detail-type.service';
 import { appConfig } from '@config/app.config';
 
@@ -97,12 +99,19 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           exception.message,
         );
 
+        const codeStr = payload.code ?? this.defaultCodeForStatus(status);
+        const catalogTitle =
+          codeStr in ERRORS
+            ? ERRORS[codeStr as keyof typeof ERRORS].title
+            : undefined;
+
         return {
-          type: payload.type ?? this.typeFromCode(payload.code, status),
-          title: payload.title ?? STATUS_TITLES[status] ?? 'Error',
+          type: payload.type ?? this.typeFromCode(codeStr, status),
+          title:
+            payload.title ?? catalogTitle ?? STATUS_TITLES[status] ?? 'Error',
           status,
           detail,
-          code: payload.code ?? this.defaultCodeForStatus(status),
+          code: codeStr,
           ...(payload.errors ? { errors: payload.errors } : {}),
         };
       }
@@ -119,8 +128,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const detail =
       exception instanceof Error ? exception.message : 'Unexpected error';
     return {
-      type: this.problemDetailTypes.url('internal-server-error'),
-      title: STATUS_TITLES[500],
+      type: this.problemDetailTypes.fromScreamingCode('INTERNAL_SERVER_ERROR'),
+      title: ERRORS.INTERNAL_SERVER_ERROR.title,
       status: 500,
       detail,
       code: 'INTERNAL_SERVER_ERROR',
@@ -138,7 +147,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     return fallback ?? 'Unexpected error';
   }
 
-  private defaultCodeForStatus(status: number): string {
+  private defaultCodeForStatus(status: number): ErrorCode {
     switch (status) {
       case 400:
         return 'BAD_REQUEST';
