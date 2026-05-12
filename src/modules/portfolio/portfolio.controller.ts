@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   HttpCode,
   HttpStatus,
   Param,
@@ -126,5 +127,33 @@ export class PortfolioController {
     @Body() dto: AddPortfolioPhotoDto,
   ): Promise<PortfolioPhotoResponseDto> {
     return this.portfolioService.addPhoto(sub, itemId, dto);
+  }
+
+  @Delete('items/:id/photos/:photoId')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth('supabase-jwt')
+  @ApiOperation({
+    summary: 'Borra una foto y compacta displayOrder atómicamente',
+    description:
+      'Delete + decrement de displayOrder de las posteriores corre dentro ' +
+      'de la misma prisma.$transaction(). El archivo físico en R2 se ' +
+      'limpiará por el job portfolio-cleanup en flujos futuros.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiParam({ name: 'photoId', format: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Foto eliminada' })
+  @ApiResponse({
+    status: 404,
+    description: 'PORTFOLIO_ITEM_NOT_FOUND o PORTFOLIO_PHOTO_NOT_FOUND',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  async deletePhoto(
+    @CurrentUser('sub') sub: string,
+    @Param('id', ParseUUIDPipe) itemId: string,
+    @Param('photoId', ParseUUIDPipe) photoId: string,
+  ): Promise<void> {
+    return this.portfolioService.deletePhoto(sub, itemId, photoId);
   }
 }

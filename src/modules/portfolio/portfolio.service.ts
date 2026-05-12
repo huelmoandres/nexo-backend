@@ -156,6 +156,31 @@ export class PortfolioService {
     return this.toPhotoResponseDto(photo);
   }
 
+  /**
+   * Borra una foto del item, compactando `displayOrder` en la misma
+   * transacción Prisma (re-order atómico vía `decrement`).
+   *
+   * Validaciones:
+   * - El item pertenece al pro autenticado (404 PORTFOLIO_ITEM_NOT_FOUND).
+   * - La foto pertenece al item (404 PORTFOLIO_PHOTO_NOT_FOUND, propagado
+   *   desde el repository dentro de la tx).
+   *
+   * El archivo físico en R2 NO se borra acá: vivirá hasta que el job
+   * `portfolio-cleanup` lo limpie tras soft-delete del item, o hasta
+   * que se incorpore un mini cleanup individual (PR futuro). El registro
+   * de DB sí se borra fuerte.
+   */
+  async deletePhoto(
+    supabaseUid: string,
+    itemId: string,
+    photoId: string,
+  ): Promise<void> {
+    const professionalProfileId =
+      await this.resolveProfessionalProfileId(supabaseUid);
+    await this.assertItemOwned(itemId, professionalProfileId);
+    await this.repository.deletePhotoWithReorder(itemId, photoId);
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------

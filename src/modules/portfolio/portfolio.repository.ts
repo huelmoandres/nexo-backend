@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import type {
   Category,
   Job,
@@ -171,6 +171,44 @@ export class PortfolioRepository {
           displayOrder: targetOrder,
           ...(input.caption !== undefined ? { caption: input.caption } : {}),
         },
+      });
+    });
+  }
+
+  /**
+   * Borra una foto y compacta los `displayOrder` posteriores en la misma
+   * transacción para mantener el invariante "1..N sin huecos".
+   *
+   * Si la foto no existe en el item indicado, lanza `NotFoundException`
+   * con `code: PORTFOLIO_PHOTO_NOT_FOUND` desde dentro de la transacción
+   * (ningún efecto se persiste).
+   */
+  async deletePhotoWithReorder(
+    portfolioItemId: string,
+    photoId: string,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const photo = await tx.portfolioPhoto.findFirst({
+        where: { id: photoId, portfolioItemId },
+        select: { id: true, displayOrder: true },
+      });
+      if (!photo) {
+        throw new NotFoundException({
+          type: 'about:blank',
+          title: 'Foto no encontrada',
+          status: 404,
+          detail: 'La foto no existe o no pertenece al item indicado.',
+          code: 'PORTFOLIO_PHOTO_NOT_FOUND',
+        });
+      }
+
+      await tx.portfolioPhoto.delete({ where: { id: photo.id } });
+      await tx.portfolioPhoto.updateMany({
+        where: {
+          portfolioItemId,
+          displayOrder: { gt: photo.displayOrder },
+        },
+        data: { displayOrder: { decrement: 1 } },
       });
     });
   }

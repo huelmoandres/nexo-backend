@@ -10,6 +10,7 @@ describe('PortfolioRepository', () => {
       aggregate: vi.fn(),
       updateMany: vi.fn(),
       create: vi.fn(),
+      delete: vi.fn(),
     };
     const prisma = {
       user: { findFirst: vi.fn() },
@@ -334,6 +335,75 @@ describe('PortfolioRepository', () => {
         displayOrder: 3,
       });
 
+      expect(tx.portfolioPhoto.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deletePhotoWithReorder', () => {
+    it('borra la foto y decrementa las posteriores en la misma tx', async () => {
+      const { repo, prisma, tx } = makeRepo();
+      tx.portfolioPhoto.findFirst.mockResolvedValue({
+        id: 'photo-2',
+        portfolioItemId: 'item-1',
+        displayOrder: 2,
+      });
+      tx.portfolioPhoto.delete.mockResolvedValue({ id: 'photo-2' });
+      tx.portfolioPhoto.updateMany.mockResolvedValue({ count: 3 });
+
+      await repo.deletePhotoWithReorder('item-1', 'photo-2');
+
+      expect(prisma.$transaction).toHaveBeenCalledOnce();
+      expect(tx.portfolioPhoto.findFirst).toHaveBeenCalledWith({
+        where: { id: 'photo-2', portfolioItemId: 'item-1' },
+        select: { id: true, displayOrder: true },
+      });
+      expect(tx.portfolioPhoto.delete).toHaveBeenCalledWith({
+        where: { id: 'photo-2' },
+      });
+      expect(tx.portfolioPhoto.updateMany).toHaveBeenCalledWith({
+        where: {
+          portfolioItemId: 'item-1',
+          displayOrder: { gt: 2 },
+        },
+        data: { displayOrder: { decrement: 1 } },
+      });
+    });
+
+    it('borrar la última foto: no updateMany', async () => {
+      const { repo, tx } = makeRepo();
+      tx.portfolioPhoto.findFirst.mockResolvedValue({
+        id: 'photo-5',
+        portfolioItemId: 'item-1',
+        displayOrder: 5,
+      });
+      tx.portfolioPhoto.delete.mockResolvedValue({ id: 'photo-5' });
+      tx.portfolioPhoto.updateMany.mockResolvedValue({ count: 0 });
+
+      await repo.deletePhotoWithReorder('item-1', 'photo-5');
+
+      // updateMany se llama aunque sea con count=0; lo que importa es la atomicidad
+      expect(tx.portfolioPhoto.delete).toHaveBeenCalled();
+      expect(tx.portfolioPhoto.updateMany).toHaveBeenCalled();
+    });
+
+    it('lanza NotFoundException si la foto no existe en el item', async () => {
+      const { repo, tx } = makeRepo();
+      tx.portfolioPhoto.findFirst.mockResolvedValue(null);
+
+      try {
+        await repo.deletePhotoWithReorder('item-1', 'photo-x');
+        expect.fail('debió lanzar');
+      } catch (err) {
+        const { NotFoundException } = await import('@nestjs/common');
+        expect(err).toBeInstanceOf(NotFoundException);
+        const body = (
+          err as InstanceType<typeof NotFoundException>
+        ).getResponse() as {
+          code: string;
+        };
+        expect(body.code).toBe('PORTFOLIO_PHOTO_NOT_FOUND');
+      }
+      expect(tx.portfolioPhoto.delete).not.toHaveBeenCalled();
       expect(tx.portfolioPhoto.updateMany).not.toHaveBeenCalled();
     });
   });

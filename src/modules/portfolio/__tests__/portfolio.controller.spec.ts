@@ -7,6 +7,7 @@ describe('PortfolioController', () => {
     const service = {
       createItem: vi.fn(),
       addPhoto: vi.fn(),
+      deletePhoto: vi.fn(),
     };
     return {
       controller: new PortfolioController(service as never),
@@ -68,6 +69,22 @@ describe('PortfolioController', () => {
 
       expect(service.addPhoto).toHaveBeenCalledWith('sub-1', 'item-1', dto);
       expect(result).toEqual(expected);
+    });
+  });
+
+  describe('DELETE /items/:id/photos/:photoId (deletePhoto)', () => {
+    it('delega y devuelve undefined (204)', async () => {
+      const { controller, service } = makeController();
+      service.deletePhoto.mockResolvedValue(undefined);
+
+      const result = await controller.deletePhoto('sub-1', 'item-1', 'photo-1');
+
+      expect(service.deletePhoto).toHaveBeenCalledWith(
+        'sub-1',
+        'item-1',
+        'photo-1',
+      );
+      expect(result).toBeUndefined();
     });
   });
 });

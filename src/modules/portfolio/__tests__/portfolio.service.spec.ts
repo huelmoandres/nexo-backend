@@ -25,6 +25,7 @@ describe('PortfolioService', () => {
     countPhotosByItemId: ReturnType<typeof vi.fn>;
     findPhotoByFileKey: ReturnType<typeof vi.fn>;
     addPhotoWithReorder: ReturnType<typeof vi.fn>;
+    deletePhotoWithReorder: ReturnType<typeof vi.fn>;
   };
 
   const makeService = (overrides: Partial<RepoMocks> = {}) => {
@@ -37,6 +38,7 @@ describe('PortfolioService', () => {
       countPhotosByItemId: vi.fn(),
       findPhotoByFileKey: vi.fn(),
       addPhotoWithReorder: vi.fn(),
+      deletePhotoWithReorder: vi.fn(),
       ...overrides,
     };
     const config = { maxPhotosPerItem: 10 };
@@ -401,6 +403,60 @@ describe('PortfolioService', () => {
         };
         expect(body.code).toBe('PORTFOLIO_PHOTOS_LIMIT_REACHED');
       }
+    });
+  });
+
+  describe('deletePhoto', () => {
+    const baseDeleteState = (extras: Partial<RepoMocks> = {}) =>
+      makeService({
+        findProfessionalBySupabaseUid: vi.fn().mockResolvedValue({
+          userId: 'user-1',
+          professionalProfileId: 'prof-1',
+        }),
+        findItemForOwner: vi
+          .fn()
+          .mockResolvedValue({ id: 'item-1', professionalId: 'prof-1' }),
+        deletePhotoWithReorder: vi.fn().mockResolvedValue(undefined),
+        ...extras,
+      });
+
+    it('happy path: delega al repo con itemId y photoId', async () => {
+      const { service, repo } = baseDeleteState();
+
+      await service.deletePhoto('sub-1', 'item-1', 'photo-1');
+
+      expect(repo.deletePhotoWithReorder).toHaveBeenCalledWith(
+        'item-1',
+        'photo-1',
+      );
+    });
+
+    it('rechaza si el item no pertenece al pro (PORTFOLIO_ITEM_NOT_FOUND)', async () => {
+      const { service, repo } = baseDeleteState({
+        findItemForOwner: vi.fn().mockResolvedValue(null),
+      });
+
+      await expect(
+        service.deletePhoto('sub-1', 'item-x', 'photo-1'),
+      ).rejects.toThrow(NotFoundException);
+      expect(repo.deletePhotoWithReorder).not.toHaveBeenCalled();
+    });
+
+    it('propaga NotFoundException del repo cuando la foto no existe', async () => {
+      const { service } = baseDeleteState({
+        deletePhotoWithReorder: vi.fn().mockRejectedValue(
+          new NotFoundException({
+            type: 'about:blank',
+            title: 'Photo not found',
+            status: 404,
+            code: 'PORTFOLIO_PHOTO_NOT_FOUND',
+          }),
+        ),
+      });
+
+      await expect(
+        service.deletePhoto('sub-1', 'item-1', 'photo-x'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });
