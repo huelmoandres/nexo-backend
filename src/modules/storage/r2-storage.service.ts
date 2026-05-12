@@ -141,9 +141,7 @@ export class R2StorageService implements IStorageService {
     } catch (err) {
       const code = (err as { name?: string })?.name;
       if (code === 'NotFound' || code === '404' || code === 'NoSuchKey') {
-        throw new NotFoundException(
-          `Object not found in storage: ${key}`,
-        );
+        throw new NotFoundException(`Object not found in storage: ${key}`);
       }
       throw new ServiceUnavailableException(
         `Storage HEAD check failed for key: ${key}`,
