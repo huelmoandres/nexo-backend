@@ -1,12 +1,26 @@
 import {
+  BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { JobStatus, type PortfolioItem } from '@prisma/client';
+import { ConfigType } from '@nestjs/config';
+import {
+  JobStatus,
+  type PortfolioItem,
+  type PortfolioPhoto,
+} from '@prisma/client';
 import { ProblemDetailTypeService } from '@common/problem-detail/problem-detail-type.service';
+import { portfolioConfig } from '@config/portfolio.config';
+import {
+  PORTFOLIO_PHOTO_KEY_PATTERN,
+  assertKeyBelongsToUser,
+} from '@modules/storage/storage-paths';
+import type { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
 import type { CreatePortfolioItemDto } from './dto/create-portfolio-item.dto';
 import type { PortfolioItemResponseDto } from './dto/portfolio-item-response.dto';
+import type { PortfolioPhotoResponseDto } from './dto/portfolio-photo-response.dto';
 import {
   PORTFOLIO_ERROR_CODES,
   PORTFOLIO_PROBLEM_SLUGS,
@@ -28,6 +42,8 @@ export class PortfolioService {
   constructor(
     private readonly repository: PortfolioRepository,
     private readonly problemDetailTypes: ProblemDetailTypeService,
+    @Inject(portfolioConfig.KEY)
+    private readonly config: ConfigType<typeof portfolioConfig>,
   ) {}
 
   /**
@@ -66,6 +82,78 @@ export class PortfolioService {
     });
 
     return this.toResponseDto(item);
+  }
+
+  /**
+   * Agrega una foto a un PortfolioItem.
+   *
+   * Validaciones encadenadas (fail-fast):
+   * 1. Item pertenece al pro autenticado (sino 404).
+   * 2. `fileKey` matchea regex canónica (segunda barrera: el DTO ya valida,
+   *    el service repite por defensa en profundidad).
+   * 3. `fileKey` pertenece al pro autenticado (`assertKeyBelongsToUser`).
+   * 4. `fileKey` no está ya persistido en DB (409 PORTFOLIO_FILEKEY_DUPLICATE).
+   * 5. El item no excede el límite de fotos (`maxPhotosPerItem` de config).
+   * 6. Inserta dentro de una transacción que decide `displayOrder` y shiftea
+   *    las posteriores si la posición es intermedia.
+   */
+  async addPhoto(
+    supabaseUid: string,
+    itemId: string,
+    dto: AddPortfolioPhotoDto,
+  ): Promise<PortfolioPhotoResponseDto> {
+    const professionalProfileId =
+      await this.resolveProfessionalProfileId(supabaseUid);
+
+    await this.assertItemOwned(itemId, professionalProfileId);
+
+    if (!PORTFOLIO_PHOTO_KEY_PATTERN.test(dto.fileKey)) {
+      throw new BadRequestException({
+        type: this.problemDetailTypes.url('validation-error'),
+        title: 'fileKey inválido',
+        status: 400,
+        detail: 'El fileKey no respeta la convención canónica de portfolio.',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    assertKeyBelongsToUser(dto.fileKey, professionalProfileId);
+
+    const existing = await this.repository.findPhotoByFileKey(dto.fileKey);
+    if (existing !== null) {
+      throw new ConflictException({
+        type: this.problemDetailTypes.url(
+          PORTFOLIO_PROBLEM_SLUGS.FILEKEY_DUPLICATE,
+        ),
+        title: 'fileKey duplicado',
+        status: 409,
+        detail: 'Esta foto ya fue registrada previamente.',
+        code: PORTFOLIO_ERROR_CODES.FILEKEY_DUPLICATE,
+      });
+    }
+
+    const currentCount = await this.repository.countPhotosByItemId(itemId);
+    if (currentCount >= this.config.maxPhotosPerItem) {
+      throw new ConflictException({
+        type: this.problemDetailTypes.url(
+          PORTFOLIO_PROBLEM_SLUGS.PHOTOS_LIMIT_REACHED,
+        ),
+        title: 'Límite de fotos alcanzado',
+        status: 409,
+        detail: `Máximo ${this.config.maxPhotosPerItem} fotos por item.`,
+        code: PORTFOLIO_ERROR_CODES.PHOTOS_LIMIT_REACHED,
+      });
+    }
+
+    const photo = await this.repository.addPhotoWithReorder({
+      portfolioItemId: itemId,
+      fileKey: dto.fileKey,
+      ...(dto.caption !== undefined ? { caption: dto.caption } : {}),
+      ...(dto.displayOrder !== undefined
+        ? { displayOrder: dto.displayOrder }
+        : {}),
+    });
+    return this.toPhotoResponseDto(photo);
   }
 
   // ---------------------------------------------------------------------------
@@ -161,6 +249,39 @@ export class PortfolioService {
         code: PORTFOLIO_ERROR_CODES.CATEGORY_MISMATCH_JOB,
       });
     }
+  }
+
+  private async assertItemOwned(
+    itemId: string,
+    professionalProfileId: string,
+  ): Promise<void> {
+    const item = await this.repository.findItemForOwner(
+      itemId,
+      professionalProfileId,
+    );
+    if (!item) {
+      throw new NotFoundException({
+        type: this.problemDetailTypes.url(
+          PORTFOLIO_PROBLEM_SLUGS.ITEM_NOT_FOUND,
+        ),
+        title: 'PortfolioItem no encontrado',
+        status: 404,
+        detail: 'El item no existe o no pertenece al pro autenticado.',
+        code: PORTFOLIO_ERROR_CODES.ITEM_NOT_FOUND,
+      });
+    }
+  }
+
+  private toPhotoResponseDto(photo: PortfolioPhoto): PortfolioPhotoResponseDto {
+    return {
+      id: photo.id,
+      portfolioItemId: photo.portfolioItemId,
+      fileKey: photo.fileKey,
+      caption: photo.caption,
+      displayOrder: photo.displayOrder,
+      aiFlagged: photo.aiFlagged,
+      createdAt: photo.createdAt,
+    };
   }
 
   private toResponseDto(item: PortfolioItem): PortfolioItemResponseDto {

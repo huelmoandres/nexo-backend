@@ -4,6 +4,13 @@ import { PortfolioRepository } from '../portfolio.repository';
 
 describe('PortfolioRepository', () => {
   const makeRepo = () => {
+    const portfolioPhotoTx = {
+      count: vi.fn(),
+      findFirst: vi.fn(),
+      aggregate: vi.fn(),
+      updateMany: vi.fn(),
+      create: vi.fn(),
+    };
     const prisma = {
       user: { findFirst: vi.fn() },
       category: { findFirst: vi.fn() },
@@ -12,8 +19,21 @@ describe('PortfolioRepository', () => {
         create: vi.fn(),
         findFirst: vi.fn(),
       },
+      portfolioPhoto: {
+        count: vi.fn(),
+        findFirst: vi.fn(),
+      },
+      $transaction: vi
+        .fn()
+        .mockImplementation((fn: (tx: unknown) => unknown) =>
+          Promise.resolve(fn({ portfolioPhoto: portfolioPhotoTx })),
+        ),
     };
-    return { repo: new PortfolioRepository(prisma as never), prisma };
+    return {
+      repo: new PortfolioRepository(prisma as never),
+      prisma,
+      tx: { portfolioPhoto: portfolioPhotoTx },
+    };
   };
 
   describe('findProfessionalBySupabaseUid', () => {
@@ -180,6 +200,141 @@ describe('PortfolioRepository', () => {
       const { repo, prisma } = makeRepo();
       prisma.portfolioItem.findFirst.mockResolvedValue(null);
       expect(await repo.findItemForOwner('item-x', 'prof-1')).toBeNull();
+    });
+  });
+
+  describe('countPhotosByItemId', () => {
+    it('cuenta por portfolioItemId', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioPhoto.count.mockResolvedValue(3);
+
+      const n = await repo.countPhotosByItemId('item-1');
+
+      expect(prisma.portfolioPhoto.count).toHaveBeenCalledWith({
+        where: { portfolioItemId: 'item-1' },
+      });
+      expect(n).toBe(3);
+    });
+  });
+
+  describe('findPhotoByFileKey', () => {
+    it('busca por fileKey unique', async () => {
+      const { repo, prisma } = makeRepo();
+      const photo = { id: 'photo-1' };
+      prisma.portfolioPhoto.findFirst.mockResolvedValue(photo);
+
+      const result = await repo.findPhotoByFileKey('users/x/portfolio/i/u.jpg');
+
+      expect(prisma.portfolioPhoto.findFirst).toHaveBeenCalledWith({
+        where: { fileKey: 'users/x/portfolio/i/u.jpg' },
+      });
+      expect(result).toEqual(photo);
+    });
+  });
+
+  describe('addPhotoWithReorder', () => {
+    it('asigna max+1 cuando displayOrder no se pasa (tx)', async () => {
+      const { repo, prisma, tx } = makeRepo();
+      tx.portfolioPhoto.aggregate.mockResolvedValue({
+        _max: { displayOrder: 4 },
+      });
+      tx.portfolioPhoto.create.mockResolvedValue({
+        id: 'photo-1',
+        displayOrder: 5,
+      });
+
+      const result = await repo.addPhotoWithReorder({
+        portfolioItemId: 'item-1',
+        fileKey: 'users/p/portfolio/item-1/u.webp',
+      });
+
+      expect(prisma.$transaction).toHaveBeenCalledOnce();
+      expect(tx.portfolioPhoto.aggregate).toHaveBeenCalledWith({
+        where: { portfolioItemId: 'item-1' },
+        _max: { displayOrder: true },
+      });
+      expect(tx.portfolioPhoto.updateMany).not.toHaveBeenCalled();
+      expect(tx.portfolioPhoto.create).toHaveBeenCalledWith({
+        data: {
+          portfolioItemId: 'item-1',
+          fileKey: 'users/p/portfolio/item-1/u.webp',
+          displayOrder: 5,
+        },
+      });
+      expect(result.displayOrder).toBe(5);
+    });
+
+    it('inserción intermedia: shift +1 atómico de las posteriores (tx)', async () => {
+      const { repo, tx } = makeRepo();
+      tx.portfolioPhoto.aggregate.mockResolvedValue({
+        _max: { displayOrder: 5 },
+      });
+      tx.portfolioPhoto.updateMany.mockResolvedValue({ count: 3 });
+      tx.portfolioPhoto.create.mockResolvedValue({
+        id: 'photo-1',
+        displayOrder: 3,
+      });
+
+      await repo.addPhotoWithReorder({
+        portfolioItemId: 'item-1',
+        fileKey: 'users/p/portfolio/item-1/u.webp',
+        displayOrder: 3,
+        caption: 'antes',
+      });
+
+      expect(tx.portfolioPhoto.updateMany).toHaveBeenCalledWith({
+        where: {
+          portfolioItemId: 'item-1',
+          displayOrder: { gte: 3 },
+        },
+        data: { displayOrder: { increment: 1 } },
+      });
+      expect(tx.portfolioPhoto.create).toHaveBeenCalledWith({
+        data: {
+          portfolioItemId: 'item-1',
+          fileKey: 'users/p/portfolio/item-1/u.webp',
+          displayOrder: 3,
+          caption: 'antes',
+        },
+      });
+    });
+
+    it('cuando _max es null (primera foto), asigna 1 sin shift', async () => {
+      const { repo, tx } = makeRepo();
+      tx.portfolioPhoto.aggregate.mockResolvedValue({
+        _max: { displayOrder: null },
+      });
+      tx.portfolioPhoto.create.mockResolvedValue({ id: 'p', displayOrder: 1 });
+
+      await repo.addPhotoWithReorder({
+        portfolioItemId: 'item-1',
+        fileKey: 'users/p/portfolio/item-1/u.webp',
+      });
+
+      expect(tx.portfolioPhoto.updateMany).not.toHaveBeenCalled();
+      expect(tx.portfolioPhoto.create).toHaveBeenCalledWith({
+        data: {
+          portfolioItemId: 'item-1',
+          fileKey: 'users/p/portfolio/item-1/u.webp',
+          displayOrder: 1,
+        },
+      });
+    });
+
+    it('displayOrder explícito al final (== max+1): no shift', async () => {
+      const { repo, tx } = makeRepo();
+      tx.portfolioPhoto.aggregate.mockResolvedValue({
+        _max: { displayOrder: 2 },
+      });
+      tx.portfolioPhoto.create.mockResolvedValue({ id: 'p', displayOrder: 3 });
+
+      await repo.addPhotoWithReorder({
+        portfolioItemId: 'item-1',
+        fileKey: 'users/p/portfolio/item-1/u.webp',
+        displayOrder: 3,
+      });
+
+      expect(tx.portfolioPhoto.updateMany).not.toHaveBeenCalled();
     });
   });
 });

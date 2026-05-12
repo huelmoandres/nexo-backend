@@ -6,6 +6,7 @@ describe('PortfolioController', () => {
   const makeController = () => {
     const service = {
       createItem: vi.fn(),
+      addPhoto: vi.fn(),
     };
     return {
       controller: new PortfolioController(service as never),
@@ -40,6 +41,32 @@ describe('PortfolioController', () => {
       const result = await controller.createItem('sub-1', dto);
 
       expect(service.createItem).toHaveBeenCalledWith('sub-1', dto);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('POST /items/:id/photos (addPhoto)', () => {
+    it('delega en service.addPhoto pasando sub, itemId y dto', async () => {
+      const { controller, service } = makeController();
+      const expected = {
+        id: 'photo-1',
+        portfolioItemId: 'item-1',
+        fileKey:
+          'users/p/portfolio/item-1/550e8400-e29b-41d4-a716-446655440000.webp',
+        caption: null,
+        displayOrder: 1,
+        aiFlagged: false,
+        createdAt: new Date(),
+      };
+      service.addPhoto.mockResolvedValue(expected);
+
+      const dto = {
+        fileKey:
+          'users/p/portfolio/item-1/550e8400-e29b-41d4-a716-446655440000.webp',
+      };
+      const result = await controller.addPhoto('sub-1', 'item-1', dto);
+
+      expect(service.addPhoto).toHaveBeenCalledWith('sub-1', 'item-1', dto);
       expect(result).toEqual(expected);
     });
   });

@@ -1,4 +1,9 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   JobStatus,
   PortfolioItemStatus,
@@ -17,6 +22,9 @@ describe('PortfolioService', () => {
     findJobForOwner: ReturnType<typeof vi.fn>;
     createItem: ReturnType<typeof vi.fn>;
     findItemForOwner: ReturnType<typeof vi.fn>;
+    countPhotosByItemId: ReturnType<typeof vi.fn>;
+    findPhotoByFileKey: ReturnType<typeof vi.fn>;
+    addPhotoWithReorder: ReturnType<typeof vi.fn>;
   };
 
   const makeService = (overrides: Partial<RepoMocks> = {}) => {
@@ -26,10 +34,18 @@ describe('PortfolioService', () => {
       findJobForOwner: vi.fn(),
       createItem: vi.fn(),
       findItemForOwner: vi.fn(),
+      countPhotosByItemId: vi.fn(),
+      findPhotoByFileKey: vi.fn(),
+      addPhotoWithReorder: vi.fn(),
       ...overrides,
     };
+    const config = { maxPhotosPerItem: 10 };
     return {
-      service: new PortfolioService(repo as never, problemDetailTypes),
+      service: new PortfolioService(
+        repo as never,
+        problemDetailTypes,
+        config as never,
+      ),
       repo,
     };
   };
@@ -246,6 +262,144 @@ describe('PortfolioService', () => {
           code: string;
         };
         expect(body.code).toBe('PORTFOLIO_CATEGORY_MISMATCH_JOB');
+      }
+    });
+  });
+
+  describe('addPhoto', () => {
+    const validFileKey =
+      'users/prof-1/portfolio/item-1/550e8400-e29b-41d4-a716-446655440000.webp';
+    const baseRepoState = (extras: Partial<RepoMocks> = {}) =>
+      makeService({
+        findProfessionalBySupabaseUid: vi.fn().mockResolvedValue({
+          userId: 'user-1',
+          professionalProfileId: 'prof-1',
+        }),
+        findItemForOwner: vi
+          .fn()
+          .mockResolvedValue({ id: 'item-1', professionalId: 'prof-1' }),
+        countPhotosByItemId: vi.fn().mockResolvedValue(0),
+        findPhotoByFileKey: vi.fn().mockResolvedValue(null),
+        addPhotoWithReorder: vi.fn().mockResolvedValue({
+          id: 'photo-1',
+          portfolioItemId: 'item-1',
+          fileKey: validFileKey,
+          caption: null,
+          displayOrder: 1,
+          aiFlagged: false,
+          createdAt: new Date('2026-05-01T00:00:00Z'),
+        }),
+        ...extras,
+      });
+
+    it('happy path: agrega foto sin displayOrder → mapea response DTO', async () => {
+      const { service, repo } = baseRepoState();
+
+      const result = await service.addPhoto('sub-1', 'item-1', {
+        fileKey: validFileKey,
+      });
+
+      expect(repo.addPhotoWithReorder).toHaveBeenCalledWith({
+        portfolioItemId: 'item-1',
+        fileKey: validFileKey,
+      });
+      expect(result.displayOrder).toBe(1);
+      expect(result.fileKey).toBe(validFileKey);
+    });
+
+    it('happy path con displayOrder y caption', async () => {
+      const { service, repo } = baseRepoState({
+        addPhotoWithReorder: vi.fn().mockResolvedValue({
+          id: 'photo-1',
+          portfolioItemId: 'item-1',
+          fileKey: validFileKey,
+          caption: 'Antes',
+          displayOrder: 3,
+          aiFlagged: false,
+          createdAt: new Date(),
+        }),
+      });
+
+      await service.addPhoto('sub-1', 'item-1', {
+        fileKey: validFileKey,
+        caption: 'Antes',
+        displayOrder: 3,
+      });
+
+      expect(repo.addPhotoWithReorder).toHaveBeenCalledWith({
+        portfolioItemId: 'item-1',
+        fileKey: validFileKey,
+        caption: 'Antes',
+        displayOrder: 3,
+      });
+    });
+
+    it('rechaza si el item no es del owner (PORTFOLIO_ITEM_NOT_FOUND)', async () => {
+      const { service } = baseRepoState({
+        findItemForOwner: vi.fn().mockResolvedValue(null),
+      });
+
+      await expect(
+        service.addPhoto('sub-1', 'item-x', { fileKey: validFileKey }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it(
+      'rechaza si el item es del owner pero NO se valida ownership del fileKey ' +
+        '(diferente prof) → 403 STORAGE_FORBIDDEN_KEY',
+      async () => {
+        const { service } = baseRepoState();
+        const otherKey =
+          'users/OTRO/portfolio/item-1/550e8400-e29b-41d4-a716-446655440000.webp';
+
+        await expect(
+          service.addPhoto('sub-1', 'item-1', { fileKey: otherKey }),
+        ).rejects.toThrow(ForbiddenException);
+      },
+    );
+
+    it('rechaza si fileKey no matchea regex (defensa en service además del DTO) → 400', async () => {
+      const { service } = baseRepoState();
+      // Key sintáctica válida del prefijo pero ext prohibida (pdf):
+      const badKey =
+        'users/prof-1/portfolio/item-1/550e8400-e29b-41d4-a716-446655440000.pdf';
+
+      await expect(
+        service.addPhoto('sub-1', 'item-1', { fileKey: badKey }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rechaza si el fileKey ya existe en DB (PORTFOLIO_FILEKEY_DUPLICATE)', async () => {
+      const { service } = baseRepoState({
+        findPhotoByFileKey: vi.fn().mockResolvedValue({ id: 'photo-otra' }),
+      });
+
+      try {
+        await service.addPhoto('sub-1', 'item-1', { fileKey: validFileKey });
+        expect.fail('debió lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ConflictException);
+        const body = (err as ConflictException).getResponse() as {
+          code: string;
+        };
+        expect(body.code).toBe('PORTFOLIO_FILEKEY_DUPLICATE');
+      }
+    });
+
+    it('rechaza si excede el límite de fotos (PORTFOLIO_PHOTOS_LIMIT_REACHED)', async () => {
+      const { service } = baseRepoState({
+        countPhotosByItemId: vi.fn().mockResolvedValue(10),
+      });
+
+      try {
+        await service.addPhoto('sub-1', 'item-1', { fileKey: validFileKey });
+        expect.fail('debió lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ConflictException);
+        const body = (err as ConflictException).getResponse() as {
+          code: string;
+        };
+        expect(body.code).toBe('PORTFOLIO_PHOTOS_LIMIT_REACHED');
       }
     });
   });

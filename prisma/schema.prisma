@@ -901,8 +901,9 @@ model PortfolioPhoto {
   portfolioItemId String
   portfolioItem   PortfolioItem @relation(fields: [portfolioItemId], references: [id])
 
-  /// Key R2/S3 con naming canónico: usr_<professionalId>/portfolio/<itemId>/<uuid>.<ext>
+  /// Key R2/S3 con naming canónico: users/<professionalId>/portfolio/<itemId>/<uuid>.<ext>
   /// Único globalmente para evitar colisiones de caché vs delete.
+  /// Construido y validado por src/modules/storage/storage-paths.ts.
   fileKey      String  @unique
   caption      String?
   /// Orden 1..N sin huecos. Re-orden atómico en transacción al borrar/insertar.
