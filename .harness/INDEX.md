@@ -13,6 +13,7 @@
 - [Logs y Auditoría](../docs/reference/logging-audit.md): Trazabilidad de Escrow.
 
 ## Reglas de Implementación (Restricciones del agente)
+- [Docs-First (doctrina de cambios)](rules/docs-first.md): la doc va antes del código; matriz de obligaciones, excepciones y checklist de PR.
 - [JWT y Supabase (HS256 + JWKS)](rules/auth-jwt.md): secreto, ES256, claim `iss`, `jwks-rsa` CommonJS, guard Passport.
 - [Reglas de API](rules/api-rules.md): RFC 7807, Pino, paginación obligatoria y DTOs.
 - [Reglas de Dinero](rules/money-rules.md): PostgreSQL ACID, prisma.$transaction() y State Machine del Escrow.
@@ -29,6 +30,7 @@
 - [Búsqueda y Matching](specs/search-matching.md): PostGIS, Score de Relevancia y filtros geoespaciales.
 - [Reseñas y Reputación](specs/reviews-reputation.md): Calificación multidimensional y Prueba Social.
 - [Chat y Mensajería](specs/chat-module.md): MongoDB, ciclo de vida y moderación preventiva de IA.
+- [Portfolio del Profesional](specs/portfolio-module.md): Vidriera pública con vínculo opcional a Job verificado, moderación IA híbrida y consentimiento del cliente.
 - [Gestión de Archivos](specs/storage-rules.md): S3/R2, URLs firmadas y clasificación de privacidad.
 - **Diagnostics** (código): comprobaciones de dependencias en arranque y reporte para `/health/ready` — `src/modules/diagnostics/`.
 
@@ -48,6 +50,7 @@
 - [Escrow Module Eval](evals/escrow-module-eval.md): Value Object Money, ACID, idempotencia y Audit Log.
 - [Dispute Module Eval](evals/dispute-module-eval.md): Evidencia Proactiva, Segunda Oportunidad y acceso SUPER_ADMIN.
 - [Search & Reviews Eval](evals/search-reviews-eval.md): Score de Relevancia, reseña multidimensional y Soft Delete.
+- [Portfolio Module Eval](evals/portfolio-module-eval.md): Inmutabilidad post-verificación, fail-closed IA, ownership de paths y privacidad PII.
 - [Global Tech Eval](evals/global-tech-eval.md): Path Aliases, Config Centralizada, RFC 7807, TypeScript Strict y límites de código.
 
 ## Estado del Proyecto

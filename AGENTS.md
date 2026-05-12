@@ -1,6 +1,6 @@
 # AGENTS.md — Nexos Backend (HRProgrammers)
 
-**Última revisión:** 2026-05-07  
+**Última revisión:** 2026-05-12  
 **Audiencia:** agentes de IA y desarrolladores que trabajan con Cursor / automatización.
 
 Este documento es la **entrada principal** para trabajar en el repositorio. Complementa [`.cursorrules`](.cursorrules) y el [Harness Index](.harness/INDEX.md).
@@ -20,6 +20,19 @@ Actuá como arquitecto de software senior: no inventar requisitos; seguir la doc
 3. **Seguridad / auditoría:** [docs/reference/security-roles.md](docs/reference/security-roles.md), [docs/reference/logging-audit.md](docs/reference/logging-audit.md) cuando apliquen roles, Escrow o dinero.
 4. **Módulo concreto:** spec en [`.harness/specs/`](.harness/specs/) correspondiente.
 5. **Luego** el código en `src/modules/<dominio>/`.
+
+---
+
+## Workflow Docs-First (regla doctrinal)
+
+**Regla permanente:** antes de **agregar, modificar o eliminar** un módulo o cualquier cosa documentada en el repo, se actualiza primero la documentación. La doc va siempre adelante del código.
+
+- **Agregar módulo:** crear `.harness/specs/<mod>-module.md` + `.harness/evals/<mod>-module-eval.md` y registrar en `INDEX.md` / `SESSION_STATE.md` antes del primer commit de código.
+- **Modificar módulo documentado:** actualizar el spec/eval/rules afectado **antes** de tocar `src/modules/<mod>/`.
+- **Eliminar / deprecar:** marcar deprecation en la doc, actualizar `SESSION_STATE.md` y solo después borrar código.
+- **Commit `docs(...)` siempre va antes** del `feat/refactor/fix` que implementa el cambio.
+
+Doctrina completa, excepciones y checklist de PR en [.harness/rules/docs-first.md](.harness/rules/docs-first.md).
 
 ---
 
@@ -59,6 +72,7 @@ Actuá como arquitecto de software senior: no inventar requisitos; seguir la doc
 |-----------|-----------|
 | Índice harness completo | [.harness/INDEX.md](.harness/INDEX.md) |
 | Estado del proyecto / sesión | [.harness/SESSION_STATE.md](.harness/SESSION_STATE.md) |
+| Workflow Docs-First | [.harness/rules/docs-first.md](.harness/rules/docs-first.md) |
 | Seeds y variables `SEED_*` | [.harness/specs/seeds.md](.harness/specs/seeds.md) |
 | Variables de entorno | [.env.example](.env.example) |
 | Tutorial local | [docs/tutorials/getting-started.md](docs/tutorials/getting-started.md) |
