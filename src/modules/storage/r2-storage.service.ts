@@ -15,6 +15,7 @@ import {
   HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { buildProblem } from '@common/errors/problem.factory';
 import { storageConfig } from '@config/storage.config';
 import type {
   IStorageService,
@@ -130,7 +131,7 @@ export class R2StorageService implements IStorageService {
    *
    * @param key Identificador del objeto.
    * @param bucket Bucket origen; si se omite usa `r2BucketKyc`.
-   * @throws NotFoundException Si el objeto no existe (404).
+   * @throws NotFoundException Con `code: STORAGE_OBJECT_NOT_FOUND` si el objeto no existe (404).
    * @throws ServiceUnavailableException Si R2 no está configurado o devuelve 5xx.
    */
   async assertObjectExists(key: string, bucket?: string): Promise<void> {
@@ -141,7 +142,12 @@ export class R2StorageService implements IStorageService {
     } catch (err) {
       const code = (err as { name?: string })?.name;
       if (code === 'NotFound' || code === '404' || code === 'NoSuchKey') {
-        throw new NotFoundException(`Object not found in storage: ${key}`);
+        throw new NotFoundException(
+          buildProblem(
+            'STORAGE_OBJECT_NOT_FOUND',
+            `El objeto no existe en storage: ${key}`,
+          ),
+        );
       }
       throw new ServiceUnavailableException(
         `Storage HEAD check failed for key: ${key}`,

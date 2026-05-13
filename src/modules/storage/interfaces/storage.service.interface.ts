@@ -48,7 +48,7 @@ export interface IStorageService {
    *
    * @param key - Identificador del objeto.
    * @param bucket - Cubeta opcional.
-   * @throws `NotFoundException` Si el objeto no existe (HTTP 404 en R2).
+   * @throws `NotFoundException` Con cuerpo RFC 7807 (`code: STORAGE_OBJECT_NOT_FOUND`) si el objeto no existe (HTTP 404 en R2).
    * @throws `ServiceUnavailableException` Si R2/S3 no responde o devuelve 5xx.
    */
   assertObjectExists(key: string, bucket?: string): Promise<void>;

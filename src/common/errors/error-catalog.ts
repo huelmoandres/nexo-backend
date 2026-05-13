@@ -128,6 +128,12 @@ export const ERRORS = {
     title: 'Acceso denegado al storage',
     slug: 'storage-forbidden-key',
   },
+  /** Objeto inexistente en R2 (HEAD/404 o equivalente S3). */
+  STORAGE_OBJECT_NOT_FOUND: {
+    status: 404,
+    title: 'Objeto no encontrado en storage',
+    slug: 'storage-object-not-found',
+  },
   PORTFOLIO_ITEM_NOT_FOUND: {
     status: 404,
     title: 'PortfolioItem no encontrado',

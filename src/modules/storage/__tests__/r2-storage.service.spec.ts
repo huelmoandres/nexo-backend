@@ -292,6 +292,22 @@ describe('R2StorageService', () => {
       );
     });
 
+    it('NotFoundException incluye code STORAGE_OBJECT_NOT_FOUND', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockRejectedValueOnce({ name: 'NotFound' });
+
+      try {
+        await svc.assertObjectExists('missing.jpg');
+        expect.fail('debería lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(NotFoundException);
+        const body = (err as NotFoundException).getResponse() as {
+          code?: string;
+        };
+        expect(body.code).toBe('STORAGE_OBJECT_NOT_FOUND');
+      }
+    });
+
     it('lanza NotFoundException cuando el objeto no existe (NoSuchKey)', async () => {
       const svc = buildService(buildConfig());
       mocks.mockSend.mockRejectedValueOnce({ name: 'NoSuchKey' });

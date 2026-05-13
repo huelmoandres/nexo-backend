@@ -135,6 +135,7 @@ Estos slugs son la **fuente de verdad**. Cualquier otro nombre de error para el 
 | `code` | HTTP | Cuándo usar |
 |--------|------|-------------|
 | `STORAGE_FORBIDDEN_KEY` | 403 | La clave R2 no pertenece al usuario o viola prefijos permitidos. |
+| `STORAGE_OBJECT_NOT_FOUND` | 404 | HEAD u operación equivalente: el objeto no existe en el bucket. |
 
 ## 2.5 Slugs canónicos — Portfolio
 
