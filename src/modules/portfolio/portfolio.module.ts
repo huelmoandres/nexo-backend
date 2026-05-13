@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigType } from '@nestjs/config';
 import Redis from 'ioredis';
 import { AuthModule } from '@modules/auth/auth.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { StorageModule } from '@modules/storage/storage.module';
 import { AuthorizationService } from '@modules/users/services/authorization.service';
 import { RolesGuard } from '@modules/users/guards/roles.guard';
@@ -17,6 +18,8 @@ import { PortfolioConsentController } from './portfolio-consent.controller';
 import { PortfolioController } from './portfolio.controller';
 import { PortfolioRepository } from './portfolio.repository';
 import { PortfolioService } from './portfolio.service';
+import { PortfolioConsentQueueBootstrap } from './queues/portfolio-consent-queue.bootstrap';
+import { PortfolioConsentQueueProcessor } from './queues/portfolio-consent-queue.processor';
 import {
   LoggingPortfolioCleanupQueue,
   PORTFOLIO_CLEANUP_QUEUE_TOKEN,
@@ -38,6 +41,7 @@ import { PortfolioBullInvariantService } from './services/portfolio-bull-invaria
   imports: [
     AuthModule,
     StorageModule,
+    NotificationsModule,
     ConfigModule,
     BullModule.registerQueue({ name: PORTFOLIO_CONSENT_REMINDER_QUEUE }),
     BullModule.registerQueue({ name: PORTFOLIO_CLEANUP_QUEUE }),
@@ -48,6 +52,8 @@ import { PortfolioBullInvariantService } from './services/portfolio-bull-invaria
     PortfolioService,
     PortfolioRepository,
     PortfolioBullInvariantService,
+    PortfolioConsentQueueProcessor,
+    PortfolioConsentQueueBootstrap,
     AuthorizationService,
     RolesGuard,
     PortfolioStorageCacheService,

@@ -18,6 +18,7 @@ import { CategoriesModule } from '@modules/categories/categories.module';
 import { DiagnosticsModule } from '@modules/diagnostics/diagnostics.module';
 import { SearchModule } from '@modules/search/search.module';
 import { HealthModule } from '@modules/health/health.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { PortfolioModule } from '@modules/portfolio/portfolio.module';
 import { StorageModule } from '@modules/storage/storage.module';
 import { UsersModule } from '@modules/users/users.module';
@@ -56,6 +57,7 @@ import { UsersModule } from '@modules/users/users.module';
     UsersModule,
     CategoriesModule,
     SearchModule,
+    NotificationsModule,
     PortfolioModule,
   ],
   providers: [GlobalExceptionFilter],
