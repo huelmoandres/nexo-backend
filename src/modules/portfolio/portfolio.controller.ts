@@ -35,6 +35,7 @@ import {
 } from './dto/paginated-portfolio-items.dto';
 import { PortfolioItemResponseDto } from './dto/portfolio-item-response.dto';
 import { PortfolioPhotoResponseDto } from './dto/portfolio-photo-response.dto';
+import { RequestVerificationResponseDto } from './dto/request-verification-response.dto';
 import { UpdatePortfolioItemDto } from './dto/update-portfolio-item.dto';
 import { PortfolioService } from './portfolio.service';
 
@@ -50,6 +51,7 @@ import { PortfolioService } from './portfolio.service';
   PortfolioPhotoResponseDto,
   PaginatedPortfolioItemsDto,
   PortfolioPaginationMeta,
+  RequestVerificationResponseDto,
   ProblemDetail,
 )
 @Controller('portfolio')
@@ -239,6 +241,46 @@ export class PortfolioController {
     @Param('id', ParseUUIDPipe) itemId: string,
   ): Promise<PortfolioItemResponseDto> {
     return this.portfolioService.publishItem(sub, itemId);
+  }
+
+  @Post('items/:id/request-verification')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiBearerAuth('supabase-jwt')
+  @ApiOperation({
+    summary: 'Solicitar verificación al cliente del Job',
+    description:
+      'Crea PortfolioConsent PENDING con token UUID y expiración configurable. ' +
+      'Requiere item PUBLISHED con jobId y Job CLOSED. Notificaciones y recordatorio BullMQ: PR futuro.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiResponse({
+    status: 201,
+    description: 'Consent creado',
+    type: RequestVerificationResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'PORTFOLIO_VERIFICATION_NOT_ELIGIBLE',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'PORTFOLIO_ITEM_NOT_FOUND',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'PORTFOLIO_CONSENT_EXISTS, PORTFOLIO_ALREADY_VERIFIED o PORTFOLIO_JOB_NOT_CLOSED',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  async requestVerification(
+    @CurrentUser('sub') sub: string,
+    @Param('id', ParseUUIDPipe) itemId: string,
+  ): Promise<RequestVerificationResponseDto> {
+    return this.portfolioService.requestVerification(sub, itemId);
   }
 
   @Delete('items/:id')

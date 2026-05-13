@@ -265,6 +265,7 @@ describe('GlobalExceptionFilter', () => {
     expect(filter.defaultCodeForStatus(409)).toBe('CONFLICT');
     expect(filter.defaultCodeForStatus(422)).toBe('UNPROCESSABLE_ENTITY');
     expect(filter.defaultCodeForStatus(503)).toBe('SERVICE_UNAVAILABLE');
+    expect(filter.defaultCodeForStatus(410)).toBe('GONE');
     expect(filter.defaultCodeForStatus(500)).toBe('INTERNAL_SERVER_ERROR');
     expect(filter.defaultCodeForStatus(418)).toBe('HTTP_ERROR');
     expect(filter.typeFromCode(undefined, 401)).toContain(

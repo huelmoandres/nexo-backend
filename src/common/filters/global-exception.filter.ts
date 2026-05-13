@@ -28,6 +28,7 @@ const STATUS_TITLES: Record<number, string> = {
   422: 'Entidad no procesable',
   500: 'Error interno del servidor',
   503: 'Servicio no disponible',
+  410: 'Ya no disponible',
 };
 
 /**
@@ -166,6 +167,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         return 'UNPROCESSABLE_ENTITY';
       case 503:
         return 'SERVICE_UNAVAILABLE';
+      case 410:
+        return 'GONE';
       default:
         return status >= 500 ? 'INTERNAL_SERVER_ERROR' : 'HTTP_ERROR';
     }

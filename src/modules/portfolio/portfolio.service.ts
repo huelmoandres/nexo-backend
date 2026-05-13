@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  GoneException,
   Inject,
   Injectable,
   NotFoundException,
@@ -8,11 +9,13 @@ import {
 } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import {
+  ConsentStatus,
   JobStatus,
   PortfolioItemStatus,
   type PortfolioItem,
   type PortfolioPhoto,
 } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import { IStorageService } from '@modules/storage/interfaces/storage.service.interface';
 import { STORAGE_SERVICE_TOKEN } from '@modules/storage/storage.constants';
 import { buildProblem } from '@common/errors/problem.factory';
@@ -22,7 +25,9 @@ import {
   assertKeyBelongsToUser,
 } from '@modules/storage/storage-paths';
 import type { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
+import type { ConsentPreviewResponseDto } from './dto/consent-preview-response.dto';
 import type { CreatePortfolioItemDto } from './dto/create-portfolio-item.dto';
+import type { DeclineConsentDto } from './dto/decline-consent.dto';
 import type { ListMyPortfolioQueryDto } from './dto/list-my-portfolio-query.dto';
 import type { PaginatedPortfolioItemsDto } from './dto/paginated-portfolio-items.dto';
 import type { PortfolioItemResponseDto } from './dto/portfolio-item-response.dto';
@@ -452,9 +457,180 @@ export class PortfolioService {
     await this.repository.deletePhotoWithReorder(itemId, photoId);
   }
 
+  /**
+   * Solicita verificación al cliente del Job (badge). Crea `PortfolioConsent`
+   * PENDING con token UUID. Notificación email/push y BullMQ reminder quedan
+   * para un PR posterior.
+   */
+  async requestVerification(
+    supabaseUid: string,
+    itemId: string,
+  ): Promise<{ token: string; expiresAt: Date }> {
+    const professionalProfileId =
+      await this.resolveProfessionalProfileId(supabaseUid);
+    const item = await this.assertItemOwnedAndReturn(
+      itemId,
+      professionalProfileId,
+    );
+
+    if (item.status !== PortfolioItemStatus.PUBLISHED) {
+      throw new BadRequestException(
+        buildProblem(
+          'PORTFOLIO_VERIFICATION_NOT_ELIGIBLE',
+          'Solo los items publicados pueden solicitar verificación.',
+        ),
+      );
+    }
+    if (!item.jobId) {
+      throw new BadRequestException(
+        buildProblem(
+          'PORTFOLIO_VERIFICATION_NOT_ELIGIBLE',
+          'El item debe tener un trabajo asociado.',
+        ),
+      );
+    }
+    if (item.verifiedFromJob) {
+      throw new ConflictException(
+        buildProblem(
+          'PORTFOLIO_ALREADY_VERIFIED',
+          'El item ya está verificado.',
+        ),
+      );
+    }
+
+    const existing = await this.repository.findConsentByPortfolioItemId(itemId);
+    if (existing) {
+      throw new ConflictException(
+        buildProblem(
+          'PORTFOLIO_CONSENT_EXISTS',
+          'Ya existe una solicitud de verificación para este item.',
+        ),
+      );
+    }
+
+    const job = await this.repository.findJobForVerification(
+      item.jobId,
+      professionalProfileId,
+    );
+    if (!job || job.status !== JobStatus.CLOSED) {
+      throw new ConflictException(
+        buildProblem(
+          'PORTFOLIO_JOB_NOT_CLOSED',
+          'El trabajo debe estar en estado CLOSED para solicitar verificación.',
+        ),
+      );
+    }
+
+    const token = randomUUID();
+    const ttlMs = this.config.consentTtlDays * 86_400_000;
+    const expiresAt = new Date(Date.now() + ttlMs);
+
+    await this.repository.createPortfolioConsent({
+      portfolioItemId: item.id,
+      jobId: job.id,
+      clientUserId: job.clientId,
+      token,
+      expiresAt,
+    });
+
+    return { token, expiresAt };
+  }
+
+  /** Preview público del consent (sin JWT). */
+  async getConsentPreview(token: string): Promise<ConsentPreviewResponseDto> {
+    const row = await this.repository.findConsentPreviewByToken(token);
+    if (!row) {
+      throw new NotFoundException(
+        buildProblem(
+          'CONSENT_TOKEN_NOT_FOUND',
+          'El enlace de consentimiento no es válido.',
+        ),
+      );
+    }
+    if (row.status !== ConsentStatus.PENDING) {
+      throw new GoneException(
+        buildProblem(
+          'CONSENT_ALREADY_RESOLVED',
+          'Este consentimiento ya fue respondido.',
+        ),
+      );
+    }
+    if (row.expiresAt <= new Date()) {
+      throw new GoneException(
+        buildProblem(
+          'CONSENT_TOKEN_EXPIRED',
+          'El enlace de consentimiento expiró.',
+        ),
+      );
+    }
+
+    const item = row.portfolioItem;
+    const job = item.job;
+    if (!job) {
+      throw new NotFoundException(
+        buildProblem(
+          'CONSENT_TOKEN_NOT_FOUND',
+          'Datos de consentimiento inconsistentes.',
+        ),
+      );
+    }
+
+    const fullName = item.professional.user.fullName ?? '';
+
+    return {
+      job: {
+        id: job.id,
+        title: job.title,
+        completedAt: job.completedAt,
+        category: job.category,
+      },
+      professionalDisplayName: this.formatProPublicName(fullName),
+      portfolioItemTitle: item.title,
+      portfolioItemDescription: item.description,
+      proposedCategory: item.category,
+      categoryCoincide: item.categoryId === job.categoryId,
+      photos: item.photos.map((p) => ({
+        id: p.id,
+        fileKey: p.fileKey,
+        caption: p.caption,
+        displayOrder: p.displayOrder,
+      })),
+    };
+  }
+
+  async acceptConsent(token: string): Promise<void> {
+    await this.repository.acceptPortfolioConsent(token);
+  }
+
+  async declineConsent(
+    token: string,
+    dto: DeclineConsentDto,
+    meta?: { ipAddress?: string; userAgent?: string },
+  ): Promise<void> {
+    await this.repository.declinePortfolioConsent(token, {
+      reason: dto.reason,
+      notes: dto.notes,
+      ipAddress: meta?.ipAddress,
+      userAgent: meta?.userAgent,
+    });
+  }
+
   // ---------------------------------------------------------------------------
-  // Helpers
+  // Helpers (resolución, ownership, presentación)
   // ---------------------------------------------------------------------------
+
+  private formatProPublicName(fullName: string): string {
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) {
+      return 'Profesional';
+    }
+    if (parts.length === 1) {
+      return parts[0];
+    }
+    const last = parts[parts.length - 1];
+    const initial = last[0] ? `${last[0].toUpperCase()}.` : '';
+    return `${parts[0]} ${initial}`.trim();
+  }
 
   private async resolveProfessionalProfileId(
     supabaseUid: string,

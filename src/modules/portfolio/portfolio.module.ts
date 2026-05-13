@@ -7,6 +7,7 @@ import { AuthorizationService } from '@modules/users/services/authorization.serv
 import { RolesGuard } from '@modules/users/guards/roles.guard';
 import { authConfig } from '@config/auth.config';
 import { PORTFOLIO_REDIS_CLIENT } from './portfolio.constants';
+import { PortfolioConsentController } from './portfolio-consent.controller';
 import { PortfolioController } from './portfolio.controller';
 import { PortfolioRepository } from './portfolio.repository';
 import { PortfolioService } from './portfolio.service';
@@ -28,7 +29,7 @@ import { PortfolioStorageCacheService } from './services/portfolio-storage-cache
  */
 @Module({
   imports: [AuthModule, StorageModule, ConfigModule],
-  controllers: [PortfolioController],
+  controllers: [PortfolioController, PortfolioConsentController],
   providers: [
     PortfolioService,
     PortfolioRepository,

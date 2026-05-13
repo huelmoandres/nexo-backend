@@ -327,6 +327,9 @@ Todos prefijados con `/api/portfolio` (prefix global del proyecto).
   4. Encola `portfolio-moderate` en BullMQ.
 
 #### F. Solicitar verificación al cliente
+
+> **Implementación (2026-05):** backend con creación de `PortfolioConsent`, preview/accept/decline y auditoría; **sin** envío de email/push ni job BullMQ de recordatorio (siguiente PR).
+
 - **Ruta:** `POST /portfolio/items/:id/request-verification`
 - **Pre-condición:** item con `jobId` seteado, status `PUBLISHED`, sin consent previo.
 - **Lógica:**
