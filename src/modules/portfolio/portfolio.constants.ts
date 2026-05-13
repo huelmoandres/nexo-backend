@@ -11,6 +11,12 @@ export const PORTFOLIO_REDIS_CLIENT = Symbol('PORTFOLIO_REDIS_CLIENT');
 /** Cola BullMQ: recordatorio de consentimiento de verificación (delay ~3 días). */
 export const PORTFOLIO_CONSENT_REMINDER_QUEUE = 'portfolio-consent-reminder';
 
+/** Nombre de job Bull: recordatorio puntual para un consentId. */
+export const PORTFOLIO_CONSENT_REMINDER_JOB = 'remind-consent';
+
+/** Nombre de job Bull: expiración horaria de consents PENDING vencidos. */
+export const PORTFOLIO_CONSENT_EXPIRE_CRON_JOB = 'expire-pending-consents';
+
 /** Cola BullMQ: borrado físico R2 tras soft-delete del item. */
 export const PORTFOLIO_CLEANUP_QUEUE = 'portfolio-cleanup';
 

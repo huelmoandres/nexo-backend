@@ -675,11 +675,11 @@ describe('PortfolioRepository', () => {
       });
     });
 
-    it('createPortfolioConsent delega a create', async () => {
+    it('createPortfolioConsent delega a create y devuelve id', async () => {
       const { repo, prisma } = makeConsentRepo();
-      prisma.portfolioConsent.create.mockResolvedValue({});
+      prisma.portfolioConsent.create.mockResolvedValue({ id: 'cc-1' });
 
-      await repo.createPortfolioConsent({
+      const result = await repo.createPortfolioConsent({
         portfolioItemId: 'item-1',
         jobId: 'job-1',
         clientUserId: 'c1',
@@ -687,6 +687,7 @@ describe('PortfolioRepository', () => {
         expiresAt: futureExpiry(),
       });
 
+      expect(result).toEqual({ id: 'cc-1' });
       expect(prisma.portfolioConsent.create).toHaveBeenCalledWith({
         data: {
           portfolioItemId: 'item-1',
@@ -695,6 +696,7 @@ describe('PortfolioRepository', () => {
           token: 'tok',
           expiresAt: expect.any(Date),
         },
+        select: { id: true },
       });
     });
 
@@ -716,11 +718,16 @@ describe('PortfolioRepository', () => {
       const { repo, prisma, tx } = makeConsentRepo();
       tx.portfolioConsent.findUnique.mockResolvedValue({
         id: 'cons-1',
+        jobId: 'job-1',
         status: ConsentStatus.PENDING,
         expiresAt: futureExpiry(),
         portfolioItemId: 'item-1',
         clientUserId: 'client-1',
-        portfolioItem: { id: 'item-1', verifiedFromJob: false },
+        portfolioItem: {
+          id: 'item-1',
+          verifiedFromJob: false,
+          professional: { userId: 'pro-user-1' },
+        },
       });
       tx.portfolioConsent.updateMany.mockResolvedValue({ count: 1 });
       tx.portfolioItem.updateMany.mockResolvedValue({ count: 1 });
@@ -728,9 +735,15 @@ describe('PortfolioRepository', () => {
         (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
       );
 
-      await repo.acceptPortfolioConsent('550e8400-e29b-41d4-a716-446655440000');
+      const meta = await repo.acceptPortfolioConsent(
+        '550e8400-e29b-41d4-a716-446655440000',
+      );
 
-      expect(tx.portfolioConsent.updateMany).toHaveBeenCalled();
+      expect(meta).toEqual({
+        professionalUserId: 'pro-user-1',
+        portfolioItemId: 'item-1',
+        jobId: 'job-1',
+      });
       expect(tx.portfolioItem.updateMany).toHaveBeenCalled();
       expect(tx.auditLog.create).toHaveBeenCalled();
       expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
@@ -754,11 +767,16 @@ describe('PortfolioRepository', () => {
       const { repo, prisma, tx } = makeConsentRepo();
       tx.portfolioConsent.findUnique.mockResolvedValue({
         id: 'cons-1',
+        jobId: 'job-1',
         status: ConsentStatus.ACCEPTED,
         expiresAt: futureExpiry(),
         portfolioItemId: 'item-1',
         clientUserId: 'c1',
-        portfolioItem: { id: 'item-1', verifiedFromJob: true },
+        portfolioItem: {
+          id: 'item-1',
+          verifiedFromJob: true,
+          professional: { userId: 'pro-user-1' },
+        },
       });
       prisma.$transaction.mockImplementation(
         (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
@@ -773,11 +791,16 @@ describe('PortfolioRepository', () => {
       const { repo, prisma, tx } = makeConsentRepo();
       tx.portfolioConsent.findUnique.mockResolvedValue({
         id: 'cons-1',
+        jobId: 'job-1',
         status: ConsentStatus.PENDING,
         expiresAt: pastExpiry(),
         portfolioItemId: 'item-1',
         clientUserId: 'c1',
-        portfolioItem: { id: 'item-1', verifiedFromJob: false },
+        portfolioItem: {
+          id: 'item-1',
+          verifiedFromJob: false,
+          professional: { userId: 'pro-user-1' },
+        },
       });
       prisma.$transaction.mockImplementation(
         (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
@@ -792,11 +815,16 @@ describe('PortfolioRepository', () => {
       const { repo, prisma, tx } = makeConsentRepo();
       tx.portfolioConsent.findUnique.mockResolvedValue({
         id: 'cons-1',
+        jobId: 'job-1',
         status: ConsentStatus.PENDING,
         expiresAt: futureExpiry(),
         portfolioItemId: 'item-1',
         clientUserId: 'c1',
-        portfolioItem: { id: 'item-1', verifiedFromJob: false },
+        portfolioItem: {
+          id: 'item-1',
+          verifiedFromJob: false,
+          professional: { userId: 'pro-user-1' },
+        },
       });
       tx.portfolioConsent.updateMany.mockResolvedValue({ count: 0 });
       prisma.$transaction.mockImplementation(
@@ -812,11 +840,16 @@ describe('PortfolioRepository', () => {
       const { repo, prisma, tx } = makeConsentRepo();
       tx.portfolioConsent.findUnique.mockResolvedValue({
         id: 'cons-1',
+        jobId: 'job-1',
         status: ConsentStatus.PENDING,
         expiresAt: futureExpiry(),
         portfolioItemId: 'item-1',
         clientUserId: 'c1',
-        portfolioItem: { id: 'item-1', verifiedFromJob: false },
+        portfolioItem: {
+          id: 'item-1',
+          verifiedFromJob: false,
+          professional: { userId: 'pro-user-1' },
+        },
       });
       tx.portfolioConsent.updateMany.mockResolvedValue({ count: 1 });
       tx.portfolioItem.updateMany.mockResolvedValue({ count: 0 });
@@ -833,21 +866,32 @@ describe('PortfolioRepository', () => {
       const { repo, prisma, tx } = makeConsentRepo();
       tx.portfolioConsent.findUnique.mockResolvedValue({
         id: 'cons-1',
+        jobId: 'job-1',
         status: ConsentStatus.PENDING,
         expiresAt: futureExpiry(),
         portfolioItemId: 'item-1',
         clientUserId: 'client-1',
-        portfolioItem: { id: 'item-1', status: PortfolioItemStatus.PUBLISHED },
+        portfolioItem: {
+          id: 'item-1',
+          status: PortfolioItemStatus.PUBLISHED,
+          professional: { userId: 'pro-user-1' },
+        },
       });
       tx.portfolioConsent.update.mockResolvedValue({});
       prisma.$transaction.mockImplementation(
         (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
       );
 
-      await repo.declinePortfolioConsent('tok', {
+      const meta = await repo.declinePortfolioConsent('tok', {
         reason: ConsentDeclineReason.NOT_MINE,
       });
 
+      expect(meta).toEqual({
+        professionalUserId: 'pro-user-1',
+        portfolioItemId: 'item-1',
+        jobId: 'job-1',
+        reason: ConsentDeclineReason.NOT_MINE,
+      });
       expect(tx.portfolioConsent.update).toHaveBeenCalled();
       expect(tx.portfolioItem.update).not.toHaveBeenCalled();
       expect(tx.auditLog.create).toHaveBeenCalled();
@@ -857,11 +901,16 @@ describe('PortfolioRepository', () => {
       const { repo, prisma, tx } = makeConsentRepo();
       tx.portfolioConsent.findUnique.mockResolvedValue({
         id: 'cons-1',
+        jobId: 'job-1',
         status: ConsentStatus.PENDING,
         expiresAt: futureExpiry(),
         portfolioItemId: 'item-1',
         clientUserId: 'client-1',
-        portfolioItem: { id: 'item-1', status: PortfolioItemStatus.PUBLISHED },
+        portfolioItem: {
+          id: 'item-1',
+          status: PortfolioItemStatus.PUBLISHED,
+          professional: { userId: 'pro-user-1' },
+        },
       });
       tx.portfolioConsent.update.mockResolvedValue({});
       prisma.$transaction.mockImplementation(
@@ -882,11 +931,16 @@ describe('PortfolioRepository', () => {
       const { repo, prisma, tx } = makeConsentRepo();
       tx.portfolioConsent.findUnique.mockResolvedValue({
         id: 'cons-1',
+        jobId: 'job-1',
         status: ConsentStatus.PENDING,
         expiresAt: futureExpiry(),
         portfolioItemId: 'item-1',
         clientUserId: 'client-1',
-        portfolioItem: { id: 'item-1', status: PortfolioItemStatus.PUBLISHED },
+        portfolioItem: {
+          id: 'item-1',
+          status: PortfolioItemStatus.PUBLISHED,
+          professional: { userId: 'pro-user-1' },
+        },
       });
       tx.portfolioConsent.update.mockResolvedValue({});
       prisma.$transaction.mockImplementation(
@@ -923,11 +977,16 @@ describe('PortfolioRepository', () => {
       const { repo, prisma, tx } = makeConsentRepo();
       tx.portfolioConsent.findUnique.mockResolvedValue({
         id: 'cons-1',
+        jobId: 'job-1',
         status: ConsentStatus.DECLINED,
         expiresAt: futureExpiry(),
         portfolioItemId: 'item-1',
         clientUserId: 'c1',
-        portfolioItem: { id: 'item-1', status: PortfolioItemStatus.PUBLISHED },
+        portfolioItem: {
+          id: 'item-1',
+          status: PortfolioItemStatus.PUBLISHED,
+          professional: { userId: 'pro-user-1' },
+        },
       });
       prisma.$transaction.mockImplementation(
         (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
@@ -944,11 +1003,16 @@ describe('PortfolioRepository', () => {
       const { repo, prisma, tx } = makeConsentRepo();
       tx.portfolioConsent.findUnique.mockResolvedValue({
         id: 'cons-1',
+        jobId: 'job-1',
         status: ConsentStatus.PENDING,
         expiresAt: pastExpiry(),
         portfolioItemId: 'item-1',
         clientUserId: 'c1',
-        portfolioItem: { id: 'item-1', status: PortfolioItemStatus.PUBLISHED },
+        portfolioItem: {
+          id: 'item-1',
+          status: PortfolioItemStatus.PUBLISHED,
+          professional: { userId: 'pro-user-1' },
+        },
       });
       prisma.$transaction.mockImplementation(
         (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
@@ -965,11 +1029,16 @@ describe('PortfolioRepository', () => {
       const { repo, prisma, tx } = makeConsentRepo();
       tx.portfolioConsent.findUnique.mockResolvedValue({
         id: 'cons-1',
+        jobId: 'job-1',
         status: ConsentStatus.PENDING,
         expiresAt: futureExpiry(),
         portfolioItemId: 'item-1',
         clientUserId: 'client-1',
-        portfolioItem: { id: 'item-1', status: PortfolioItemStatus.PUBLISHED },
+        portfolioItem: {
+          id: 'item-1',
+          status: PortfolioItemStatus.PUBLISHED,
+          professional: { userId: 'pro-user-1' },
+        },
       });
       tx.portfolioConsent.update.mockResolvedValue({});
       prisma.$transaction.mockImplementation(

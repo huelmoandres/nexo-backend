@@ -13,6 +13,7 @@ import {
   PortfolioItemStatus,
 } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
+import { PORTFOLIO_CONSENT_REMINDER_JOB } from '../portfolio.constants';
 import { PortfolioService } from '../portfolio.service';
 
 describe('PortfolioService', () => {
@@ -39,6 +40,13 @@ describe('PortfolioService', () => {
     listByProfessional: ReturnType<typeof vi.fn>;
   };
   type QueueMock = { enqueue: ReturnType<typeof vi.fn> };
+  type ConsentReminderQueueMock = { add: ReturnType<typeof vi.fn> };
+  type NotificationsMock = {
+    notifyPortfolioConsentRequested: ReturnType<typeof vi.fn>;
+    notifyPortfolioConsentReminder: ReturnType<typeof vi.fn>;
+    notifyProfessionalConsentAccepted: ReturnType<typeof vi.fn>;
+    notifyProfessionalConsentDeclined: ReturnType<typeof vi.fn>;
+  };
   type StorageMock = { assertObjectExists: ReturnType<typeof vi.fn> };
   type CacheMock = {
     isExistsCached: ReturnType<typeof vi.fn>;
@@ -49,7 +57,9 @@ describe('PortfolioService', () => {
   const makeService = (
     overrides: Partial<RepoMocks> = {},
     deps: {
-      queue?: QueueMock;
+      cleanupQueue?: QueueMock;
+      consentReminderQueue?: ConsentReminderQueueMock;
+      notifications?: Partial<NotificationsMock>;
       storage?: StorageMock;
       cache?: CacheMock;
       moderation?: ModerationMock;
@@ -57,6 +67,7 @@ describe('PortfolioService', () => {
         maxPhotosPerItem: number;
         photosHeadTimeoutMs: number;
         consentTtlDays: number;
+        reminderDelayDays: number;
       }>;
     } = {},
   ) => {
@@ -68,10 +79,19 @@ describe('PortfolioService', () => {
       createItem: vi.fn(),
       findItemForOwner: vi.fn(),
       findConsentByPortfolioItemId: vi.fn(),
-      createPortfolioConsent: vi.fn().mockResolvedValue(undefined),
+      createPortfolioConsent: vi.fn().mockResolvedValue({ id: 'consent-1' }),
       findConsentPreviewByToken: vi.fn(),
-      acceptPortfolioConsent: vi.fn().mockResolvedValue(undefined),
-      declinePortfolioConsent: vi.fn().mockResolvedValue(undefined),
+      acceptPortfolioConsent: vi.fn().mockResolvedValue({
+        professionalUserId: 'pro-user-1',
+        portfolioItemId: 'item-1',
+        jobId: 'job-1',
+      }),
+      declinePortfolioConsent: vi.fn().mockResolvedValue({
+        professionalUserId: 'pro-user-1',
+        portfolioItemId: 'item-1',
+        jobId: 'job-1',
+        reason: ConsentDeclineReason.OTHER,
+      }),
       countPhotosByItemId: vi.fn(),
       findPhotoByFileKey: vi.fn(),
       addPhotoWithReorder: vi.fn(),
@@ -87,9 +107,10 @@ describe('PortfolioService', () => {
       maxPhotosPerItem: 10,
       photosHeadTimeoutMs: 2000,
       consentTtlDays: 14,
+      reminderDelayDays: 3,
       ...(deps.configOverrides ?? {}),
     };
-    const cleanupQueue: QueueMock = deps.queue ?? {
+    const cleanupQueue: QueueMock = deps.cleanupQueue ?? {
       enqueue: vi.fn().mockResolvedValue(undefined),
     };
     const storage: StorageMock = deps.storage ?? {
@@ -105,6 +126,17 @@ describe('PortfolioService', () => {
         modelRef: 'stub:none:v0',
       }),
     };
+    const consentReminderQueue: ConsentReminderQueueMock =
+      deps.consentReminderQueue ?? {
+        add: vi.fn().mockResolvedValue(undefined),
+      };
+    const notifications: NotificationsMock = {
+      notifyPortfolioConsentRequested: vi.fn().mockResolvedValue(undefined),
+      notifyPortfolioConsentReminder: vi.fn().mockResolvedValue(undefined),
+      notifyProfessionalConsentAccepted: vi.fn().mockResolvedValue(undefined),
+      notifyProfessionalConsentDeclined: vi.fn().mockResolvedValue(undefined),
+      ...deps.notifications,
+    };
     return {
       service: new PortfolioService(
         repo as never,
@@ -113,12 +145,16 @@ describe('PortfolioService', () => {
         storage as never,
         cache as never,
         moderation as never,
+        consentReminderQueue as never,
+        notifications as never,
       ),
       repo,
       cleanupQueue,
       storage,
       cache,
       moderation,
+      consentReminderQueue,
+      notifications,
     };
   };
 
@@ -1025,21 +1061,26 @@ describe('PortfolioService', () => {
         status: PortfolioItemStatus.PUBLISHED,
         jobId: 'job-1',
       };
-      const { service, repo } = makeService({
-        findProfessionalBySupabaseUid: vi
-          .fn()
-          .mockResolvedValue({ userId: 'u1', professionalProfileId: 'prof-1' }),
-        findItemForOwner: vi.fn().mockResolvedValue(published),
-        findConsentByPortfolioItemId: vi.fn().mockResolvedValue(null),
-        findJobForVerification: vi.fn().mockResolvedValue({
-          id: 'job-1',
-          status: JobStatus.CLOSED,
-          clientId: 'client-user-1',
-          title: 'Obra terminada',
-          completedAt: new Date('2026-01-01'),
-          categoryId: 'cat-1',
-        }),
-      });
+      const { service, repo, consentReminderQueue, notifications } =
+        makeService({
+          findProfessionalBySupabaseUid: vi.fn().mockResolvedValue({
+            userId: 'u1',
+            professionalProfileId: 'prof-1',
+          }),
+          findItemForOwner: vi.fn().mockResolvedValue(published),
+          findConsentByPortfolioItemId: vi.fn().mockResolvedValue(null),
+          findJobForVerification: vi.fn().mockResolvedValue({
+            id: 'job-1',
+            status: JobStatus.CLOSED,
+            clientId: 'client-user-1',
+            title: 'Obra terminada',
+            completedAt: new Date('2026-01-01'),
+            categoryId: 'cat-1',
+          }),
+          createPortfolioConsent: vi
+            .fn()
+            .mockResolvedValue({ id: 'consent-new-1' }),
+        });
 
       const out = await service.requestVerification('sub-1', 'item-1');
 
@@ -1055,6 +1096,22 @@ describe('PortfolioService', () => {
           token: out.token,
         }),
       );
+      expect(consentReminderQueue.add).toHaveBeenCalledWith(
+        PORTFOLIO_CONSENT_REMINDER_JOB,
+        { consentId: 'consent-new-1' },
+        expect.objectContaining({
+          jobId: 'portfolio-consent-reminder:consent-new-1',
+          delay: 3 * 86_400_000,
+        }),
+      );
+      expect(
+        notifications.notifyPortfolioConsentRequested,
+      ).toHaveBeenCalledWith({
+        clientUserId: 'client-user-1',
+        jobTitle: 'Obra terminada',
+        jobId: 'job-1',
+        portfolioItemId: 'item-1',
+      });
     });
 
     it('requestVerification rechaza item no PUBLISHED', async () => {
@@ -1264,18 +1321,38 @@ describe('PortfolioService', () => {
       expect(dto.professionalDisplayName).toBe('Carlos R.');
     });
 
-    it('acceptConsent delega al repositorio', async () => {
+    it('acceptConsent delega al repositorio y notifica al profesional', async () => {
       const tokenUuid = '550e8400-e29b-41d4-a716-446655440000';
-      const { service, repo } = makeService();
+      const { service, repo, notifications } = makeService({
+        acceptPortfolioConsent: vi.fn().mockResolvedValue({
+          professionalUserId: 'pro-user-1',
+          portfolioItemId: 'item-1',
+          jobId: 'job-1',
+        }),
+      });
 
       await service.acceptConsent(tokenUuid);
 
       expect(repo.acceptPortfolioConsent).toHaveBeenCalledWith(tokenUuid);
+      expect(
+        notifications.notifyProfessionalConsentAccepted,
+      ).toHaveBeenCalledWith({
+        professionalUserId: 'pro-user-1',
+        portfolioItemId: 'item-1',
+        jobId: 'job-1',
+      });
     });
 
     it('declineConsent delega al repositorio con meta opcional', async () => {
       const tokenUuid = '550e8400-e29b-41d4-a716-446655440000';
-      const { service, repo } = makeService();
+      const { service, repo, notifications } = makeService({
+        declinePortfolioConsent: vi.fn().mockResolvedValue({
+          professionalUserId: 'pro-user-1',
+          portfolioItemId: 'item-1',
+          jobId: 'job-1',
+          reason: ConsentDeclineReason.OTHER,
+        }),
+      });
 
       await service.declineConsent(
         tokenUuid,
@@ -1289,11 +1366,26 @@ describe('PortfolioService', () => {
         ipAddress: '10.0.0.2',
         userAgent: 'TestUA',
       });
+      expect(
+        notifications.notifyProfessionalConsentDeclined,
+      ).toHaveBeenCalledWith({
+        professionalUserId: 'pro-user-1',
+        portfolioItemId: 'item-1',
+        jobId: 'job-1',
+        reason: ConsentDeclineReason.OTHER,
+      });
     });
 
     it('declineConsent delega sin meta cuando no se pasa', async () => {
       const tokenUuid = '550e8400-e29b-41d4-a716-446655440000';
-      const { service, repo } = makeService();
+      const { service, repo, notifications } = makeService({
+        declinePortfolioConsent: vi.fn().mockResolvedValue({
+          professionalUserId: 'pro-user-1',
+          portfolioItemId: 'item-1',
+          jobId: 'job-1',
+          reason: ConsentDeclineReason.PRIVACY,
+        }),
+      });
 
       await service.declineConsent(tokenUuid, {
         reason: ConsentDeclineReason.PRIVACY,
@@ -1304,6 +1396,14 @@ describe('PortfolioService', () => {
         notes: undefined,
         ipAddress: undefined,
         userAgent: undefined,
+      });
+      expect(
+        notifications.notifyProfessionalConsentDeclined,
+      ).toHaveBeenCalledWith({
+        professionalUserId: 'pro-user-1',
+        portfolioItemId: 'item-1',
+        jobId: 'job-1',
+        reason: ConsentDeclineReason.PRIVACY,
       });
     });
   });

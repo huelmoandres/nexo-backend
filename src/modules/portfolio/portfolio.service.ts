@@ -4,10 +4,13 @@ import {
   GoneException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
 import { ConfigType } from '@nestjs/config';
+import { Queue } from 'bullmq';
 import {
   ConsentStatus,
   JobStatus,
@@ -20,6 +23,7 @@ import { IStorageService } from '@modules/storage/interfaces/storage.service.int
 import { STORAGE_SERVICE_TOKEN } from '@modules/storage/storage.constants';
 import { buildProblem } from '@common/errors/problem.factory';
 import { portfolioConfig } from '@config/portfolio.config';
+import { NotificationsService } from '@modules/notifications/notifications.service';
 import {
   PORTFOLIO_PHOTO_KEY_PATTERN,
   assertKeyBelongsToUser,
@@ -43,6 +47,10 @@ import {
   IContentModerationProvider,
 } from './services/content-moderation.provider';
 import { PortfolioStorageCacheService } from './services/portfolio-storage-cache.service';
+import {
+  PORTFOLIO_CONSENT_REMINDER_JOB,
+  PORTFOLIO_CONSENT_REMINDER_QUEUE,
+} from './portfolio.constants';
 
 /**
  * Lógica de negocio del módulo `portfolio` (CRUD owner).
@@ -56,6 +64,8 @@ import { PortfolioStorageCacheService } from './services/portfolio-storage-cache
  */
 @Injectable()
 export class PortfolioService {
+  private readonly logger = new Logger(PortfolioService.name);
+
   constructor(
     private readonly repository: PortfolioRepository,
     @Inject(portfolioConfig.KEY)
@@ -67,6 +77,9 @@ export class PortfolioService {
     private readonly storageCache: PortfolioStorageCacheService,
     @Inject(CONTENT_MODERATION_PROVIDER_TOKEN)
     private readonly moderation: IContentModerationProvider,
+    @InjectQueue(PORTFOLIO_CONSENT_REMINDER_QUEUE)
+    private readonly consentReminderQueue: Queue,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -459,8 +472,7 @@ export class PortfolioService {
 
   /**
    * Solicita verificación al cliente del Job (badge). Crea `PortfolioConsent`
-   * PENDING con token UUID. Notificación email/push y BullMQ reminder quedan
-   * para un PR posterior.
+   * PENDING con token UUID, notifica al cliente (in-app) y encola recordatorio BullMQ.
    */
   async requestVerification(
     supabaseUid: string,
@@ -525,13 +537,41 @@ export class PortfolioService {
     const ttlMs = this.config.consentTtlDays * 86_400_000;
     const expiresAt = new Date(Date.now() + ttlMs);
 
-    await this.repository.createPortfolioConsent({
+    const { id: consentId } = await this.repository.createPortfolioConsent({
       portfolioItemId: item.id,
       jobId: job.id,
       clientUserId: job.clientId,
       token,
       expiresAt,
     });
+
+    const delayMs = this.config.reminderDelayDays * 86_400_000;
+    await this.consentReminderQueue.add(
+      PORTFOLIO_CONSENT_REMINDER_JOB,
+      { consentId },
+      {
+        delay: delayMs,
+        jobId: `portfolio-consent-reminder:${consentId}`,
+        removeOnComplete: { count: 100 },
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60_000 },
+      },
+    );
+
+    try {
+      await this.notifications.notifyPortfolioConsentRequested({
+        clientUserId: job.clientId,
+        jobTitle: job.title,
+        jobId: job.id,
+        portfolioItemId: item.id,
+      });
+    } catch (caught: unknown) {
+      const err = caught instanceof Error ? caught : new Error(String(caught));
+      this.logger.error(
+        { err, consentId, op: 'portfolio.consent.requestNotifyFailed' },
+        'No se pudo crear notificación in-app de solicitud de consent.',
+      );
+    }
 
     return { token, expiresAt };
   }
@@ -599,7 +639,24 @@ export class PortfolioService {
   }
 
   async acceptConsent(token: string): Promise<void> {
-    await this.repository.acceptPortfolioConsent(token);
+    const meta = await this.repository.acceptPortfolioConsent(token);
+    try {
+      await this.notifications.notifyProfessionalConsentAccepted({
+        professionalUserId: meta.professionalUserId,
+        portfolioItemId: meta.portfolioItemId,
+        jobId: meta.jobId,
+      });
+    } catch (caught: unknown) {
+      const err = caught instanceof Error ? caught : new Error(String(caught));
+      this.logger.error(
+        {
+          err,
+          op: 'portfolio.consent.acceptNotifyFailed',
+          portfolioItemId: meta.portfolioItemId,
+        },
+        'No se pudo notificar al profesional tras aceptar el consent.',
+      );
+    }
   }
 
   async declineConsent(
@@ -607,12 +664,30 @@ export class PortfolioService {
     dto: DeclineConsentDto,
     meta?: { ipAddress?: string; userAgent?: string },
   ): Promise<void> {
-    await this.repository.declinePortfolioConsent(token, {
+    const outcome = await this.repository.declinePortfolioConsent(token, {
       reason: dto.reason,
       notes: dto.notes,
       ipAddress: meta?.ipAddress,
       userAgent: meta?.userAgent,
     });
+    try {
+      await this.notifications.notifyProfessionalConsentDeclined({
+        professionalUserId: outcome.professionalUserId,
+        portfolioItemId: outcome.portfolioItemId,
+        jobId: outcome.jobId,
+        reason: outcome.reason,
+      });
+    } catch (caught: unknown) {
+      const err = caught instanceof Error ? caught : new Error(String(caught));
+      this.logger.error(
+        {
+          err,
+          op: 'portfolio.consent.declineNotifyFailed',
+          portfolioItemId: outcome.portfolioItemId,
+        },
+        'No se pudo notificar al profesional tras rechazar el consent.',
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------

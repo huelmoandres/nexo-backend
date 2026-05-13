@@ -384,8 +384,11 @@ export class PortfolioRepository {
     clientUserId: string;
     token: string;
     expiresAt: Date;
-  }): Promise<void> {
-    await this.prisma.portfolioConsent.create({ data: input });
+  }): Promise<{ id: string }> {
+    return this.prisma.portfolioConsent.create({
+      data: input,
+      select: { id: true },
+    });
   }
 
   async findConsentPreviewByToken(token: string) {
@@ -419,13 +422,29 @@ export class PortfolioRepository {
     });
   }
 
-  async acceptPortfolioConsent(token: string): Promise<void> {
+  async acceptPortfolioConsent(token: string): Promise<{
+    professionalUserId: string;
+    portfolioItemId: string;
+    jobId: string;
+  }> {
+    let result!: {
+      professionalUserId: string;
+      portfolioItemId: string;
+      jobId: string;
+    };
+
     await this.prisma.$transaction(
       async (tx) => {
         const consent = await tx.portfolioConsent.findUnique({
           where: { token },
           include: {
-            portfolioItem: { select: { id: true, verifiedFromJob: true } },
+            portfolioItem: {
+              select: {
+                id: true,
+                verifiedFromJob: true,
+                professional: { select: { userId: true } },
+              },
+            },
           },
         });
         if (!consent) {
@@ -496,9 +515,17 @@ export class PortfolioRepository {
             },
           },
         });
+
+        result = {
+          professionalUserId: consent.portfolioItem.professional.userId,
+          portfolioItemId: consent.portfolioItemId,
+          jobId: consent.jobId,
+        };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+
+    return result;
   }
 
   async declinePortfolioConsent(
@@ -509,17 +536,35 @@ export class PortfolioRepository {
       ipAddress?: string;
       userAgent?: string;
     },
-  ): Promise<void> {
+  ): Promise<{
+    professionalUserId: string;
+    portfolioItemId: string;
+    jobId: string;
+    reason: ConsentDeclineReason;
+  }> {
     const notes =
       input.notes !== undefined && input.notes.length > 500
         ? input.notes.slice(0, 500)
         : input.notes;
 
+    let result!: {
+      professionalUserId: string;
+      portfolioItemId: string;
+      jobId: string;
+      reason: ConsentDeclineReason;
+    };
+
     await this.prisma.$transaction(async (tx) => {
       const consent = await tx.portfolioConsent.findUnique({
         where: { token },
         include: {
-          portfolioItem: { select: { id: true, status: true } },
+          portfolioItem: {
+            select: {
+              id: true,
+              status: true,
+              professional: { select: { userId: true } },
+            },
+          },
         },
       });
       if (!consent) {
@@ -579,6 +624,94 @@ export class PortfolioRepository {
           userAgent: input.userAgent,
         },
       });
+
+      result = {
+        professionalUserId: consent.portfolioItem.professional.userId,
+        portfolioItemId: consent.portfolioItemId,
+        jobId: consent.jobId,
+        reason: input.reason,
+      };
     });
+
+    return result;
+  }
+
+  /**
+   * Claim atómico para enviar recordatorio (outbox / zombie reclaim).
+   * @returns true si esta instancia ganó el intento de envío.
+   */
+  async claimConsentReminderAttempt(
+    consentId: string,
+    zombieReclaimMs: number,
+  ): Promise<boolean> {
+    const cutoff = new Date(Date.now() - zombieReclaimMs);
+    const res = await this.prisma.portfolioConsent.updateMany({
+      where: {
+        id: consentId,
+        status: ConsentStatus.PENDING,
+        reminderSentAt: null,
+        OR: [
+          { reminderAttemptedAt: null },
+          { reminderAttemptedAt: { lt: cutoff } },
+        ],
+      },
+      data: { reminderAttemptedAt: new Date() },
+    });
+    return res.count === 1;
+  }
+
+  /** Payload para armar el recordatorio tras un claim exitoso. */
+  async findConsentReminderPayload(consentId: string): Promise<{
+    clientUserId: string;
+    portfolioItemId: string;
+    jobTitle: string;
+  } | null> {
+    const row = await this.prisma.portfolioConsent.findFirst({
+      where: {
+        id: consentId,
+        status: ConsentStatus.PENDING,
+        expiresAt: { gt: new Date() },
+      },
+      select: {
+        clientUserId: true,
+        portfolioItemId: true,
+        portfolioItem: {
+          select: {
+            job: { select: { title: true } },
+          },
+        },
+      },
+    });
+    if (!row?.portfolioItem.job) {
+      return null;
+    }
+    return {
+      clientUserId: row.clientUserId,
+      portfolioItemId: row.portfolioItemId,
+      jobTitle: row.portfolioItem.job.title,
+    };
+  }
+
+  async markConsentReminderSent(consentId: string): Promise<void> {
+    await this.prisma.portfolioConsent.updateMany({
+      where: {
+        id: consentId,
+        status: ConsentStatus.PENDING,
+        reminderSentAt: null,
+      },
+      data: { reminderSentAt: new Date() },
+    });
+  }
+
+  /** Marca EXPIRED los consents PENDING cuyo TTL venció (job horario). */
+  async expirePendingPortfolioConsents(): Promise<number> {
+    const res = await this.prisma.portfolioConsent.updateMany({
+      where: {
+        status: ConsentStatus.PENDING,
+        expiresAt: { lt: new Date() },
+      },
+      data: { status: ConsentStatus.EXPIRED },
+    });
+    return res.count;
   }
 }
