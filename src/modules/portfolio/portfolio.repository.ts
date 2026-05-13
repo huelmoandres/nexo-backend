@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   GoneException,
   Injectable,
   NotFoundException,
@@ -9,6 +10,7 @@ import {
   AuditAction,
   ConsentDeclineReason,
   ConsentStatus,
+  ModerationTransitionType,
   PortfolioItemStatus,
   Prisma,
   type Category,
@@ -18,6 +20,7 @@ import {
 } from '@prisma/client';
 import { buildProblem } from '@common/errors/problem.factory';
 import { PrismaService } from '@prisma/prisma.service';
+import { PORTFOLIO_ADMIN_MODERATION_MODEL_REF } from './portfolio.constants';
 
 /**
  * Persistencia del módulo `portfolio` (Prisma + PostgreSQL).
@@ -713,5 +716,318 @@ export class PortfolioRepository {
       data: { status: ConsentStatus.EXPIRED },
     });
     return res.count;
+  }
+
+  /**
+   * Lista items PUBLISHED del profesional (público). Excluye soft-deleted.
+   */
+  async listPublishedItemsByProfessionalId(
+    professionalId: string,
+    filters: { categoryId?: string; verifiedOnly?: boolean },
+    page: { skip: number; take: number },
+  ): Promise<{ items: PortfolioItem[]; total: number }> {
+    const where: Prisma.PortfolioItemWhereInput = {
+      professionalId,
+      deletedAt: null,
+      status: PortfolioItemStatus.PUBLISHED,
+      ...(filters.categoryId !== undefined
+        ? { categoryId: filters.categoryId }
+        : {}),
+      ...(filters.verifiedOnly === true ? { verifiedFromJob: true } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.portfolioItem.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: page.skip,
+        take: page.take,
+      }),
+      this.prisma.portfolioItem.count({ where }),
+    ]);
+    return { items, total };
+  }
+
+  /**
+   * Detalle público de un item PUBLISHED o `null` si no aplica (incluye
+   * soft-delete u otros estados: no se distingue para evitar enumeración).
+   */
+  async findPublishedPortfolioItemPublicDetail(itemId: string): Promise<{
+    item: PortfolioItem;
+    category: { id: string; name: string };
+    job: {
+      id: string;
+      title: string;
+      completedAt: Date | null;
+      category: { id: string; name: string };
+    } | null;
+    photos: Array<{
+      id: string;
+      fileKey: string;
+      caption: string | null;
+      displayOrder: number;
+    }>;
+    verifiedJobClientFirstName: string | null;
+  } | null> {
+    const row = await this.prisma.portfolioItem.findFirst({
+      where: {
+        id: itemId,
+        deletedAt: null,
+        status: PortfolioItemStatus.PUBLISHED,
+      },
+      include: {
+        category: { select: { id: true, name: true } },
+        job: {
+          select: {
+            id: true,
+            title: true,
+            completedAt: true,
+            category: { select: { id: true, name: true } },
+          },
+        },
+        photos: {
+          orderBy: { displayOrder: 'asc' },
+          select: {
+            id: true,
+            fileKey: true,
+            caption: true,
+            displayOrder: true,
+          },
+        },
+        consent: {
+          select: { status: true, clientUserId: true },
+        },
+      },
+    });
+    if (!row) {
+      return null;
+    }
+
+    let verifiedJobClientFirstName: string | null = null;
+    if (row.verifiedFromJob && row.consent?.status === ConsentStatus.ACCEPTED) {
+      const client = await this.prisma.user.findUnique({
+        where: { id: row.consent.clientUserId },
+        select: { fullName: true },
+      });
+      const first = client?.fullName?.trim().split(/\s+/).filter(Boolean)[0];
+      verifiedJobClientFirstName = first ?? null;
+    }
+
+    const { category, job, photos, consent, ...item } = row;
+    void consent;
+    return {
+      item,
+      category,
+      job,
+      photos,
+      verifiedJobClientFirstName,
+    };
+  }
+
+  /** Resuelve `User.id` interno desde el `sub` del JWT (Supabase). */
+  async findInternalUserIdBySupabaseUid(
+    supabaseUid: string,
+  ): Promise<string | null> {
+    const u = await this.prisma.user.findFirst({
+      where: { supabaseUid },
+      select: { id: true },
+    });
+    return u?.id ?? null;
+  }
+
+  /**
+   * Cola de moderación: items visibles solo para revisión humana
+   * (`HIDDEN_PENDING_REVIEW`).
+   */
+  async listModerationQueue(page: { skip: number; take: number }): Promise<{
+    items: Array<{
+      id: string;
+      professionalId: string;
+      title: string;
+      status: PortfolioItemStatus;
+      createdAt: Date;
+      updatedAt: Date;
+      category: { id: string; name: string };
+    }>;
+    total: number;
+  }> {
+    const where: Prisma.PortfolioItemWhereInput = {
+      deletedAt: null,
+      status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.portfolioItem.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        skip: page.skip,
+        take: page.take,
+        select: {
+          id: true,
+          professionalId: true,
+          title: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          category: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.portfolioItem.count({ where }),
+    ]);
+    return { items, total };
+  }
+
+  /**
+   * Usuario autenticado reporta un item `PUBLISHED` → `HIDDEN_PENDING_REVIEW`.
+   */
+  async reportPublishedPortfolioItem(input: {
+    itemId: string;
+    reporterSupabaseUid: string;
+  }): Promise<void> {
+    const reporterUserId = await this.findInternalUserIdBySupabaseUid(
+      input.reporterSupabaseUid,
+    );
+    if (!reporterUserId) {
+      throw new NotFoundException(
+        buildProblem(
+          'USER_NOT_FOUND',
+          'No existe un usuario sincronizado para este token.',
+        ),
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const item = await tx.portfolioItem.findFirst({
+        where: { id: input.itemId, deletedAt: null },
+        select: {
+          id: true,
+          status: true,
+          professionalId: true,
+        },
+      });
+      if (!item) {
+        throw new NotFoundException(
+          buildProblem(
+            'PORTFOLIO_ITEM_NOT_FOUND',
+            'El ítem de portfolio no existe.',
+          ),
+        );
+      }
+      if (item.status === PortfolioItemStatus.HIDDEN_PENDING_REVIEW) {
+        throw new ConflictException(
+          buildProblem(
+            'PORTFOLIO_ITEM_ALREADY_FLAGGED',
+            'Este ítem ya fue reportado o está en revisión.',
+          ),
+        );
+      }
+      if (item.status !== PortfolioItemStatus.PUBLISHED) {
+        throw new ConflictException(
+          buildProblem(
+            'PORTFOLIO_ITEM_NOT_REPORTABLE',
+            'Solo se pueden reportar ítems publicados visibles.',
+          ),
+        );
+      }
+
+      const pro = await tx.professionalProfile.findUnique({
+        where: { id: item.professionalId },
+        select: { userId: true },
+      });
+      if (pro?.userId === reporterUserId) {
+        throw new ForbiddenException(
+          buildProblem(
+            'PORTFOLIO_CANNOT_REPORT_OWN_ITEM',
+            'No puedes reportar tu propio ítem de portfolio.',
+          ),
+        );
+      }
+
+      await tx.portfolioItem.update({
+        where: { id: item.id },
+        data: { status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: reporterUserId,
+          action: AuditAction.PORTFOLIO_ITEM_REPORTED,
+          entityType: 'PortfolioItem',
+          entityId: item.id,
+          metadata: { portfolioItemId: item.id },
+        },
+      });
+    });
+  }
+
+  /**
+   * SUPER_ADMIN: aprueba (vuelve a `PUBLISHED`) u oculta (`HIDDEN_BY_ADMIN`)
+   * un ítem que está en `HIDDEN_PENDING_REVIEW`.
+   */
+  async applyAdminPortfolioModeration(input: {
+    adminSupabaseUid: string;
+    itemId: string;
+    action: 'approve' | 'hide';
+    reason?: string | null;
+  }): Promise<void> {
+    const adminUserId = await this.findInternalUserIdBySupabaseUid(
+      input.adminSupabaseUid,
+    );
+    if (!adminUserId) {
+      throw new NotFoundException(
+        buildProblem(
+          'USER_NOT_FOUND',
+          'No existe un usuario sincronizado para este token.',
+        ),
+      );
+    }
+
+    const nextStatus =
+      input.action === 'approve'
+        ? PortfolioItemStatus.PUBLISHED
+        : PortfolioItemStatus.HIDDEN_BY_ADMIN;
+    const logStatus = input.action === 'approve' ? 'OK' : 'FLAGGED';
+    const trimmedReason =
+      input.reason !== undefined && input.reason !== null
+        ? input.reason.trim().slice(0, 500) || null
+        : null;
+
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.portfolioItem.updateMany({
+        where: {
+          id: input.itemId,
+          deletedAt: null,
+          status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+        },
+        data: { status: nextStatus },
+      });
+      if (updated.count === 0) {
+        throw new ConflictException(
+          buildProblem(
+            'PORTFOLIO_NOT_IN_MODERATION_QUEUE',
+            'El ítem no está en cola de moderación o ya fue resuelto.',
+          ),
+        );
+      }
+
+      await tx.portfolioModerationLog.create({
+        data: {
+          portfolioItemId: input.itemId,
+          modelRef: PORTFOLIO_ADMIN_MODERATION_MODEL_REF,
+          transitionType: ModerationTransitionType.ADMIN_OVERRIDE,
+          status: logStatus,
+          reason: trimmedReason,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: adminUserId,
+          action: AuditAction.PORTFOLIO_ADMIN_MODERATED,
+          entityType: 'PortfolioItem',
+          entityId: input.itemId,
+          metadata: {
+            decision: input.action,
+            reason: trimmedReason,
+          },
+        },
+      });
+    });
   }
 }

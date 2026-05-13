@@ -13,6 +13,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AuthUserResponseDto } from './dto/auth-user-response.dto';
@@ -24,6 +25,7 @@ import { AuthService } from './auth.service';
 
 @ApiTags('auth')
 @ApiBearerAuth('supabase-jwt')
+@Throttle({ default: { limit: 10, ttl: 60_000 } })
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

@@ -349,6 +349,8 @@ Todos prefijados con `/api/portfolio` (prefix global del proyecto).
 
 ### 4.2 Para el cliente (con token, no necesita auth)
 
+> **Rate limiting (2026-05):** `ThrottlerGuard` global + límite más estricto en el controller de consent (p. ej. 30 req/min por IP); respuesta 429 con `code: TOO_MANY_REQUESTS` (RFC 7807 vía filtro global).
+
 #### A. Preview del consent
 - **Ruta:** `GET /portfolio/consents/:token`
 - **Pre-condición:** token válido y no expirado.
@@ -380,6 +382,8 @@ Todos prefijados con `/api/portfolio` (prefix global del proyecto).
   4. **Si `reason === 'INAPPROPRIATE'`:** transiciona el `PortfolioItem` a `HIDDEN_PENDING_REVIEW` y entra a cola admin (input del cliente como señal extra de moderación).
 
 ### 4.3 Lecturas públicas (sin auth)
+
+> **Implementación (2026-05):** `GET /professionals/:professionalId/portfolio` (lista paginada, filtros `categoryId`, `verifiedOnly`) y `GET /portfolio/items/:id` (detalle; solo `PUBLISHED`; badge cliente = primer nombre si consent ACCEPTED).
 
 - `GET /professionals/:professionalId/portfolio` — Solo items `PUBLISHED`. Extiende `PaginationQueryDto`. Filtros: `categoryId?`, `verifiedOnly?` (boolean).
 - `GET /portfolio/items/:id` — Detalle público de un item `PUBLISHED`. Si está en cualquier otro status: `404 PORTFOLIO_ITEM_NOT_FOUND` (no revela existencia de items ocultos).

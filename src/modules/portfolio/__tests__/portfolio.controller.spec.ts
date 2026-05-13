@@ -12,6 +12,7 @@ describe('PortfolioController', () => {
       softDeleteItem: vi.fn(),
       publishItem: vi.fn(),
       listMyItems: vi.fn(),
+      getPublishedPortfolioItemById: vi.fn(),
       requestVerification: vi.fn(),
     };
     return {
@@ -117,6 +118,43 @@ describe('PortfolioController', () => {
       const result = await controller.listMyItems('sub-1', query);
 
       expect(service.listMyItems).toHaveBeenCalledWith('sub-1', query);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('GET /items/:id (getPublishedPortfolioItemById)', () => {
+    it('delega en service.getPublishedPortfolioItemById', async () => {
+      const { controller, service } = makeController();
+      const expected = {
+        id: 'item-1',
+        professionalId: 'prof-1',
+        categoryId: 'cat-1',
+        title: 'T',
+        description: 'Descripción pública con más de diez caracteres.',
+        status: PortfolioItemStatus.PUBLISHED,
+        jobId: 'job-1',
+        verifiedFromJob: true,
+        aiModerationStatus: AiModerationStatus.OK,
+        publishedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        category: { id: 'cat-1', name: 'Limpieza' },
+        job: {
+          id: 'job-1',
+          title: 'Job',
+          completedAt: new Date(),
+          category: { id: 'cat-1', name: 'Limpieza' },
+        },
+        photos: [],
+        verifiedJobClientFirstName: 'María',
+      };
+      service.getPublishedPortfolioItemById.mockResolvedValue(expected);
+
+      const result = await controller.getPublishedPortfolioItemById('item-1');
+
+      expect(service.getPublishedPortfolioItemById).toHaveBeenCalledWith(
+        'item-1',
+      );
       expect(result).toEqual(expected);
     });
   });

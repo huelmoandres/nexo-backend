@@ -16,6 +16,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { ProblemDetail } from '@common/dto/problem-detail.dto';
 import { ConsentPreviewResponseDto } from './dto/consent-preview-response.dto';
@@ -27,6 +28,7 @@ import { PortfolioService } from './portfolio.service';
  */
 @ApiTags('portfolio')
 @ApiExtraModels(ConsentPreviewResponseDto, DeclineConsentDto, ProblemDetail)
+@Throttle({ default: { limit: 30, ttl: 60_000 } })
 @Controller('portfolio')
 export class PortfolioConsentController {
   constructor(private readonly portfolioService: PortfolioService) {}

@@ -191,6 +191,8 @@ enum AuditAction {
   // Portfolio
   PORTFOLIO_CONSENT_ACCEPTED  // Cliente aceptó verificación de un item
   PORTFOLIO_CONSENT_DECLINED  // Cliente rechazó verificación de un item
+  PORTFOLIO_ITEM_REPORTED      // Usuario autenticado reportó un item publicado
+  PORTFOLIO_ADMIN_MODERATED    // SUPER_ADMIN resolvió la cola de moderación manual
 }
 
 enum PortfolioItemStatus {

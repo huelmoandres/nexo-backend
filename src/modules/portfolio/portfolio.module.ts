@@ -16,6 +16,8 @@ import {
 } from './portfolio.constants';
 import { PortfolioConsentController } from './portfolio-consent.controller';
 import { PortfolioController } from './portfolio.controller';
+import { PortfolioModerationController } from './portfolio-moderation.controller';
+import { PortfolioProfessionalPublicController } from './portfolio-professional-public.controller';
 import { PortfolioRepository } from './portfolio.repository';
 import { PortfolioService } from './portfolio.service';
 import { PortfolioConsentQueueBootstrap } from './queues/portfolio-consent-queue.bootstrap';
@@ -47,7 +49,12 @@ import { PortfolioBullInvariantService } from './services/portfolio-bull-invaria
     BullModule.registerQueue({ name: PORTFOLIO_CLEANUP_QUEUE }),
     BullModule.registerQueue({ name: PORTFOLIO_MODERATE_QUEUE }),
   ],
-  controllers: [PortfolioController, PortfolioConsentController],
+  controllers: [
+    PortfolioController,
+    PortfolioConsentController,
+    PortfolioProfessionalPublicController,
+    PortfolioModerationController,
+  ],
   providers: [
     PortfolioService,
     PortfolioRepository,

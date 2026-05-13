@@ -38,6 +38,12 @@ describe('PortfolioService', () => {
     findPhotosByItemId: ReturnType<typeof vi.fn>;
     transitionToPublished: ReturnType<typeof vi.fn>;
     listByProfessional: ReturnType<typeof vi.fn>;
+    listPublishedItemsByProfessionalId: ReturnType<typeof vi.fn>;
+    findPublishedPortfolioItemPublicDetail: ReturnType<typeof vi.fn>;
+    findInternalUserIdBySupabaseUid: ReturnType<typeof vi.fn>;
+    listModerationQueue: ReturnType<typeof vi.fn>;
+    reportPublishedPortfolioItem: ReturnType<typeof vi.fn>;
+    applyAdminPortfolioModeration: ReturnType<typeof vi.fn>;
   };
   type QueueMock = { enqueue: ReturnType<typeof vi.fn> };
   type ConsentReminderQueueMock = { add: ReturnType<typeof vi.fn> };
@@ -101,6 +107,14 @@ describe('PortfolioService', () => {
       findPhotosByItemId: vi.fn(),
       transitionToPublished: vi.fn(),
       listByProfessional: vi.fn(),
+      listPublishedItemsByProfessionalId: vi
+        .fn()
+        .mockResolvedValue({ items: [], total: 0 }),
+      findPublishedPortfolioItemPublicDetail: vi.fn().mockResolvedValue(null),
+      findInternalUserIdBySupabaseUid: vi.fn(),
+      listModerationQueue: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      reportPublishedPortfolioItem: vi.fn().mockResolvedValue(undefined),
+      applyAdminPortfolioModeration: vi.fn().mockResolvedValue(undefined),
       ...overrides,
     };
     const config = {
@@ -1051,6 +1065,129 @@ describe('PortfolioService', () => {
 
       expect(result.items).toEqual([]);
       expect(result.meta.total).toBe(0);
+    });
+  });
+
+  describe('listPublishedPortfolioForProfessional', () => {
+    it('delega en repo con filtros y paginación', async () => {
+      const pubItem = {
+        ...baseItem,
+        status: PortfolioItemStatus.PUBLISHED,
+      };
+      const { service, repo } = makeService({
+        listPublishedItemsByProfessionalId: vi
+          .fn()
+          .mockResolvedValue({ items: [pubItem], total: 1 }),
+      });
+
+      const result = await service.listPublishedPortfolioForProfessional(
+        'prof-1',
+        { page: 2, pageSize: 10, categoryId: 'cat-x', verifiedOnly: true },
+      );
+
+      expect(repo.listPublishedItemsByProfessionalId).toHaveBeenCalledWith(
+        'prof-1',
+        { categoryId: 'cat-x', verifiedOnly: true },
+        { skip: 10, take: 10 },
+      );
+      expect(result.items[0].status).toBe(PortfolioItemStatus.PUBLISHED);
+      expect(result.meta.total).toBe(1);
+    });
+  });
+
+  describe('getPublishedPortfolioItemById', () => {
+    it('404 cuando el repo devuelve null', async () => {
+      const { service } = makeService({
+        findPublishedPortfolioItemPublicDetail: vi.fn().mockResolvedValue(null),
+      });
+      await expect(
+        service.getPublishedPortfolioItemById('missing'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('mapea detalle con job y primer nombre verificado', async () => {
+      const item = {
+        ...baseItem,
+        status: PortfolioItemStatus.PUBLISHED,
+        verifiedFromJob: true,
+        jobId: 'job-1',
+      };
+      const { service, repo } = makeService({
+        findPublishedPortfolioItemPublicDetail: vi.fn().mockResolvedValue({
+          item,
+          category: { id: 'cat-1', name: 'Limpieza' },
+          job: {
+            id: 'job-1',
+            title: 'J',
+            completedAt: new Date(),
+            category: { id: 'cat-1', name: 'Limpieza' },
+          },
+          photos: [
+            { id: 'ph-1', fileKey: 'k.jpg', caption: null, displayOrder: 1 },
+          ],
+          verifiedJobClientFirstName: 'Laura',
+        }),
+      });
+
+      const dto = await service.getPublishedPortfolioItemById('item-1');
+
+      expect(repo.findPublishedPortfolioItemPublicDetail).toHaveBeenCalledWith(
+        'item-1',
+      );
+      expect(dto.verifiedJobClientFirstName).toBe('Laura');
+      expect(dto.job?.id).toBe('job-1');
+      expect(dto.photos).toHaveLength(1);
+    });
+  });
+
+  describe('moderación admin y reportes', () => {
+    it('listModerationQueue delega en el repositorio', async () => {
+      const row = {
+        id: 'i1',
+        professionalId: 'p1',
+        title: 'T',
+        status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        category: { id: 'c1', name: 'X' },
+      };
+      const { service, repo } = makeService({
+        listModerationQueue: vi
+          .fn()
+          .mockResolvedValue({ items: [row], total: 1 }),
+      });
+
+      const out = await service.listModerationQueue({ page: 1, pageSize: 10 });
+
+      expect(repo.listModerationQueue).toHaveBeenCalledWith({
+        skip: 0,
+        take: 10,
+      });
+      expect(out.items[0].id).toBe('i1');
+      expect(out.meta.total).toBe(1);
+    });
+
+    it('moderatePortfolioItem delega con sub y dto', async () => {
+      const { service, repo } = makeService();
+      await service.moderatePortfolioItem('admin-sub', 'item-1', {
+        action: 'approve',
+        reason: 'ok',
+      });
+      expect(repo.applyAdminPortfolioModeration).toHaveBeenCalledWith({
+        adminSupabaseUid: 'admin-sub',
+        itemId: 'item-1',
+        action: 'approve',
+        reason: 'ok',
+      });
+    });
+
+    it('reportPortfolioItem delega con sub e itemId', async () => {
+      const { service, repo } = makeService();
+      await service.reportPortfolioItem('reporter-sub', 'item-2');
+      expect(repo.reportPublishedPortfolioItem).toHaveBeenCalledWith({
+        reporterSupabaseUid: 'reporter-sub',
+        itemId: 'item-2',
+      });
     });
   });
 

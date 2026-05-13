@@ -258,4 +258,29 @@ export const ERRORS = {
     title: 'Storage no disponible',
     slug: 'portfolio-photos-storage-unavailable',
   },
+  PORTFOLIO_ITEM_NOT_REPORTABLE: {
+    status: 409,
+    title: 'El ítem no puede reportarse',
+    slug: 'portfolio-item-not-reportable',
+  },
+  PORTFOLIO_ITEM_ALREADY_FLAGGED: {
+    status: 409,
+    title: 'El ítem ya está en revisión',
+    slug: 'portfolio-item-already-flagged',
+  },
+  PORTFOLIO_CANNOT_REPORT_OWN_ITEM: {
+    status: 403,
+    title: 'No puedes reportar tu propio portfolio',
+    slug: 'portfolio-cannot-report-own-item',
+  },
+  PORTFOLIO_NOT_IN_MODERATION_QUEUE: {
+    status: 409,
+    title: 'El ítem no está en cola de moderación',
+    slug: 'portfolio-not-in-moderation-queue',
+  },
+  TOO_MANY_REQUESTS: {
+    status: 429,
+    title: 'Demasiadas solicitudes',
+    slug: 'too-many-requests',
+  },
 } as const;

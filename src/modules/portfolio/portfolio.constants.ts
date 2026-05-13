@@ -22,3 +22,6 @@ export const PORTFOLIO_CLEANUP_QUEUE = 'portfolio-cleanup';
 
 /** Cola BullMQ: moderación IA de contenido publicado. */
 export const PORTFOLIO_MODERATE_QUEUE = 'portfolio-moderate';
+
+/** `modelRef` en `PortfolioModerationLog` para decisiones humanas (no proveedor IA). */
+export const PORTFOLIO_ADMIN_MODERATION_MODEL_REF = 'admin:manual:v1';

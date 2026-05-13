@@ -35,6 +35,7 @@ import {
 } from './dto/paginated-portfolio-items.dto';
 import { PortfolioItemResponseDto } from './dto/portfolio-item-response.dto';
 import { PortfolioPhotoResponseDto } from './dto/portfolio-photo-response.dto';
+import { PublicPortfolioItemDetailDto } from './dto/public-portfolio-item-detail.dto';
 import { RequestVerificationResponseDto } from './dto/request-verification-response.dto';
 import { UpdatePortfolioItemDto } from './dto/update-portfolio-item.dto';
 import { PortfolioService } from './portfolio.service';
@@ -42,8 +43,9 @@ import { PortfolioService } from './portfolio.service';
 /**
  * Endpoints owner del portfolio (autenticados, dueño del item).
  *
- * Lecturas públicas, consent del cliente y moderación admin viven en
- * controllers separados a medida que se incorporen (PRs futuros).
+ * El detalle público `GET items/:id` comparte prefijo; `items/mine` se declara
+ * antes para no colisionar con el parámetro dinámico. Listado por profesional
+ * vive en {@link PortfolioProfessionalPublicController}.
  */
 @ApiTags('portfolio')
 @ApiExtraModels(
@@ -51,6 +53,7 @@ import { PortfolioService } from './portfolio.service';
   PortfolioPhotoResponseDto,
   PaginatedPortfolioItemsDto,
   PortfolioPaginationMeta,
+  PublicPortfolioItemDetailDto,
   RequestVerificationResponseDto,
   ProblemDetail,
 )
@@ -117,6 +120,31 @@ export class PortfolioController {
     @Query() query: ListMyPortfolioQueryDto,
   ): Promise<PaginatedPortfolioItemsDto> {
     return this.portfolioService.listMyItems(sub, query);
+  }
+
+  @Get('items/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Detalle público de un PortfolioItem publicado',
+    description:
+      'Sin autenticación. Solo expone items en estado PUBLISHED; cualquier otro ' +
+      'caso responde 404 PORTFOLIO_ITEM_NOT_FOUND (sin filtrar por ownership).',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Detalle público',
+    type: PublicPortfolioItemDetailDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'PORTFOLIO_ITEM_NOT_FOUND',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  async getPublishedPortfolioItemById(
+    @Param('id', ParseUUIDPipe) itemId: string,
+  ): Promise<PublicPortfolioItemDetailDto> {
+    return this.portfolioService.getPublishedPortfolioItemById(itemId);
   }
 
   @Patch('items/:id')

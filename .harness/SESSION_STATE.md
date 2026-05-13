@@ -7,7 +7,7 @@
 ## Estado Actual del Proyecto
 
 **Fase:** Implementación de dominios core + harness alineado al código
-**Fecha de última actualización:** 2026-05-13 (BullMQ raíz + colas portfolio + invariante §6.2)
+**Fecha de última actualización:** 2026-05-13 (Throttler global + lecturas públicas portfolio + consent rate-limit)
 
 ---
 
@@ -22,7 +22,7 @@
 | `diagnostics` | **Implementado** | Sin spec larga — ver `src/modules/diagnostics/` + `.harness/INDEX.md` |
 | `categories` | **Implementado** | (Swagger tag `categories`) |
 | `search` | **Implementado** | `.harness/specs/search-matching.md` |
-| `portfolio` | **Owner CRUD + consent + BullMQ raíz** | `.harness/specs/portfolio-module.md` — colas `portfolio-consent-reminder`, `portfolio-cleanup`, `portfolio-moderate` registradas; `PortfolioBullInvariantService`; faltan: processors, notificaciones, encolado reminder real, lecturas públicas, admin, cleanup/IA real |
+| `portfolio` | **Owner CRUD + consent + BullMQ + lecturas públicas + throttling** | `.harness/specs/portfolio-module.md` — colas y processor de consent reminder/expiración; notificaciones in-app (push/email log); `GET /professionals/:id/portfolio` y `GET /portfolio/items/:id` públicos; faltan: admin/moderación, cleanup/IA real |
 | Escrow, Urgency, Dispute, Reviews, Chat, Notifications | **Roadmap / parcial** | Specs y evals en harness; ver tabla legacy abajo |
 
 ### Roadmap (legacy harness)
@@ -34,7 +34,7 @@
 | DisputeModule | Pendiente | `.harness/specs/dispute-module.md` | `.harness/evals/dispute-module-eval.md` |
 | ReviewModule | Pendiente | `.harness/specs/reviews-reputation.md` | `.harness/evals/search-reviews-eval.md` |
 | ChatModule | Pendiente | `.harness/specs/chat-module.md` | — |
-| PortfolioModule | Owner CRUD + consent MVP (sin notif/reminder BullMQ; publish con stubs IA/cleanup) | `.harness/specs/portfolio-module.md` | `.harness/evals/portfolio-module-eval.md` |
+| PortfolioModule | Ver fila `portfolio` en tabla principal (legacy duplicada) | `.harness/specs/portfolio-module.md` | `.harness/evals/portfolio-module-eval.md` |
 | NotificationModule | Pendiente | — | — |
 
 ---
@@ -57,7 +57,8 @@
 | Logging HTTP (Pino) | **Completado** — `nestjs-pino` en `LoggerModule` |
 | Sentry | **Completado** — `setupSentry` en bootstrap |
 | Startup diagnostics | **Completado** — `DiagnosticsService.runStartupChecks()` antes de listen |
-| BullMQ (Redis) | **Parcial** — `BullModule.forRootAsync` en `AppModule` (misma URL que blocklist); `PortfolioModule` registra `portfolio-consent-reminder`, `portfolio-cleanup`, `portfolio-moderate`; invariante zombie/lock; **sin** `@Processor` todavía |
+| BullMQ (Redis) | **Parcial** — `BullModule.forRootAsync` en `AppModule`; colas portfolio + processor de consent (reminder + expiración horaria); cleanup/moderate siguen stub |
+| Throttler (`@nestjs/throttler`) | **Completado** — guard global 100 req/min por IP; `AuthController` 10/min; `PortfolioConsentController` 30/min; health sin throttle |
 
 ---
 
@@ -85,8 +86,10 @@
 
 > Agregar observaciones de sesión aquí.
 
+- **2026-05-13:** Throttler global + límites en auth/consent; lecturas públicas `GET /professionals/:id/portfolio` y `GET /portfolio/items/:id`; catálogo `TOO_MANY_REQUESTS` (429 RFC 7807).
+
 - **2026-05-07:** Alineación harness: AGENTS.md, SESSION_STATE actualizado al estado real (filtro RFC 7807, ValidationPipe, Pino, Sentry, diagnostics), nota JWKS en spec de auth, reglas `auth-jwt` + checklist de performance, tests de `supabase-jwks.util.ts`, smoke E2E `/health/live`.
 - **2026-05-12:** Introducida la **doctrina Docs-First** como regla permanente del repo. Nuevo artefacto [`.harness/rules/docs-first.md`](rules/docs-first.md) con la matriz de obligaciones (agregar / modificar / eliminar), excepciones explícitas, orden de commits y checklist de PR. Anclajes agregados en [AGENTS.md](../AGENTS.md) (sección "Workflow Docs-First"), [.cursorrules](../.cursorrules) (sección 3 "PROTOCOLO DE CAMBIOS") e [INDEX.md](INDEX.md). Primer caso de uso: harness completo del módulo `portfolio` (spec + eval), gobernanza transversal en `storage-rules.md` (ownership de paths) y nueva política PII en `security-roles.md`. Cero código TypeScript o Prisma en este cambio; solo doctrina y harness.
 - **2026-05-12 (Portfolio Owner CRUD):** Implementados los 7 endpoints owner del módulo `portfolio` siguiendo TDD estricto y coverage 100% sobre el directorio del módulo. Endpoints: `POST /portfolio/items` (DRAFT con validación de Job verificable), `POST /items/:id/photos` (con regex canónica `users/<professionalId>/portfolio/<itemId>/`, ownership vía `storage-paths.ts`, dedup y atomicidad de `displayOrder` en `prisma.$transaction`), `DELETE /items/:id/photos/:photoId` (compact reorder atómico), `PATCH /items/:id` (con freeze guard `PORTFOLIO_CATEGORY_FROZEN_POST_VERIFICATION` si `verifiedFromJob=true`), `DELETE /items/:id` (soft-delete + encola `portfolio-cleanup` stub), `POST /items/:id/publish` (HEAD checks con cache Redis `storage:exists:*` TTL 60s, 1 retry con 503 → `PORTFOLIO_PHOTOS_STORAGE_UNAVAILABLE`, moderation provider stub `AlwaysApprovedModerationProvider`, transición DRAFT → PUBLISHED), `GET /items/mine` (paginado). Pendiente para próximos PRs: consent flow + reminder outbox, endpoints públicos del badge, admin moderation, integración real BullMQ del cleanup, provider IA real (OpenAI/AWS Rekognition).
-- **2026-05-13 (portfolio consent MVP):** Endpoints `POST /portfolio/items/:id/request-verification` (pro autenticado), `GET /portfolio/consents/:token`, `POST …/accept`, `POST …/decline` (públicos con token UUID). Persistencia `PortfolioConsent`, transacción serializable en accept, audit `PORTFOLIO_CONSENT_*`, decline `INAPPROPRIATE` → `HIDDEN_PENDING_REVIEW`. Pendiente: email/push, BullMQ `portfolio-consent-reminder`, rate-limit público.
-- **2026-05-13 (BullMQ fase 1):** `@nestjs/bullmq` + `bullmq`; `BullModule.forRootAsync` en `AppModule` (Redis desde `auth.redisUrl`); `PortfolioModule` registra colas `portfolio-consent-reminder`, `portfolio-cleanup`, `portfolio-moderate`; `portfolio.config` con `BULLMQ_LOCK_DURATION_MS` / `BULLMQ_MAX_STALLED_COUNT`; `PortfolioBullInvariantService` valida zombie vs lock (spec §6.2). Pendiente: processors, encolado desde `requestVerification`, notificaciones.
+- **2026-05-13 (portfolio consent MVP):** Endpoints `POST /portfolio/items/:id/request-verification` (pro autenticado), `GET /portfolio/consents/:token`, `POST …/accept`, `POST …/decline` (públicos con token UUID). Persistencia `PortfolioConsent`, transacción serializable en accept, audit `PORTFOLIO_CONSENT_*`, decline `INAPPROPRIATE` → `HIDDEN_PENDING_REVIEW`. Evolución posterior: notificaciones in-app, cola Bull de reminder/expiración y throttling en controller de consent.
+- **2026-05-13 (BullMQ fase 1):** `@nestjs/bullmq` + `bullmq`; `BullModule.forRootAsync` en `AppModule` (Redis desde `auth.redisUrl`); `PortfolioModule` registra colas `portfolio-consent-reminder`, `portfolio-cleanup`, `portfolio-moderate`; `portfolio.config` con `BULLMQ_LOCK_DURATION_MS` / `BULLMQ_MAX_STALLED_COUNT`; `PortfolioBullInvariantService` valida zombie vs lock (spec §6.2). Processor de consent (reminder + expiración) y wiring de notificaciones en PRs posteriores; cleanup/moderate siguen stub.

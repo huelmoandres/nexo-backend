@@ -29,6 +29,7 @@ const STATUS_TITLES: Record<number, string> = {
   500: 'Error interno del servidor',
   503: 'Servicio no disponible',
   410: 'Ya no disponible',
+  429: 'Demasiadas solicitudes',
 };
 
 /**
@@ -169,6 +170,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         return 'SERVICE_UNAVAILABLE';
       case 410:
         return 'GONE';
+      case 429:
+        return 'TOO_MANY_REQUESTS';
       default:
         return status >= 500 ? 'INTERNAL_SERVER_ERROR' : 'HTTP_ERROR';
     }

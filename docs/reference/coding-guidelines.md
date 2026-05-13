@@ -206,9 +206,11 @@ export default registerAs('security', () => ({
 }));
 ```
 
-Aplicación:
-- **Global:** `ThrottlerGuard` registrado como guard global → 100 req / 60s por IP.
-- **Estricto en Auth:** decorador `@Throttle({ default: { limit: 10, ttl: 60 } })` en `AuthController`.
+Aplicación (implementado en `AppModule` + `@nestjs/throttler`):
+- **Global:** `ThrottlerGuard` como `APP_GUARD` → 100 req / 60s por IP (cabeceras `X-RateLimit-*`).
+- **Health:** `@SkipThrottle()` en `HealthController` (probes sin 429).
+- **Auth:** `@Throttle({ default: { limit: 10, ttl: 60_000 } })` en `AuthController`.
+- **Consent portfolio (público):** `@Throttle({ default: { limit: 30, ttl: 60_000 } })` en `PortfolioConsentController`.
 
 ### Capa 3: TypeScript + `ValidationPipe` como barrera contra inyecciones
 

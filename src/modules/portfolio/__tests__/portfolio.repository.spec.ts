@@ -1,10 +1,12 @@
 import {
   ConflictException,
+  ForbiddenException,
   GoneException,
   NotFoundException,
 } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  AiModerationStatus,
   ConsentDeclineReason,
   ConsentStatus,
   JobStatus,
@@ -24,7 +26,7 @@ describe('PortfolioRepository', () => {
       delete: vi.fn(),
     };
     const prisma = {
-      user: { findFirst: vi.fn() },
+      user: { findFirst: vi.fn(), findUnique: vi.fn() },
       category: { findFirst: vi.fn() },
       job: { findFirst: vi.fn() },
       portfolioItem: {
@@ -1057,6 +1059,411 @@ describe('PortfolioRepository', () => {
           userAgent: 'UA/1',
         }),
       });
+    });
+  });
+
+  describe('listPublishedItemsByProfessionalId', () => {
+    it('lista solo PUBLISHED con paginación base', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.findMany.mockResolvedValue([]);
+      prisma.portfolioItem.count.mockResolvedValue(0);
+
+      await repo.listPublishedItemsByProfessionalId(
+        'prof-1',
+        {},
+        { skip: 5, take: 5 },
+      );
+
+      expect(prisma.portfolioItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            professionalId: 'prof-1',
+            deletedAt: null,
+            status: PortfolioItemStatus.PUBLISHED,
+          },
+          skip: 5,
+          take: 5,
+        }),
+      );
+    });
+
+    it('añade categoryId y verifiedFromJob al where cuando vienen en filtros', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.findMany.mockResolvedValue([]);
+      prisma.portfolioItem.count.mockResolvedValue(0);
+
+      await repo.listPublishedItemsByProfessionalId(
+        'prof-1',
+        { categoryId: 'cat-x', verifiedOnly: true },
+        { skip: 0, take: 20 },
+      );
+
+      expect(prisma.portfolioItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            categoryId: 'cat-x',
+            verifiedFromJob: true,
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('findPublishedPortfolioItemPublicDetail', () => {
+    const publishedRow = (overrides: Record<string, unknown> = {}) =>
+      ({
+        id: 'i1',
+        professionalId: 'p1',
+        categoryId: 'c1',
+        title: 'Título válido',
+        description: '1234567890ab',
+        status: PortfolioItemStatus.PUBLISHED,
+        jobId: null,
+        verifiedFromJob: false,
+        aiModerationStatus: AiModerationStatus.OK,
+        aiModerationReason: null,
+        aiModerationModelRef: null,
+        aiModeratedAt: null,
+        publishedAt: new Date(),
+        cleanedUpAt: null,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        category: { id: 'c1', name: 'Cat' },
+        job: null,
+        photos: [],
+        consent: null,
+        ...overrides,
+      }) as never;
+
+    it('devuelve null si no hay item publicado', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.findFirst.mockResolvedValue(null);
+      await expect(
+        repo.findPublishedPortfolioItemPublicDetail('missing'),
+      ).resolves.toBeNull();
+    });
+
+    it('no consulta User si no hay badge verificado', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.findFirst.mockResolvedValue(publishedRow());
+
+      const out = await repo.findPublishedPortfolioItemPublicDetail('i1');
+
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(out?.verifiedJobClientFirstName).toBeNull();
+    });
+
+    it('primer nombre del cliente cuando verified + consent ACCEPTED', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.findFirst.mockResolvedValue(
+        publishedRow({
+          verifiedFromJob: true,
+          jobId: 'job-1',
+          job: {
+            id: 'job-1',
+            title: 'Job',
+            completedAt: new Date(),
+            category: { id: 'c1', name: 'Cat' },
+          },
+          consent: {
+            status: ConsentStatus.ACCEPTED,
+            clientUserId: 'client-1',
+          },
+        }),
+      );
+      prisma.user.findUnique.mockResolvedValue({ fullName: 'María López' });
+
+      const out = await repo.findPublishedPortfolioItemPublicDetail('i1');
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'client-1' },
+        select: { fullName: true },
+      });
+      expect(out?.verifiedJobClientFirstName).toBe('María');
+      expect(out?.job?.id).toBe('job-1');
+    });
+
+    it('no expone nombre si consent no está ACCEPTED', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.findFirst.mockResolvedValue(
+        publishedRow({
+          verifiedFromJob: true,
+          consent: {
+            status: ConsentStatus.DECLINED,
+            clientUserId: 'client-1',
+          },
+        }),
+      );
+
+      const out = await repo.findPublishedPortfolioItemPublicDetail('i1');
+
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(out?.verifiedJobClientFirstName).toBeNull();
+    });
+  });
+
+  describe('moderación humana y reportes', () => {
+    it('findInternalUserIdBySupabaseUid', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.user.findFirst.mockResolvedValueOnce({ id: 'u1' });
+      expect(await repo.findInternalUserIdBySupabaseUid('sub-1')).toBe('u1');
+      prisma.user.findFirst.mockResolvedValueOnce(null);
+      expect(await repo.findInternalUserIdBySupabaseUid('sub-x')).toBeNull();
+    });
+
+    it('listModerationQueue consulta Prisma con filtro esperado', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.findMany.mockResolvedValue([]);
+      prisma.portfolioItem.count.mockResolvedValue(0);
+      await repo.listModerationQueue({ skip: 2, take: 8 });
+      expect(prisma.portfolioItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            deletedAt: null,
+            status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+          },
+          skip: 2,
+          take: 8,
+        }),
+      );
+    });
+
+    const makeReportTxRepo = () => {
+      const tx = {
+        portfolioItem: {
+          findFirst: vi.fn(),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        professionalProfile: { findUnique: vi.fn() },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      };
+      const prisma = {
+        user: { findFirst: vi.fn(), findUnique: vi.fn() },
+        portfolioItem: {
+          create: vi.fn(),
+          findFirst: vi.fn(),
+          update: vi.fn(),
+          updateMany: vi.fn(),
+          findMany: vi.fn(),
+          count: vi.fn(),
+        },
+        category: { findFirst: vi.fn() },
+        job: { findFirst: vi.fn() },
+        portfolioPhoto: {
+          count: vi.fn(),
+          findFirst: vi.fn(),
+          findMany: vi.fn(),
+        },
+        $transaction: vi.fn((fn: (t: typeof tx) => unknown) =>
+          Promise.resolve(fn(tx)),
+        ),
+      };
+      return { repo: new PortfolioRepository(prisma as never), prisma, tx };
+    };
+
+    it('reportPublishedPortfolioItem: happy path', async () => {
+      const { repo, prisma, tx } = makeReportTxRepo();
+      prisma.user.findFirst.mockResolvedValueOnce({ id: 'reporter-1' });
+      tx.portfolioItem.findFirst.mockResolvedValue({
+        id: 'item-1',
+        status: PortfolioItemStatus.PUBLISHED,
+        professionalId: 'prof-profile-1',
+      });
+      tx.professionalProfile.findUnique.mockResolvedValue({
+        userId: 'owner-user',
+      });
+
+      await repo.reportPublishedPortfolioItem({
+        itemId: 'item-1',
+        reporterSupabaseUid: 'sub-r',
+      });
+
+      expect(tx.portfolioItem.update).toHaveBeenCalled();
+      expect(tx.auditLog.create).toHaveBeenCalled();
+    });
+
+    it('reportPublishedPortfolioItem: no puede reportar propio ítem', async () => {
+      const { repo, prisma, tx } = makeReportTxRepo();
+      prisma.user.findFirst.mockResolvedValueOnce({ id: 'same-user' });
+      tx.portfolioItem.findFirst.mockResolvedValue({
+        id: 'item-1',
+        status: PortfolioItemStatus.PUBLISHED,
+        professionalId: 'prof-profile-1',
+      });
+      tx.professionalProfile.findUnique.mockResolvedValue({
+        userId: 'same-user',
+      });
+      await expect(
+        repo.reportPublishedPortfolioItem({
+          itemId: 'item-1',
+          reporterSupabaseUid: 'sub-r',
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('reportPublishedPortfolioItem: ya en revisión', async () => {
+      const { repo, prisma, tx } = makeReportTxRepo();
+      prisma.user.findFirst.mockResolvedValueOnce({ id: 'r1' });
+      tx.portfolioItem.findFirst.mockResolvedValue({
+        id: 'item-1',
+        status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+        professionalId: 'p1',
+      });
+      await expect(
+        repo.reportPublishedPortfolioItem({
+          itemId: 'item-1',
+          reporterSupabaseUid: 'sub-r',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('reportPublishedPortfolioItem: ítem no publicado', async () => {
+      const { repo, prisma, tx } = makeReportTxRepo();
+      prisma.user.findFirst.mockResolvedValueOnce({ id: 'r1' });
+      tx.portfolioItem.findFirst.mockResolvedValue({
+        id: 'item-1',
+        status: PortfolioItemStatus.DRAFT,
+        professionalId: 'p1',
+      });
+      await expect(
+        repo.reportPublishedPortfolioItem({
+          itemId: 'item-1',
+          reporterSupabaseUid: 'sub-r',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('reportPublishedPortfolioItem: 404 si no existe ítem', async () => {
+      const { repo, prisma, tx } = makeReportTxRepo();
+      prisma.user.findFirst.mockResolvedValueOnce({ id: 'r1' });
+      tx.portfolioItem.findFirst.mockResolvedValue(null);
+      await expect(
+        repo.reportPublishedPortfolioItem({
+          itemId: 'missing',
+          reporterSupabaseUid: 'sub-r',
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    const makeModerateTxRepo = () => {
+      const tx = {
+        portfolioItem: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        portfolioModerationLog: { create: vi.fn().mockResolvedValue({}) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      };
+      const prisma = {
+        user: { findFirst: vi.fn(), findUnique: vi.fn() },
+        portfolioItem: {
+          create: vi.fn(),
+          findFirst: vi.fn(),
+          update: vi.fn(),
+          updateMany: vi.fn(),
+          findMany: vi.fn(),
+          count: vi.fn(),
+        },
+        category: { findFirst: vi.fn() },
+        job: { findFirst: vi.fn() },
+        portfolioPhoto: {
+          count: vi.fn(),
+          findFirst: vi.fn(),
+          findMany: vi.fn(),
+        },
+        $transaction: vi.fn((fn: (t: typeof tx) => unknown) =>
+          Promise.resolve(fn(tx)),
+        ),
+      };
+      return { repo: new PortfolioRepository(prisma as never), prisma, tx };
+    };
+
+    it('applyAdminPortfolioModeration: approve', async () => {
+      const { repo, prisma, tx } = makeModerateTxRepo();
+      prisma.user.findFirst.mockResolvedValueOnce({ id: 'admin-1' });
+
+      await repo.applyAdminPortfolioModeration({
+        adminSupabaseUid: 'sub-a',
+        itemId: 'item-1',
+        action: 'approve',
+        reason: '  ok  ',
+      });
+
+      expect(tx.portfolioItem.updateMany).toHaveBeenCalled();
+      expect(tx.portfolioModerationLog.create).toHaveBeenCalled();
+      expect(tx.auditLog.create).toHaveBeenCalled();
+    });
+
+    it('applyAdminPortfolioModeration: 409 si updateMany afecta 0 filas', async () => {
+      const tx = {
+        portfolioItem: {
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+        portfolioModerationLog: { create: vi.fn() },
+        auditLog: { create: vi.fn() },
+      };
+      const prisma = {
+        user: { findFirst: vi.fn().mockResolvedValue({ id: 'admin-1' }) },
+        portfolioItem: {
+          create: vi.fn(),
+          findFirst: vi.fn(),
+          update: vi.fn(),
+          updateMany: vi.fn(),
+          findMany: vi.fn(),
+          count: vi.fn(),
+        },
+        category: { findFirst: vi.fn() },
+        job: { findFirst: vi.fn() },
+        portfolioPhoto: {
+          count: vi.fn(),
+          findFirst: vi.fn(),
+          findMany: vi.fn(),
+        },
+        $transaction: vi.fn((fn: (t: typeof tx) => unknown) =>
+          Promise.resolve(fn(tx)),
+        ),
+      };
+      const repo = new PortfolioRepository(prisma as never);
+
+      await expect(
+        repo.applyAdminPortfolioModeration({
+          adminSupabaseUid: 'sub-a',
+          itemId: 'item-1',
+          action: 'hide',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(tx.portfolioModerationLog.create).not.toHaveBeenCalled();
+    });
+
+    it('applyAdminPortfolioModeration: 404 si admin no sincronizado', async () => {
+      const prisma = {
+        user: { findFirst: vi.fn().mockResolvedValue(null) },
+        portfolioItem: {
+          create: vi.fn(),
+          findFirst: vi.fn(),
+          update: vi.fn(),
+          updateMany: vi.fn(),
+          findMany: vi.fn(),
+          count: vi.fn(),
+        },
+        category: { findFirst: vi.fn() },
+        job: { findFirst: vi.fn() },
+        portfolioPhoto: {
+          count: vi.fn(),
+          findFirst: vi.fn(),
+          findMany: vi.fn(),
+        },
+        $transaction: vi.fn(),
+      };
+      const repo = new PortfolioRepository(prisma as never);
+      await expect(
+        repo.applyAdminPortfolioModeration({
+          adminSupabaseUid: 'ghost',
+          itemId: 'item-1',
+          action: 'approve',
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
   });
 });

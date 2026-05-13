@@ -245,6 +245,19 @@ describe('GlobalExceptionFilter', () => {
     );
   });
 
+  it('mapea HttpException 429 (rate limit) a TOO_MANY_REQUESTS', () => {
+    const filter = new GlobalExceptionFilter(makeAppConfig());
+    const { host, status, json } = makeHost();
+    filter.catch(new HttpException('Too Many Requests', 429), host);
+    expect(status).toHaveBeenCalledWith(429);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'TOO_MANY_REQUESTS',
+        status: 429,
+      }),
+    );
+  });
+
   it('cubre rama de captureException cuando error no es instancia Error', () => {
     const filter = new GlobalExceptionFilter(makeAppConfig('https://dsn.test'));
     const { host, status } = makeHost();
@@ -266,6 +279,7 @@ describe('GlobalExceptionFilter', () => {
     expect(filter.defaultCodeForStatus(422)).toBe('UNPROCESSABLE_ENTITY');
     expect(filter.defaultCodeForStatus(503)).toBe('SERVICE_UNAVAILABLE');
     expect(filter.defaultCodeForStatus(410)).toBe('GONE');
+    expect(filter.defaultCodeForStatus(429)).toBe('TOO_MANY_REQUESTS');
     expect(filter.defaultCodeForStatus(500)).toBe('INTERNAL_SERVER_ERROR');
     expect(filter.defaultCodeForStatus(418)).toBe('HTTP_ERROR');
     expect(filter.typeFromCode(undefined, 401)).toContain(

@@ -33,9 +33,14 @@ import type { ConsentPreviewResponseDto } from './dto/consent-preview-response.d
 import type { CreatePortfolioItemDto } from './dto/create-portfolio-item.dto';
 import type { DeclineConsentDto } from './dto/decline-consent.dto';
 import type { ListMyPortfolioQueryDto } from './dto/list-my-portfolio-query.dto';
+import type { ListPublicPortfolioQueryDto } from './dto/list-public-portfolio-query.dto';
+import type { ModeratePortfolioItemDto } from './dto/moderate-portfolio-item.dto';
+import type { ModerationQueueQueryDto } from './dto/moderation-queue-query.dto';
+import type { PaginatedModerationQueueDto } from './dto/moderation-queue-response.dto';
 import type { PaginatedPortfolioItemsDto } from './dto/paginated-portfolio-items.dto';
 import type { PortfolioItemResponseDto } from './dto/portfolio-item-response.dto';
 import type { PortfolioPhotoResponseDto } from './dto/portfolio-photo-response.dto';
+import type { PublicPortfolioItemDetailDto } from './dto/public-portfolio-item-detail.dto';
 import type { UpdatePortfolioItemDto } from './dto/update-portfolio-item.dto';
 import { PortfolioRepository } from './portfolio.repository';
 import {
@@ -280,6 +285,127 @@ export class PortfolioService {
       items: items.map((it) => this.toResponseDto(it)),
       meta: { page, pageSize, total },
     };
+  }
+
+  /**
+   * Lista pública de items PUBLISHED de un profesional (vidriera).
+   * Sin autenticación. Si el `professionalId` no existe, devuelve lista vacía.
+   */
+  async listPublishedPortfolioForProfessional(
+    professionalId: string,
+    query: ListPublicPortfolioQueryDto,
+  ): Promise<PaginatedPortfolioItemsDto> {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const skip = (page - 1) * pageSize;
+
+    const { items, total } =
+      await this.repository.listPublishedItemsByProfessionalId(
+        professionalId,
+        {
+          categoryId: query.categoryId,
+          verifiedOnly: query.verifiedOnly,
+        },
+        { skip, take: pageSize },
+      );
+
+    return {
+      items: items.map((it) => this.toResponseDto(it)),
+      meta: { page, pageSize, total },
+    };
+  }
+
+  /**
+   * Detalle público de un item PUBLISHED. Cualquier otro estado → 404.
+   */
+  async getPublishedPortfolioItemById(
+    itemId: string,
+  ): Promise<PublicPortfolioItemDetailDto> {
+    const row =
+      await this.repository.findPublishedPortfolioItemPublicDetail(itemId);
+    if (!row) {
+      throw new NotFoundException(
+        buildProblem(
+          'PORTFOLIO_ITEM_NOT_FOUND',
+          'El ítem de portfolio no existe o no está publicado.',
+        ),
+      );
+    }
+
+    const { item, category, job, photos, verifiedJobClientFirstName } = row;
+    const base = this.toResponseDto(item);
+
+    return {
+      ...base,
+      category,
+      job: job
+        ? {
+            id: job.id,
+            title: job.title,
+            completedAt: job.completedAt,
+            category: job.category,
+          }
+        : null,
+      photos: photos.map((p) => ({
+        id: p.id,
+        fileKey: p.fileKey,
+        caption: p.caption,
+        displayOrder: p.displayOrder,
+      })),
+      verifiedJobClientFirstName,
+    };
+  }
+
+  /**
+   * Cola de moderación (`HIDDEN_PENDING_REVIEW`). El guard limita a SUPER_ADMIN.
+   */
+  async listModerationQueue(
+    query: ModerationQueueQueryDto,
+  ): Promise<PaginatedModerationQueueDto> {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const skip = (page - 1) * pageSize;
+    const { items, total } = await this.repository.listModerationQueue({
+      skip,
+      take: pageSize,
+    });
+    return {
+      items: items.map((row) => ({
+        id: row.id,
+        professionalId: row.professionalId,
+        title: row.title,
+        status: row.status,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        category: row.category,
+      })),
+      meta: { page, pageSize, total },
+    };
+  }
+
+  /** SUPER_ADMIN: aprueba u oculta definitivamente un ítem en revisión. */
+  async moderatePortfolioItem(
+    supabaseUid: string,
+    itemId: string,
+    dto: ModeratePortfolioItemDto,
+  ): Promise<void> {
+    await this.repository.applyAdminPortfolioModeration({
+      adminSupabaseUid: supabaseUid,
+      itemId,
+      action: dto.action,
+      reason: dto.reason,
+    });
+  }
+
+  /** Usuario autenticado reporta un ítem `PUBLISHED`. */
+  async reportPortfolioItem(
+    supabaseUid: string,
+    itemId: string,
+  ): Promise<void> {
+    await this.repository.reportPublishedPortfolioItem({
+      itemId,
+      reporterSupabaseUid: supabaseUid,
+    });
   }
 
   /**

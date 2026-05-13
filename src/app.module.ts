@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigType } from '@nestjs/config';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import Redis from 'ioredis';
 import { GlobalExceptionFilter } from '@common/filters/global-exception.filter';
 import { AppLoggerModule } from '@common/logger/logger.module';
@@ -49,6 +51,13 @@ import { UsersModule } from '@modules/users/users.module';
         }),
       }),
     }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: 100,
+      },
+    ]),
     AppLoggerModule,
     DiagnosticsModule,
     HealthModule,
@@ -60,6 +69,9 @@ import { UsersModule } from '@modules/users/users.module';
     NotificationsModule,
     PortfolioModule,
   ],
-  providers: [GlobalExceptionFilter],
+  providers: [
+    GlobalExceptionFilter,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}
