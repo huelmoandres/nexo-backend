@@ -7,7 +7,7 @@
 ## Estado Actual del Proyecto
 
 **Fase:** Implementación de dominios core + harness alineado al código
-**Fecha de última actualización:** 2026-05-12 (PortfolioModule — Owner CRUD)
+**Fecha de última actualización:** 2026-05-13 (`main` — catálogo de errores RFC 7807 + portfolio owner CRUD)
 
 ---
 
@@ -52,6 +52,7 @@
 | `.env.example` | Completado |
 | Swagger (`@nestjs/swagger`) | Completado — ver `src/config/swagger.setup.ts` |
 | Filtro global de excepciones (RFC 7807) | **Completado** — `GlobalExceptionFilter` |
+| Catálogo central `ERRORS` + `buildProblem` / `problemException` | **Completado** — `src/common/errors/`; tablas en `docs/reference/api-standards.md`; códigos R2 (`STORAGE_*`, `SERVICE_UNAVAILABLE`); `type` vía `problemDetailTypeFromScreamingCode` + `app.problemDetailTypeBaseUrl` (sin `ProblemDetailModule`) |
 | `ValidationPipe` global | **Completado** — `main.ts` (whitelist, transform, factory RFC 7807) |
 | Logging HTTP (Pino) | **Completado** — `nestjs-pino` en `LoggerModule` |
 | Sentry | **Completado** — `setupSentry` en bootstrap |
@@ -86,3 +87,6 @@
 - **2026-05-07:** Alineación harness: AGENTS.md, SESSION_STATE actualizado al estado real (filtro RFC 7807, ValidationPipe, Pino, Sentry, diagnostics), nota JWKS en spec de auth, reglas `auth-jwt` + checklist de performance, tests de `supabase-jwks.util.ts`, smoke E2E `/health/live`.
 - **2026-05-12:** Introducida la **doctrina Docs-First** como regla permanente del repo. Nuevo artefacto [`.harness/rules/docs-first.md`](rules/docs-first.md) con la matriz de obligaciones (agregar / modificar / eliminar), excepciones explícitas, orden de commits y checklist de PR. Anclajes agregados en [AGENTS.md](../AGENTS.md) (sección "Workflow Docs-First"), [.cursorrules](../.cursorrules) (sección 3 "PROTOCOLO DE CAMBIOS") e [INDEX.md](INDEX.md). Primer caso de uso: harness completo del módulo `portfolio` (spec + eval), gobernanza transversal en `storage-rules.md` (ownership de paths) y nueva política PII en `security-roles.md`. Cero código TypeScript o Prisma en este cambio; solo doctrina y harness.
 - **2026-05-12 (Portfolio Owner CRUD):** Implementados los 7 endpoints owner del módulo `portfolio` siguiendo TDD estricto y coverage 100% sobre el directorio del módulo. Endpoints: `POST /portfolio/items` (DRAFT con validación de Job verificable), `POST /items/:id/photos` (con regex canónica `users/<professionalId>/portfolio/<itemId>/`, ownership vía `storage-paths.ts`, dedup y atomicidad de `displayOrder` en `prisma.$transaction`), `DELETE /items/:id/photos/:photoId` (compact reorder atómico), `PATCH /items/:id` (con freeze guard `PORTFOLIO_CATEGORY_FROZEN_POST_VERIFICATION` si `verifiedFromJob=true`), `DELETE /items/:id` (soft-delete + encola `portfolio-cleanup` stub), `POST /items/:id/publish` (HEAD checks con cache Redis `storage:exists:*` TTL 60s, 1 retry con 503 → `PORTFOLIO_PHOTOS_STORAGE_UNAVAILABLE`, moderation provider stub `AlwaysApprovedModerationProvider`, transición DRAFT → PUBLISHED), `GET /items/mine` (paginado). Pendiente para próximos PRs: consent flow + reminder outbox, endpoints públicos del badge, admin moderation, integración real BullMQ del cleanup, provider IA real (OpenAI/AWS Rekognition).
+- **2026-05-13:** En `main`, catálogo global de errores (PR #7): `ERRORS`, `buildProblem`, módulos migrados, docs
+  `api-standards`, códigos R2 y filtro sin `ProblemDetailModule`; e2e factory con `appConfig` +
+  `problemDetailTypeUrl`.
