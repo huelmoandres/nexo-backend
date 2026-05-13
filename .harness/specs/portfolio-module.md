@@ -279,7 +279,7 @@ Transiciones permitidas:
 
 ## 4. Controladores y Endpoints
 
-Todos prefijados con `/api/portfolio` (prefix global del proyecto).
+Prefijo HTTP global del proyecto: **`/api`**. La mayoría de rutas de este dominio viven bajo **`/api/portfolio/...`** (`PortfolioController`, consent, moderación). La **lista pública por profesional** está en **`/api/professionals/:professionalId/portfolio`** (`PortfolioProfessionalPublicController`).
 
 ### 4.1 Para el profesional (autenticado, `Role: INDEPENDENT_PRO | COMPANY_ADMIN`, dueño del item)
 
@@ -328,7 +328,7 @@ Todos prefijados con `/api/portfolio` (prefix global del proyecto).
 
 #### F. Solicitar verificación al cliente
 
-> **Implementación (2026-05):** backend con creación de `PortfolioConsent`, preview/accept/decline y auditoría; **sin** envío de email/push ni job BullMQ de recordatorio (siguiente PR).
+> **Implementación (2026-05):** creación de `PortfolioConsent`, notificación in-app al cliente (`NotificationsService`; push/email pueden quedar diferidos según entorno), encolado BullMQ `portfolio-consent-reminder` con delay configurable (`PORTFOLIO_REMINDER_DELAY_DAYS`) y processor operativo (§6).
 
 - **Ruta:** `POST /portfolio/items/:id/request-verification`
 - **Pre-condición:** item con `jobId` seteado, status `PUBLISHED`, sin consent previo.
@@ -383,18 +383,20 @@ Todos prefijados con `/api/portfolio` (prefix global del proyecto).
 
 ### 4.3 Lecturas públicas (sin auth)
 
-> **Implementación (2026-05):** `GET /professionals/:professionalId/portfolio` (lista paginada, filtros `categoryId`, `verifiedOnly`) y `GET /portfolio/items/:id` (detalle; solo `PUBLISHED`; badge cliente = primer nombre si consent ACCEPTED).
+> **Implementación (2026-05):** `GET /api/professionals/:professionalId/portfolio` (lista paginada, filtros `categoryId`, `verifiedOnly`) y `GET /api/portfolio/items/:id` (detalle; solo `PUBLISHED`; badge cliente = primer nombre si consent ACCEPTED).
 
-- `GET /professionals/:professionalId/portfolio` — Solo items `PUBLISHED`. Extiende `PaginationQueryDto`. Filtros: `categoryId?`, `verifiedOnly?` (boolean).
-- `GET /portfolio/items/:id` — Detalle público de un item `PUBLISHED`. Si está en cualquier otro status: `404 PORTFOLIO_ITEM_NOT_FOUND` (no revela existencia de items ocultos).
+- `GET /professionals/:professionalId/portfolio` — Solo items `PUBLISHED`. Extiende `PaginationQueryDto`. Filtros: `categoryId?`, `verifiedOnly?` (boolean). *(Ruta completa con prefijo global: `/api/professionals/...`.)*
+- `GET /portfolio/items/:id` — Detalle público de un item `PUBLISHED`. Si está en cualquier otro status: `404 PORTFOLIO_ITEM_NOT_FOUND` (no revela existencia de items ocultos). *(Prefijo: `/api/portfolio/...`.)*
 
 **Privacidad del badge:** la response pública del badge `verifiedFromJob = true` muestra **únicamente** `firstName = clientUser.fullName.split(' ')[0]` (LPDP Uruguaya). Nunca apellido ni email del cliente. Ver [security-roles.md](../../docs/reference/security-roles.md) sección "Privacidad PII".
 
-### 4.4 Admin (`Role: SUPER_ADMIN`)
+### 4.4 Admin (`Role: SUPER_ADMIN`) y reportes
 
-- `GET /portfolio/moderation/queue` — Lista items en `HIDDEN_PENDING_REVIEW` o con reportes pendientes.
-- `PATCH /portfolio/items/:id/moderate` — Body `{ action: 'approve' | 'hide', reason?: string }`. Transiciona el estado y registra `ADMIN_OVERRIDE` en `PortfolioModerationLog`.
-- `POST /portfolio/items/:id/report` — Reporta el item (cualquier usuario autenticado). Mueve a queue admin.
+- `GET /portfolio/moderation/queue` — **`SUPER_ADMIN`**. Lista items en estado **`HIDDEN_PENDING_REVIEW`** (incluye los que llegaron por reporte, decline `INAPPROPRIATE` o flujos que pongan ese status). Paginado.
+- `PATCH /portfolio/items/:id/moderate` — **`SUPER_ADMIN`**. Body `{ action: 'approve' | 'hide', reason?: string }`. Solo si el ítem está `HIDDEN_PENDING_REVIEW`; transiciona y registra `ADMIN_OVERRIDE` en `PortfolioModerationLog` + `AuditLog`.
+- `POST /portfolio/items/:id/report` — Usuario **autenticado** (no hace falta rol admin): reporta un ítem `PUBLISHED` ajeno; pasa a `HIDDEN_PENDING_REVIEW` y auditoría `PORTFOLIO_ITEM_REPORTED`.
+
+*(Prefijo HTTP: `/api/portfolio/...`.)*
 
 ---
 
@@ -467,7 +469,7 @@ Cada implementación de `ContentModerationProvider` está **obligada** a usar `f
 
 ## 6. Recordatorio del Consent (BullMQ)
 
-> **Infra backend (2026-05):** conexión BullMQ global (`AppModule`) sobre el mismo Redis que auth; colas `portfolio-consent-reminder`, `portfolio-cleanup`, `portfolio-moderate` registradas en `PortfolioModule`; validación de invariante §6.2 en `PortfolioBullInvariantService`. Pendiente: `@Processor` del reminder, encolado al crear consent, notificaciones.
+> **Infra backend (2026-05):** conexión BullMQ global (`AppModule`) sobre el mismo Redis que auth; colas `portfolio-consent-reminder`, `portfolio-cleanup`, `portfolio-moderate` registradas en `PortfolioModule`; validación de invariante §6.2 en `PortfolioBullInvariantService`. `@Processor` de consent (recordatorio diferido + job horario de expiración) implementado; encolado al crear consent desde `request-verification`; notificación in-app al crear la solicitud.
 
 ### 6.1 Job `portfolio-consent-reminder`
 
@@ -586,13 +588,15 @@ export const portfolioConfig = registerAs('portfolio', () => ({
 
 ## 10. Excepciones Esperadas (RFC 7807)
 
-Los slugs nuevos se agregan a [api-standards.md](../../docs/reference/api-standards.md):
+Los slugs canónicos viven en [api-standards.md](../../docs/reference/api-standards.md) (secciones 2.5 Portfolio, 2.5.1 Consent, 2.6 genéricos incl. `TOO_MANY_REQUESTS`). Subconjunto habitual de este módulo:
 
 | HTTP | `code` (canónico) | Caso |
 |------|-------------------|------|
 | 400 | `VALIDATION_ERROR` | DTO inválido; `fileKey` no respeta regex canónica. |
-| 403 | `PORTFOLIO_NOT_OWNER` | El pro autenticado no es dueño del item / Job referenciado. |
-| 404 | `PORTFOLIO_ITEM_NOT_FOUND` | Item inexistente o en estado no público al consultar pública. |
+| 400 | `PORTFOLIO_VERIFICATION_NOT_ELIGIBLE` | Solicitar verificación sin item `PUBLISHED` con `jobId` o ya verificado. |
+| 403 | `STORAGE_FORBIDDEN_KEY` | `fileKey` de foto no pertenece al profesional autenticado. |
+| 403 | `PORTFOLIO_CANNOT_REPORT_OWN_ITEM` | Reporte del propio ítem de portfolio. |
+| 404 | `PORTFOLIO_ITEM_NOT_FOUND` | Item inexistente, no del dueño esperado o no público al consultar lectura pública. |
 | 404 | `CONSENT_TOKEN_NOT_FOUND` | Token de consent inexistente. |
 | 409 | `PORTFOLIO_CATEGORY_MISMATCH_JOB` | `categoryId` distinto al `job.categoryId` cuando hay `jobId`. |
 | 409 | `PORTFOLIO_CATEGORY_FROZEN_POST_VERIFICATION` | Intento de cambiar `categoryId` cuando `verifiedFromJob = true`. |
@@ -600,8 +604,14 @@ Los slugs nuevos se agregan a [api-standards.md](../../docs/reference/api-standa
 | 409 | `PORTFOLIO_FILEKEY_DUPLICATE` | `fileKey` ya existe en la DB. |
 | 409 | `PORTFOLIO_PHOTOS_NOT_READY` | HEAD 404 en alguna foto al publicar. |
 | 409 | `PORTFOLIO_ALREADY_VERIFIED` | Race en `accept` del consent. |
+| 409 | `PORTFOLIO_CONSENT_EXISTS` | Ya hay `PortfolioConsent` para el item. |
+| 409 | `PORTFOLIO_JOB_NOT_CLOSED` | Job de verificación no está `CLOSED`. |
+| 409 | `PORTFOLIO_ITEM_NOT_REPORTABLE` | Reporte sobre ítem que no está `PUBLISHED`. |
+| 409 | `PORTFOLIO_ITEM_ALREADY_FLAGGED` | Reporte duplicado o ítem ya en revisión. |
+| 409 | `PORTFOLIO_NOT_IN_MODERATION_QUEUE` | Moderación admin sobre ítem que no está `HIDDEN_PENDING_REVIEW`. |
 | 410 | `CONSENT_TOKEN_EXPIRED` | Token consent vencido. |
 | 410 | `CONSENT_ALREADY_RESOLVED` | Consent ya respondido. |
+| 429 | `TOO_MANY_REQUESTS` | Rate limiting (`ThrottlerGuard` u otros límites por IP/ruta). |
 | 503 | `PORTFOLIO_PHOTOS_STORAGE_UNAVAILABLE` | R2/S3 degradado durante HEAD. |
 | 503 | `PORTFOLIO_AI_PROVIDER_UNAVAILABLE` | Tras agotar reintentos, IA no disponible. |
 
