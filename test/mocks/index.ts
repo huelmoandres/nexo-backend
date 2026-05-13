@@ -15,5 +15,4 @@
 
 export * from './expo-push.mock';
 export * from './payment-gateway.mock';
-export * from './problem-detail-type.mock';
 export * from './storage.mock';

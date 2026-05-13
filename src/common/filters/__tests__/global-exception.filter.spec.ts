@@ -8,7 +8,6 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import { createProblemDetailTypeMock } from '@test/mocks';
 import { GlobalExceptionFilter } from '../global-exception.filter';
 
 const makeAppConfig = (sentryDsn = '') => ({
@@ -17,7 +16,6 @@ const makeAppConfig = (sentryDsn = '') => ({
 });
 
 describe('GlobalExceptionFilter', () => {
-  const problemDetailTypes = createProblemDetailTypeMock();
   const makeHost = () => {
     const json = vi.fn();
     const status = vi.fn().mockReturnValue({ json });
@@ -35,10 +33,7 @@ describe('GlobalExceptionFilter', () => {
   };
 
   it('mapea BadRequestException a RFC7807', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig(),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig());
     const { host, status, json } = makeHost();
     filter.catch(
       new BadRequestException({
@@ -58,10 +53,7 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('preserva campos type/title/code/errors cuando vienen en payload', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig(),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig());
     const { host, json } = makeHost();
     filter.catch(
       new BadRequestException({
@@ -85,10 +77,7 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('mapea UnauthorizedException a 401', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig(),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig());
     const { host, status, json } = makeHost();
     filter.catch(
       new UnauthorizedException({
@@ -107,10 +96,7 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('mapea NotFoundException a 404', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig(),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig());
     const { host, status, json } = makeHost();
     filter.catch(new NotFoundException('Not found'), host);
 
@@ -124,10 +110,7 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('mapea HttpException genérica a su status', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig(),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig());
     const { host, status, json } = makeHost();
     filter.catch(new HttpException('Conflict', 409), host);
 
@@ -140,10 +123,7 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('HttpException con status sin entrada en STATUS_TITLES usa title Error', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig(),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig());
     const { host, status, json } = makeHost();
     filter.catch(new HttpException('teapot', 418), host);
     expect(status).toHaveBeenCalledWith(418);
@@ -153,10 +133,7 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('HttpException con objeto sin title usa mapa STATUS_TITLES', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig(),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig());
     const { host, json } = makeHost();
     filter.catch(
       new BadRequestException({
@@ -171,10 +148,7 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('HttpException con objeto y status no mapeado usa title Error', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig(),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig());
     const { host, json } = makeHost();
     filter.catch(
       new HttpException(
@@ -192,10 +166,7 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('mapea HttpException con response string', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig(),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig());
     const { host, json } = makeHost();
     filter.catch(new HttpException('Plain message', 400), host);
     expect(json).toHaveBeenCalledWith(
@@ -206,10 +177,7 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('HttpException con response primitivo no-string usa exception.message', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig(),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig());
     const { host, json } = makeHost();
     filter.catch(new HttpException(123 as never, 400), host);
     expect(json).toHaveBeenCalledWith(
@@ -218,10 +186,7 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('normaliza detail cuando message es array o string', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig(),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig());
     const hostArray = makeHost();
     filter.catch(
       new BadRequestException({
@@ -246,10 +211,7 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('mapea ForbiddenException y UnprocessableEntityException', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig(),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig());
     const h1 = makeHost();
     filter.catch(new ForbiddenException('forbidden'), h1.host);
     expect(h1.status).toHaveBeenCalledWith(403);
@@ -260,10 +222,7 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('mapea error no controlado a 500', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig(),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig());
     const { host, status, json } = makeHost();
     filter.catch(new Error('Boom'), host);
 
@@ -276,10 +235,7 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('reporta a Sentry cuando status >= 500', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig('https://dsn.test'),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig('https://dsn.test'));
     const { host, status, json } = makeHost();
     filter.catch(new Error('boom'), host);
 
@@ -290,20 +246,14 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('cubre rama de captureException cuando error no es instancia Error', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig('https://dsn.test'),
-    );
+    const filter = new GlobalExceptionFilter(makeAppConfig('https://dsn.test'));
     const { host, status } = makeHost();
     filter.catch({ not: 'an-error-object' }, host);
     expect(status).toHaveBeenCalledWith(500);
   });
 
   it('cubre branches internos de defaultCodeForStatus y typeFromCode', () => {
-    const filter = new GlobalExceptionFilter(
-      problemDetailTypes,
-      makeAppConfig(),
-    ) as unknown as {
+    const filter = new GlobalExceptionFilter(makeAppConfig()) as unknown as {
       defaultCodeForStatus: (status: number) => string;
       typeFromCode: (code: string | undefined, status: number) => string;
     };
@@ -314,6 +264,7 @@ describe('GlobalExceptionFilter', () => {
     expect(filter.defaultCodeForStatus(404)).toBe('NOT_FOUND');
     expect(filter.defaultCodeForStatus(409)).toBe('CONFLICT');
     expect(filter.defaultCodeForStatus(422)).toBe('UNPROCESSABLE_ENTITY');
+    expect(filter.defaultCodeForStatus(503)).toBe('SERVICE_UNAVAILABLE');
     expect(filter.defaultCodeForStatus(500)).toBe('INTERNAL_SERVER_ERROR');
     expect(filter.defaultCodeForStatus(418)).toBe('HTTP_ERROR');
     expect(filter.typeFromCode(undefined, 401)).toContain(

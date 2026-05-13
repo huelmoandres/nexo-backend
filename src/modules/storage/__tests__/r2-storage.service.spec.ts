@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  BadRequestException,
   ForbiddenException,
   NotFoundException,
   ServiceUnavailableException,
@@ -168,18 +169,39 @@ describe('R2StorageService', () => {
       );
     });
 
-    it('lanza ServiceUnavailableException cuando falta contentType', async () => {
+    it('lanza BadRequestException cuando falta contentType', async () => {
       const svc = buildService(buildConfig());
       await expect(svc.generatePresignedPutUrl({ key: 'x' })).rejects.toThrow(
-        ServiceUnavailableException,
+        BadRequestException,
       );
     });
 
-    it('lanza ServiceUnavailableException cuando no está configurado', async () => {
+    it('BadRequestException sin contentType incluye STORAGE_PRESIGN_CONTENT_TYPE_REQUIRED', async () => {
+      const svc = buildService(buildConfig());
+      try {
+        await svc.generatePresignedPutUrl({ key: 'x' });
+        expect.fail('debería lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(BadRequestException);
+        const body = (err as BadRequestException).getResponse() as {
+          code?: string;
+        };
+        expect(body.code).toBe('STORAGE_PRESIGN_CONTENT_TYPE_REQUIRED');
+      }
+    });
+
+    it('lanza ServiceUnavailableException con STORAGE_NOT_CONFIGURED cuando no está configurado', async () => {
       const svc = buildService(buildConfig({ r2Endpoint: '' }));
-      await expect(svc.generatePresignedPutUrl({ key: 'x' })).rejects.toThrow(
-        ServiceUnavailableException,
-      );
+      try {
+        await svc.generatePresignedPutUrl({ key: 'x' });
+        expect.fail('debería lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ServiceUnavailableException);
+        const body = (err as ServiceUnavailableException).getResponse() as {
+          code?: string;
+        };
+        expect(body.code).toBe('STORAGE_NOT_CONFIGURED');
+      }
     });
   });
 
@@ -333,6 +355,22 @@ describe('R2StorageService', () => {
       await expect(svc.assertObjectExists('key.jpg')).rejects.toThrow(
         ServiceUnavailableException,
       );
+    });
+
+    it('ServiceUnavailable por HEAD no-404 incluye STORAGE_UNAVAILABLE', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockRejectedValueOnce({ name: 'InternalError' });
+
+      try {
+        await svc.assertObjectExists('key.jpg');
+        expect.fail('debería lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ServiceUnavailableException);
+        const body = (err as ServiceUnavailableException).getResponse() as {
+          code?: string;
+        };
+        expect(body.code).toBe('STORAGE_UNAVAILABLE');
+      }
     });
 
     it('lanza ServiceUnavailableException cuando no está configurado', async () => {

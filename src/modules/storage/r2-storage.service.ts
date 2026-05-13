@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Inject,
   Injectable,
   Logger,
@@ -65,7 +66,10 @@ export class R2StorageService implements IStorageService {
   private assertConfigured(): void {
     if (!this.configured) {
       throw new ServiceUnavailableException(
-        'R2 Storage no está configurado. Verifica R2_ENDPOINT, R2_ACCESS_KEY_ID y R2_SECRET_ACCESS_KEY.',
+        buildProblem(
+          'STORAGE_NOT_CONFIGURED',
+          'R2 Storage no está configurado. Verifica R2_ENDPOINT, R2_ACCESS_KEY_ID y R2_SECRET_ACCESS_KEY.',
+        ),
       );
     }
   }
@@ -81,7 +85,7 @@ export class R2StorageService implements IStorageService {
    * @param input.contentType MIME type del archivo a subir.
    * @returns URL prefirmada y la misma `key` persistible en base de datos.
    * @throws ServiceUnavailableException Si R2 no está configurado.
-   * @throws ServiceUnavailableException Si `contentType` no fue provisto.
+   * @throws BadRequestException Con `code: STORAGE_PRESIGN_CONTENT_TYPE_REQUIRED` si `contentType` está vacío.
    */
   async generatePresignedPutUrl(input: {
     key: string;
@@ -90,8 +94,11 @@ export class R2StorageService implements IStorageService {
   }): Promise<PresignedPutResult> {
     this.assertConfigured();
     if (!input.contentType || input.contentType.trim() === '') {
-      throw new ServiceUnavailableException(
-        'R2 Storage requiere contentType para generar presigned PUT URL.',
+      throw new BadRequestException(
+        buildProblem(
+          'STORAGE_PRESIGN_CONTENT_TYPE_REQUIRED',
+          'R2 Storage requiere contentType para generar presigned PUT URL.',
+        ),
       );
     }
     const bucket = input.bucket ?? this.config.r2BucketKyc;
@@ -150,7 +157,10 @@ export class R2StorageService implements IStorageService {
         );
       }
       throw new ServiceUnavailableException(
-        `Storage HEAD check failed for key: ${key}`,
+        buildProblem(
+          'STORAGE_UNAVAILABLE',
+          `Storage HEAD check failed for key: ${key}`,
+        ),
       );
     }
   }

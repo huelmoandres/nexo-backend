@@ -27,6 +27,8 @@ export interface IStorageService {
    * @param input.contentType - MIME para la subida.
    * En implementaciones reales (R2/S3) puede ser obligatorio por seguridad.
    * @returns URL temporal y key persistible en base de datos.
+   * @throws `BadRequestException` Con `code: STORAGE_PRESIGN_CONTENT_TYPE_REQUIRED` si falta `contentType`.
+   * @throws `ServiceUnavailableException` Con `code: STORAGE_NOT_CONFIGURED` si R2 no está configurado.
    */
   generatePresignedPutUrl(input: {
     key: string;
@@ -49,7 +51,7 @@ export interface IStorageService {
    * @param key - Identificador del objeto.
    * @param bucket - Cubeta opcional.
    * @throws `NotFoundException` Con cuerpo RFC 7807 (`code: STORAGE_OBJECT_NOT_FOUND`) si el objeto no existe (HTTP 404 en R2).
-   * @throws `ServiceUnavailableException` Si R2/S3 no responde o devuelve 5xx.
+   * @throws `ServiceUnavailableException` Con `code: STORAGE_UNAVAILABLE` si R2/S3 no responde o error distinto de 404.
    */
   assertObjectExists(key: string, bucket?: string): Promise<void>;
 
