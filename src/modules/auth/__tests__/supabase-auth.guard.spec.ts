@@ -103,6 +103,19 @@ describe('SupabaseAuthGuard', () => {
     }
   });
 
+  it('handleRequest incluye detalle desde info cuando info es string', () => {
+    try {
+      guard.handleRequest(null, false, '  token bad  ', {} as ExecutionContext);
+    } catch (error) {
+      expect(error).toMatchObject({
+        response: expect.objectContaining({
+          detail: expect.stringContaining('token bad'),
+          code: 'AUTH_INVALID_TOKEN',
+        }),
+      });
+    }
+  });
+
   it('handleRequest incluye mensaje Passport/JWT desde info en no-produccion', () => {
     try {
       guard.handleRequest(

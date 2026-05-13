@@ -12,6 +12,7 @@ describe('PortfolioController', () => {
       softDeleteItem: vi.fn(),
       publishItem: vi.fn(),
       listMyItems: vi.fn(),
+      requestVerification: vi.fn(),
     };
     return {
       controller: new PortfolioController(service as never),
@@ -116,6 +117,25 @@ describe('PortfolioController', () => {
       const result = await controller.listMyItems('sub-1', query);
 
       expect(service.listMyItems).toHaveBeenCalledWith('sub-1', query);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('POST /items/:id/request-verification (requestVerification)', () => {
+    it('delega en service.requestVerification pasando sub e itemId', async () => {
+      const { controller, service } = makeController();
+      const expected = {
+        token: '550e8400-e29b-41d4-a716-446655440000',
+        expiresAt: new Date('2026-06-01'),
+      };
+      service.requestVerification.mockResolvedValue(expected);
+
+      const result = await controller.requestVerification('sub-1', 'item-1');
+
+      expect(service.requestVerification).toHaveBeenCalledWith(
+        'sub-1',
+        'item-1',
+      );
       expect(result).toEqual(expected);
     });
   });

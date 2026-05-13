@@ -2,13 +2,15 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  GoneException,
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AiModerationStatus,
+  ConsentDeclineReason,
   ConsentStatus,
   JobStatus,
   PortfolioItemStatus,
-  AiModerationStatus,
 } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { PortfolioService } from '../portfolio.service';
@@ -1108,6 +1110,201 @@ describe('PortfolioService', () => {
       expect(dto.professionalDisplayName).toContain('Ana');
       expect(dto.categoryCoincide).toBe(true);
       expect(dto.photos).toHaveLength(1);
+    });
+
+    it('getConsentPreview lanza NotFound si no hay fila', async () => {
+      const tokenUuid = '550e8400-e29b-41d4-a716-446655440000';
+      const { service, repo } = makeService({
+        findConsentPreviewByToken: vi.fn().mockResolvedValue(null),
+      });
+
+      await expect(service.getConsentPreview(tokenUuid)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(repo.findConsentPreviewByToken).toHaveBeenCalledWith(tokenUuid);
+    });
+
+    it('getConsentPreview lanza Gone si el consent ya no está PENDING', async () => {
+      const tokenUuid = '550e8400-e29b-41d4-a716-446655440000';
+      const { service } = makeService({
+        findConsentPreviewByToken: vi.fn().mockResolvedValue({
+          status: ConsentStatus.ACCEPTED,
+          expiresAt: new Date(Date.now() + 86_400_000),
+          portfolioItem: {},
+        }),
+      });
+
+      await expect(service.getConsentPreview(tokenUuid)).rejects.toBeInstanceOf(
+        GoneException,
+      );
+    });
+
+    it('getConsentPreview lanza Gone si el token expiró', async () => {
+      const tokenUuid = '550e8400-e29b-41d4-a716-446655440000';
+      const { service } = makeService({
+        findConsentPreviewByToken: vi.fn().mockResolvedValue({
+          status: ConsentStatus.PENDING,
+          expiresAt: new Date(Date.now() - 1000),
+          portfolioItem: {},
+        }),
+      });
+
+      await expect(service.getConsentPreview(tokenUuid)).rejects.toBeInstanceOf(
+        GoneException,
+      );
+    });
+
+    it('getConsentPreview lanza NotFound si falta job en los datos', async () => {
+      const tokenUuid = '550e8400-e29b-41d4-a716-446655440000';
+      const { service } = makeService({
+        findConsentPreviewByToken: vi.fn().mockResolvedValue({
+          status: ConsentStatus.PENDING,
+          expiresAt: new Date(Date.now() + 86_400_000),
+          portfolioItem: {
+            title: 'T',
+            description: 'D',
+            categoryId: 'cat-1',
+            category: { id: 'cat-1', name: 'C' },
+            professional: { user: { fullName: 'Ana' } },
+            photos: [],
+            job: null,
+          },
+        }),
+      });
+
+      await expect(service.getConsentPreview(tokenUuid)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('getConsentPreview usa etiqueta por defecto si fullName está vacío', async () => {
+      const tokenUuid = '550e8400-e29b-41d4-a716-446655440000';
+      const { service } = makeService({
+        findConsentPreviewByToken: vi.fn().mockResolvedValue({
+          status: ConsentStatus.PENDING,
+          expiresAt: new Date(Date.now() + 86_400_000),
+          portfolioItem: {
+            title: 'T',
+            description: 'D',
+            categoryId: 'cat-1',
+            category: { id: 'cat-1', name: 'C' },
+            professional: { user: { fullName: '   ' } },
+            photos: [],
+            job: {
+              id: 'job-1',
+              title: 'J',
+              completedAt: null,
+              categoryId: 'cat-1',
+              category: { id: 'cat-1', name: 'C' },
+              client: { id: 'c1', fullName: 'Cliente' },
+            },
+          },
+        }),
+      });
+
+      const dto = await service.getConsentPreview(tokenUuid);
+      expect(dto.professionalDisplayName).toBe('Profesional');
+    });
+
+    it('getConsentPreview muestra un solo nombre si no hay apellido', async () => {
+      const tokenUuid = '550e8400-e29b-41d4-a716-446655440000';
+      const { service } = makeService({
+        findConsentPreviewByToken: vi.fn().mockResolvedValue({
+          status: ConsentStatus.PENDING,
+          expiresAt: new Date(Date.now() + 86_400_000),
+          portfolioItem: {
+            title: 'T',
+            description: 'D',
+            categoryId: 'cat-1',
+            category: { id: 'cat-1', name: 'C' },
+            professional: { user: { fullName: 'Plomero' } },
+            photos: [],
+            job: {
+              id: 'job-1',
+              title: 'J',
+              completedAt: null,
+              categoryId: 'cat-1',
+              category: { id: 'cat-1', name: 'C' },
+              client: { id: 'c1', fullName: 'Cliente' },
+            },
+          },
+        }),
+      });
+
+      const dto = await service.getConsentPreview(tokenUuid);
+      expect(dto.professionalDisplayName).toBe('Plomero');
+    });
+
+    it('getConsentPreview formatea inicial del último apellido', async () => {
+      const tokenUuid = '550e8400-e29b-41d4-a716-446655440000';
+      const { service } = makeService({
+        findConsentPreviewByToken: vi.fn().mockResolvedValue({
+          status: ConsentStatus.PENDING,
+          expiresAt: new Date(Date.now() + 86_400_000),
+          portfolioItem: {
+            title: 'T',
+            description: 'D',
+            categoryId: 'cat-1',
+            category: { id: 'cat-1', name: 'C' },
+            professional: { user: { fullName: 'Carlos Alberto Ruiz' } },
+            photos: [],
+            job: {
+              id: 'job-1',
+              title: 'J',
+              completedAt: null,
+              categoryId: 'cat-1',
+              category: { id: 'cat-1', name: 'C' },
+              client: { id: 'c1', fullName: 'Cliente' },
+            },
+          },
+        }),
+      });
+
+      const dto = await service.getConsentPreview(tokenUuid);
+      expect(dto.professionalDisplayName).toBe('Carlos R.');
+    });
+
+    it('acceptConsent delega al repositorio', async () => {
+      const tokenUuid = '550e8400-e29b-41d4-a716-446655440000';
+      const { service, repo } = makeService();
+
+      await service.acceptConsent(tokenUuid);
+
+      expect(repo.acceptPortfolioConsent).toHaveBeenCalledWith(tokenUuid);
+    });
+
+    it('declineConsent delega al repositorio con meta opcional', async () => {
+      const tokenUuid = '550e8400-e29b-41d4-a716-446655440000';
+      const { service, repo } = makeService();
+
+      await service.declineConsent(
+        tokenUuid,
+        { reason: ConsentDeclineReason.OTHER, notes: 'n' },
+        { ipAddress: '10.0.0.2', userAgent: 'TestUA' },
+      );
+
+      expect(repo.declinePortfolioConsent).toHaveBeenCalledWith(tokenUuid, {
+        reason: ConsentDeclineReason.OTHER,
+        notes: 'n',
+        ipAddress: '10.0.0.2',
+        userAgent: 'TestUA',
+      });
+    });
+
+    it('declineConsent delega sin meta cuando no se pasa', async () => {
+      const tokenUuid = '550e8400-e29b-41d4-a716-446655440000';
+      const { service, repo } = makeService();
+
+      await service.declineConsent(tokenUuid, {
+        reason: ConsentDeclineReason.PRIVACY,
+      });
+
+      expect(repo.declinePortfolioConsent).toHaveBeenCalledWith(tokenUuid, {
+        reason: ConsentDeclineReason.PRIVACY,
+        notes: undefined,
+        ipAddress: undefined,
+        userAgent: undefined,
+      });
     });
   });
 });
