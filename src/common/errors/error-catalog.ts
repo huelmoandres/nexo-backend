@@ -1,8 +1,8 @@
 /**
  * Catálogo central de errores RFC 7807 (`code` + `status` + `title` + `slug`).
  *
- * La URI `type` se deriva en `GlobalExceptionFilter` desde `code` vía
- * `ProblemDetailTypeService.fromScreamingCode` cuando el cuerpo no trae `type`.
+ * La URI `type` se deriva en `GlobalExceptionFilter` desde `code` y
+ * `app.problemDetailTypeBaseUrl` cuando el cuerpo no trae `type`.
  *
  * Lista humana: `docs/reference/api-standards.md`.
  */
@@ -46,6 +46,11 @@ export const ERRORS = {
     status: 422,
     title: 'Entidad no procesable',
     slug: 'unprocessable-entity',
+  },
+  SERVICE_UNAVAILABLE: {
+    status: 503,
+    title: 'Servicio no disponible',
+    slug: 'service-unavailable',
   },
   HTTP_ERROR: {
     status: 500,
@@ -127,6 +132,30 @@ export const ERRORS = {
     status: 403,
     title: 'Acceso denegado al storage',
     slug: 'storage-forbidden-key',
+  },
+  /** Objeto inexistente en R2 (HEAD/404 o equivalente S3). */
+  STORAGE_OBJECT_NOT_FOUND: {
+    status: 404,
+    title: 'Objeto no encontrado en storage',
+    slug: 'storage-object-not-found',
+  },
+  /** Falta endpoint/credenciales R2; no se deben llamar operaciones remotas. */
+  STORAGE_NOT_CONFIGURED: {
+    status: 503,
+    title: 'Storage no configurado',
+    slug: 'storage-not-configured',
+  },
+  /** Presigned PUT exige `contentType` no vacío. */
+  STORAGE_PRESIGN_CONTENT_TYPE_REQUIRED: {
+    status: 400,
+    title: 'Content-Type requerido',
+    slug: 'storage-presign-content-type-required',
+  },
+  /** R2/S3 no disponible o error distinto de 404 (p. ej. HEAD fallido). */
+  STORAGE_UNAVAILABLE: {
+    status: 503,
+    title: 'Storage no disponible',
+    slug: 'storage-unavailable',
   },
   PORTFOLIO_ITEM_NOT_FOUND: {
     status: 404,

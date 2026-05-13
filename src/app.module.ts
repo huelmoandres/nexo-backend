@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { GlobalExceptionFilter } from '@common/filters/global-exception.filter';
-import { ProblemDetailModule } from '@common/problem-detail/problem-detail.module';
 import { AppLoggerModule } from '@common/logger/logger.module';
 import { appConfig } from '@config/app.config';
 import { authConfig } from '@config/auth.config';
@@ -37,7 +36,6 @@ import { UsersModule } from '@modules/users/users.module';
       ],
       validate: validateEnv,
     }),
-    ProblemDetailModule,
     AppLoggerModule,
     DiagnosticsModule,
     HealthModule,

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Inject,
   Injectable,
   Logger,
@@ -15,6 +16,7 @@ import {
   HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { buildProblem } from '@common/errors/problem.factory';
 import { storageConfig } from '@config/storage.config';
 import type {
   IStorageService,
@@ -64,7 +66,10 @@ export class R2StorageService implements IStorageService {
   private assertConfigured(): void {
     if (!this.configured) {
       throw new ServiceUnavailableException(
-        'R2 Storage no está configurado. Verifica R2_ENDPOINT, R2_ACCESS_KEY_ID y R2_SECRET_ACCESS_KEY.',
+        buildProblem(
+          'STORAGE_NOT_CONFIGURED',
+          'R2 Storage no está configurado. Verifica R2_ENDPOINT, R2_ACCESS_KEY_ID y R2_SECRET_ACCESS_KEY.',
+        ),
       );
     }
   }
@@ -80,7 +85,7 @@ export class R2StorageService implements IStorageService {
    * @param input.contentType MIME type del archivo a subir.
    * @returns URL prefirmada y la misma `key` persistible en base de datos.
    * @throws ServiceUnavailableException Si R2 no está configurado.
-   * @throws ServiceUnavailableException Si `contentType` no fue provisto.
+   * @throws BadRequestException Con `code: STORAGE_PRESIGN_CONTENT_TYPE_REQUIRED` si `contentType` está vacío.
    */
   async generatePresignedPutUrl(input: {
     key: string;
@@ -89,8 +94,11 @@ export class R2StorageService implements IStorageService {
   }): Promise<PresignedPutResult> {
     this.assertConfigured();
     if (!input.contentType || input.contentType.trim() === '') {
-      throw new ServiceUnavailableException(
-        'R2 Storage requiere contentType para generar presigned PUT URL.',
+      throw new BadRequestException(
+        buildProblem(
+          'STORAGE_PRESIGN_CONTENT_TYPE_REQUIRED',
+          'R2 Storage requiere contentType para generar presigned PUT URL.',
+        ),
       );
     }
     const bucket = input.bucket ?? this.config.r2BucketKyc;
@@ -130,7 +138,7 @@ export class R2StorageService implements IStorageService {
    *
    * @param key Identificador del objeto.
    * @param bucket Bucket origen; si se omite usa `r2BucketKyc`.
-   * @throws NotFoundException Si el objeto no existe (404).
+   * @throws NotFoundException Con `code: STORAGE_OBJECT_NOT_FOUND` si el objeto no existe (404).
    * @throws ServiceUnavailableException Si R2 no está configurado o devuelve 5xx.
    */
   async assertObjectExists(key: string, bucket?: string): Promise<void> {
@@ -141,10 +149,18 @@ export class R2StorageService implements IStorageService {
     } catch (err) {
       const code = (err as { name?: string })?.name;
       if (code === 'NotFound' || code === '404' || code === 'NoSuchKey') {
-        throw new NotFoundException(`Object not found in storage: ${key}`);
+        throw new NotFoundException(
+          buildProblem(
+            'STORAGE_OBJECT_NOT_FOUND',
+            `El objeto no existe en storage: ${key}`,
+          ),
+        );
       }
       throw new ServiceUnavailableException(
-        `Storage HEAD check failed for key: ${key}`,
+        buildProblem(
+          'STORAGE_UNAVAILABLE',
+          `Storage HEAD check failed for key: ${key}`,
+        ),
       );
     }
   }

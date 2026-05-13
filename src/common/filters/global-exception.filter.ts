@@ -12,7 +12,7 @@ import * as Sentry from '@sentry/nestjs';
 import { ProblemDetail } from '@common/dto/problem-detail.dto';
 import { ERRORS } from '@common/errors/error-catalog';
 import type { ErrorCode } from '@common/errors/error-codes';
-import { ProblemDetailTypeService } from '@common/problem-detail/problem-detail-type.service';
+import { problemDetailTypeFromScreamingCode } from '@common/problem-detail/problem-detail-url.util';
 import { appConfig } from '@config/app.config';
 
 type ProblemPayload = Partial<ProblemDetail> & {
@@ -27,6 +27,7 @@ const STATUS_TITLES: Record<number, string> = {
   409: 'Conflicto',
   422: 'Entidad no procesable',
   500: 'Error interno del servidor',
+  503: 'Servicio no disponible',
 };
 
 /**
@@ -38,7 +39,6 @@ const STATUS_TITLES: Record<number, string> = {
 @Injectable()
 export class GlobalExceptionFilter implements ExceptionFilter {
   constructor(
-    private readonly problemDetailTypes: ProblemDetailTypeService,
     @Inject(appConfig.KEY)
     private readonly config: ConfigType<typeof appConfig>,
   ) {}
@@ -128,7 +128,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const detail =
       exception instanceof Error ? exception.message : 'Unexpected error';
     return {
-      type: this.problemDetailTypes.fromScreamingCode('INTERNAL_SERVER_ERROR'),
+      type: problemDetailTypeFromScreamingCode(
+        this.config.problemDetailTypeBaseUrl,
+        'INTERNAL_SERVER_ERROR',
+      ),
       title: ERRORS.INTERNAL_SERVER_ERROR.title,
       status: 500,
       detail,
@@ -161,6 +164,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         return 'CONFLICT';
       case 422:
         return 'UNPROCESSABLE_ENTITY';
+      case 503:
+        return 'SERVICE_UNAVAILABLE';
       default:
         return status >= 500 ? 'INTERNAL_SERVER_ERROR' : 'HTTP_ERROR';
     }
@@ -168,6 +173,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
   private typeFromCode(code: string | undefined, status: number): string {
     const screaming = code ?? this.defaultCodeForStatus(status);
-    return this.problemDetailTypes.fromScreamingCode(screaming);
+    return problemDetailTypeFromScreamingCode(
+      this.config.problemDetailTypeBaseUrl,
+      screaming,
+    );
   }
 }

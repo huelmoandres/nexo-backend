@@ -4,7 +4,7 @@ import type { ErrorCode } from './error-codes';
 
 /**
  * Cuerpo de Problem Detail sin `type` explícito: el filtro global lo
- * completa desde `code` (`ProblemDetailTypeService.fromScreamingCode`).
+ * completa desde `code` y la base configurada en el filtro global.
  */
 export type ProblemDetailBody = {
   title: string;

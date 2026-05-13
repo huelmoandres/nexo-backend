@@ -12,6 +12,7 @@ Se deben usar con precisión semántica para que el frontend actúe en consecuen
 - **401 Unauthorized:** JWT inválido, expirado o revocado en Redis.
 - **403 Forbidden:** Usuario autenticado pero sin el Rol o Permiso necesario.
 - **404 Not Found:** El recurso solicitado no existe.
+- **503 Service Unavailable:** Dependencia externa no disponible (p. ej. R2 sin configurar o no responde).
 - **500 Internal Server Error:** Error crítico de infraestructura (notifica a Sentry).
 
 ## 2. Formato de Errores (RFC 7807)
@@ -135,6 +136,10 @@ Estos slugs son la **fuente de verdad**. Cualquier otro nombre de error para el 
 | `code` | HTTP | Cuándo usar |
 |--------|------|-------------|
 | `STORAGE_FORBIDDEN_KEY` | 403 | La clave R2 no pertenece al usuario o viola prefijos permitidos. |
+| `STORAGE_OBJECT_NOT_FOUND` | 404 | HEAD u operación equivalente: el objeto no existe en el bucket. |
+| `STORAGE_NOT_CONFIGURED` | 503 | Faltan variables de entorno R2; no hay cliente operativo. |
+| `STORAGE_PRESIGN_CONTENT_TYPE_REQUIRED` | 400 | Presigned PUT sin `contentType` (obligatorio en la implementación real). |
+| `STORAGE_UNAVAILABLE` | 503 | R2/S3 no responde o error distinto de 404 al comprobar el objeto. |
 
 ## 2.5 Slugs canónicos — Portfolio
 
@@ -166,6 +171,7 @@ Estos slugs son la **fuente de verdad**. Cualquier otro nombre de error para el 
 | `UNPROCESSABLE_ENTITY` | 422 | Fallback 422. |
 | `INTERNAL_SERVER_ERROR` | 500 | Errores no controlados; cuerpo RFC 7807 en producción. |
 | `HTTP_ERROR` | 500 | Variante genérica de error HTTP mapeado. |
+| `SERVICE_UNAVAILABLE` | 503 | Fallback cuando el status es 503 y no hay `code` en el cuerpo. |
 
 ## 3. Paginación Estándar
 Cualquier endpoint que devuelva una lista debe incluir el objeto `meta`:
