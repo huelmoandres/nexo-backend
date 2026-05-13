@@ -463,6 +463,8 @@ Cada implementación de `ContentModerationProvider` está **obligada** a usar `f
 
 ## 6. Recordatorio del Consent (BullMQ)
 
+> **Infra backend (2026-05):** conexión BullMQ global (`AppModule`) sobre el mismo Redis que auth; colas `portfolio-consent-reminder`, `portfolio-cleanup`, `portfolio-moderate` registradas en `PortfolioModule`; validación de invariante §6.2 en `PortfolioBullInvariantService`. Pendiente: `@Processor` del reminder, encolado al crear consent, notificaciones.
+
 ### 6.1 Job `portfolio-consent-reminder`
 
 - **Delay:** 3 días desde `requestedAt`.
