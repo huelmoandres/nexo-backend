@@ -100,4 +100,18 @@ export interface IStorageService {
    * @param bucket - Cubeta opcional.
    */
   deleteObject(key: string, bucket?: string): Promise<void>;
+
+  /**
+   * Descarga el contenido completo de un objeto como Buffer.
+   *
+   * Uso exclusivo de workers internos (BullMQ) para operaciones server-side
+   * como cálculo de SHA-256 y envío al proveedor de IA. No exponer en HTTP.
+   *
+   * @param key - Identificador del objeto en storage.
+   * @param bucket - Cubeta opcional.
+   * @returns Buffer con el contenido completo del objeto.
+   * @throws `NotFoundException` Si el objeto no existe (404).
+   * @throws `ServiceUnavailableException` Si R2/S3 no responde.
+   */
+  downloadObject(key: string, bucket?: string): Promise<Buffer>;
 }

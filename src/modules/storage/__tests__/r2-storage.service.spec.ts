@@ -505,4 +505,67 @@ describe('R2StorageService', () => {
       );
     });
   });
+
+  describe('downloadObject', () => {
+    it('devuelve un Buffer con el contenido del objeto', async () => {
+      const svc = buildService(buildConfig());
+      const chunks = [Buffer.from('chunk1'), Buffer.from('chunk2')];
+
+      function* syncGen() {
+        for (const c of chunks) yield c;
+      }
+      mocks.mockSend.mockResolvedValueOnce({ Body: syncGen() });
+
+      const result = await svc.downloadObject('photos/img.jpg', 'nexos-kyc');
+      expect(result).toBeInstanceOf(Buffer);
+      expect(result.toString()).toBe('chunk1chunk2');
+    });
+
+    it('usa bucket por defecto cuando no se especifica', async () => {
+      const svc = buildService(buildConfig());
+      function* syncGen() {
+        yield Buffer.from('data');
+      }
+      mocks.mockSend.mockResolvedValueOnce({ Body: syncGen() });
+
+      await svc.downloadObject('key.jpg');
+      expect(mocks.MockGetObjectCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ Bucket: 'nexos-kyc' }),
+      );
+    });
+
+    it('lanza NotFoundException cuando el objeto no existe', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockRejectedValueOnce({ name: 'NotFound' });
+
+      await expect(svc.downloadObject('missing.jpg')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('lanza ServiceUnavailableException para errores distintos de 404', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockRejectedValueOnce(new Error('network error'));
+
+      await expect(svc.downloadObject('key.jpg')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('lanza ServiceUnavailableException cuando Body es undefined', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockResolvedValueOnce({ Body: undefined });
+
+      await expect(svc.downloadObject('key.jpg')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('lanza ServiceUnavailableException cuando no está configurado', async () => {
+      const svc = buildService(buildConfig({ r2Endpoint: '' }));
+      await expect(svc.downloadObject('key.jpg')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+  });
 });

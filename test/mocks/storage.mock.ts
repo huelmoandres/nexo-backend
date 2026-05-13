@@ -47,4 +47,7 @@ export const storageMock: IStorageService = {
 
   /** Simula la eliminación de un objeto del bucket (deprecated). */
   deleteObject: vi.fn().mockResolvedValue(undefined),
+
+  /** Simula la descarga de un objeto como Buffer (uso interno de workers). */
+  downloadObject: vi.fn().mockResolvedValue(Buffer.from('mock-image-bytes')),
 };

@@ -977,8 +977,54 @@ model PortfolioModerationLog {
   /// Latencia del call al proveedor en milisegundos. Para monitoreo del SLO.
   latencyMs    Int?
 
+  /// Versión de la política de moderación activa en el momento de la decisión.
+  /// Permite auditoría retrospectiva: saber bajo qué reglas se aprobó un contenido.
+  /// Formato libre sugerido: semver o fecha YYYY-MM-DD. Ej: "1.0.0", "2026-05-13".
+  policyVersion String?
+
   scoredAt DateTime @default(now()) @db.Timestamptz
 
   @@index([portfolioItemId, scoredAt])
   @@index([modelRef, scoredAt])
+}
+
+/// Caché de resultados de inferencia IA por hash de contenido.
+/// Evita llamar al proveedor externo cuando el mismo contenido ya fue analizado.
+/// Propiedad de AiModule; accesible por cualquier dominio (Portfolio, WorkEvidence, etc.).
+model AiInferenceCache {
+  id          String @id @default(uuid())
+
+  /// Tipo de tarea IA. Forma parte de la clave de caché para evitar colisiones cross-taskType.
+  /// Ejemplos: "IMAGE_SAFETY_V1", "TEXT_MODERATION_V1"
+  taskType    String
+
+  /// SHA-256 del contenido ORIGINAL (imagen completa en bytes, o texto normalizado).
+  /// NUNCA el hash del thumbnail generado por sharp.
+  contentHash String
+
+  /// Versión de la política de moderación con la que se calculó este resultado.
+  /// La caché debe invalidarse (o ignorarse en lookup) cuando policyVersion cambie.
+  policyVersion String
+
+  /// Referencia al modelo que produjo el resultado. Formato: vendor:model:version
+  modelRef    String
+
+  /// JSON sanitizado con el resultado (scores/categorías). Sin PII ni texto crudo del proveedor.
+  resultJson  Json
+
+  /// Módulo de origen (solo métricas, no forma parte de la clave de deduplicación).
+  sourceModule String?
+
+  /// Número de veces que este resultado fue reutilizado desde caché.
+  /// Permite calcular ahorro en USD en reportes mensuales.
+  hitsCount   Int @default(0)
+
+  expiresAt   DateTime? @db.Timestamptz
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+
+  /// Clave única de deduplicación: taskType + contentHash + policyVersion
+  @@unique([taskType, contentHash, policyVersion])
+  @@index([taskType, contentHash, policyVersion])
+  @@index([expiresAt])
 }

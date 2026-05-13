@@ -55,7 +55,12 @@ import { PortfolioStorageCacheService } from './services/portfolio-storage-cache
 import {
   PORTFOLIO_CONSENT_REMINDER_JOB,
   PORTFOLIO_CONSENT_REMINDER_QUEUE,
+  PORTFOLIO_MODERATE_QUEUE,
 } from './portfolio.constants';
+import {
+  PORTFOLIO_MODERATE_JOB,
+  type PortfolioModerateJobData,
+} from './queues/portfolio-moderate.processor';
 
 /**
  * Lógica de negocio del módulo `portfolio` (CRUD owner).
@@ -84,6 +89,8 @@ export class PortfolioService {
     private readonly moderation: IContentModerationProvider,
     @InjectQueue(PORTFOLIO_CONSENT_REMINDER_QUEUE)
     private readonly consentReminderQueue: Queue,
+    @InjectQueue(PORTFOLIO_MODERATE_QUEUE)
+    private readonly moderateQueue: Queue,
     private readonly notifications: NotificationsService,
   ) {}
 
@@ -458,8 +465,32 @@ export class PortfolioService {
 
     await this.verifyPhotosAvailable(photos);
 
+    if (this.config.ai.enabled) {
+      const updated = await this.repository.transitionToAiPending(itemId);
+
+      const jobData: PortfolioModerateJobData = {
+        itemId,
+        photoFileKeys: photos.map((p) => p.fileKey),
+        text: `${item.title}\n${item.description ?? ''}`,
+      };
+      await this.moderateQueue.add(PORTFOLIO_MODERATE_JOB, jobData, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: 100,
+        removeOnFail: 50,
+      });
+
+      this.logger.log({
+        op: 'portfolio.publish.aiQueued',
+        itemId,
+        photoCount: photos.length,
+      });
+
+      return this.toResponseDto(updated);
+    }
+
     const moderation = await this.moderation.moderate({
-      text: `${item.title}\n${item.description}`,
+      text: `${item.title}\n${item.description ?? ''}`,
       photoFileKeys: photos.map((p) => p.fileKey),
     });
 

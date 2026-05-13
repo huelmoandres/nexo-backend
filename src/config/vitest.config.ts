@@ -49,6 +49,8 @@ export default defineConfig({
         'src/main.ts',
         'src/config/vitest.config.ts',
         'src/config/vitest.e2e.config.ts',
+        'src/config/*.config.ts',
+        'src/config/*.setup.ts',
       ],
       thresholds: {
         lines: 95,

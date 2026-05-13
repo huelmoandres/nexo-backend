@@ -7,6 +7,7 @@ import Redis from 'ioredis';
 import { GlobalExceptionFilter } from '@common/filters/global-exception.filter';
 import { AppLoggerModule } from '@common/logger/logger.module';
 import { appConfig } from '@config/app.config';
+import { aiConfig } from '@config/ai.config';
 import { authConfig } from '@config/auth.config';
 import { categoriesConfig } from '@config/categories.config';
 import { diagnosticsConfig } from '@config/diagnostics.config';
@@ -30,6 +31,7 @@ import { UsersModule } from '@modules/users/users.module';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [
+        aiConfig,
         authConfig,
         appConfig,
         categoriesConfig,

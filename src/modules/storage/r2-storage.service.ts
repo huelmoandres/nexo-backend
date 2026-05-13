@@ -240,6 +240,56 @@ export class R2StorageService implements IStorageService {
   }
 
   /**
+   * Descarga el contenido completo de un objeto como Buffer.
+   *
+   * Uso exclusivo de workers internos (BullMQ) — no exponer en endpoints HTTP.
+   *
+   * @param key Identificador del objeto.
+   * @param bucket Bucket origen; si se omite usa `r2BucketKyc`.
+   * @throws NotFoundException Si el objeto no existe (404).
+   * @throws ServiceUnavailableException Si R2 no está configurado o devuelve 5xx.
+   */
+  async downloadObject(key: string, bucket?: string): Promise<Buffer> {
+    this.assertConfigured();
+    const b = bucket ?? this.config.r2BucketKyc;
+    try {
+      const response = await this.client.send(
+        new GetObjectCommand({ Bucket: b, Key: key }),
+      );
+      const stream = response.Body;
+      if (!stream) {
+        throw new ServiceUnavailableException(
+          buildProblem('STORAGE_UNAVAILABLE', `Empty body for key: ${key}`),
+        );
+      }
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of stream as AsyncIterable<Uint8Array>) {
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks);
+    } catch (err) {
+      const code = (err as { name?: string })?.name;
+      if (code === 'NotFound' || code === '404' || code === 'NoSuchKey') {
+        throw new NotFoundException(
+          buildProblem(
+            'STORAGE_OBJECT_NOT_FOUND',
+            `Objeto no encontrado: ${key}`,
+          ),
+        );
+      }
+      if (
+        err instanceof NotFoundException ||
+        err instanceof ServiceUnavailableException
+      ) {
+        throw err;
+      }
+      throw new ServiceUnavailableException(
+        buildProblem('STORAGE_UNAVAILABLE', `Error descargando objeto: ${key}`),
+      );
+    }
+  }
+
+  /**
    * Verifica conectividad/autorización al bucket con una operación liviana.
    *
    * Usado por `StorageCheck` en el diagnóstico de startup/readiness.

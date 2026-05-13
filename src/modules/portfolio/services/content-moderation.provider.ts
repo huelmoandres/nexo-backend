@@ -3,10 +3,17 @@ import { AiModerationStatus } from '@prisma/client';
 
 /** Input al provider de moderación de contenido. */
 export interface ModerationInput {
-  /** Texto a evaluar (title + description). PII ya sanitizada por el caller. */
+  /** Texto a evaluar (title + description). El provider aplica PiiSanitizer internamente. */
   text: string;
-  /** Lista de `fileKey`s de fotos a evaluar (provider decide cómo accederlas). */
+  /** Lista de `fileKey`s de fotos a evaluar. */
   photoFileKeys: string[];
+  /**
+   * Buffers de las imágenes originales indexados por `fileKey`.
+   * El worker descarga las imágenes de R2 y las pasa aquí para que el provider
+   * calcule el SHA-256 del original y aplique sharp para el resize.
+   * Si está ausente, el provider omite la moderación de imagen para esa foto.
+   */
+  imageBuffersByKey?: Record<string, Buffer>;
 }
 
 /** Resultado de la moderación, mapeable directo a `PortfolioItem`. */

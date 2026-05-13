@@ -37,6 +37,7 @@ describe('PortfolioService', () => {
     softDeleteItem: ReturnType<typeof vi.fn>;
     findPhotosByItemId: ReturnType<typeof vi.fn>;
     transitionToPublished: ReturnType<typeof vi.fn>;
+    transitionToAiPending: ReturnType<typeof vi.fn>;
     listByProfessional: ReturnType<typeof vi.fn>;
     listPublishedItemsByProfessionalId: ReturnType<typeof vi.fn>;
     findPublishedPortfolioItemPublicDetail: ReturnType<typeof vi.fn>;
@@ -65,6 +66,7 @@ describe('PortfolioService', () => {
     deps: {
       cleanupQueue?: QueueMock;
       consentReminderQueue?: ConsentReminderQueueMock;
+      moderateQueue?: { add: ReturnType<typeof vi.fn> };
       notifications?: Partial<NotificationsMock>;
       storage?: StorageMock;
       cache?: CacheMock;
@@ -106,6 +108,7 @@ describe('PortfolioService', () => {
       softDeleteItem: vi.fn(),
       findPhotosByItemId: vi.fn(),
       transitionToPublished: vi.fn(),
+      transitionToAiPending: vi.fn(),
       listByProfessional: vi.fn(),
       listPublishedItemsByProfessionalId: vi
         .fn()
@@ -122,6 +125,7 @@ describe('PortfolioService', () => {
       photosHeadTimeoutMs: 2000,
       consentTtlDays: 14,
       reminderDelayDays: 3,
+      ai: { enabled: false },
       ...(deps.configOverrides ?? {}),
     };
     const cleanupQueue: QueueMock = deps.cleanupQueue ?? {
@@ -144,6 +148,9 @@ describe('PortfolioService', () => {
       deps.consentReminderQueue ?? {
         add: vi.fn().mockResolvedValue(undefined),
       };
+    const moderateQueue = deps.moderateQueue ?? {
+      add: vi.fn().mockResolvedValue(undefined),
+    };
     const notifications: NotificationsMock = {
       notifyPortfolioConsentRequested: vi.fn().mockResolvedValue(undefined),
       notifyPortfolioConsentReminder: vi.fn().mockResolvedValue(undefined),
@@ -160,6 +167,7 @@ describe('PortfolioService', () => {
         cache as never,
         moderation as never,
         consentReminderQueue as never,
+        moderateQueue as never,
         notifications as never,
       ),
       repo,
@@ -1016,6 +1024,42 @@ describe('PortfolioService', () => {
       await expect(service.publishItem('sub-1', 'item-1')).rejects.toThrow(
         /boom/,
       );
+    });
+
+    it('AI enabled: encola portfolio-moderate y devuelve HIDDEN_PENDING_REVIEW', async () => {
+      const transitionToAiPending = vi.fn().mockResolvedValue({
+        ...draftItem,
+        status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+        aiModerationStatus: 'PENDING',
+      });
+      const moderateQueueAdd = vi.fn().mockResolvedValue(undefined);
+
+      const { service, repo } = makeService(
+        {
+          findProfessionalBySupabaseUid: vi.fn().mockResolvedValue({
+            userId: 'user-1',
+            professionalProfileId: 'prof-1',
+          }),
+          findItemForOwner: vi.fn().mockResolvedValue(draftItem),
+          findPhotosByItemId: vi.fn().mockResolvedValue([photo1]),
+          transitionToAiPending,
+        },
+        {
+          moderateQueue: { add: moderateQueueAdd },
+          configOverrides: { ai: { enabled: true } } as never,
+        },
+      );
+
+      const result = await service.publishItem('sub-1', 'item-1');
+
+      expect(transitionToAiPending).toHaveBeenCalledWith('item-1');
+      expect(moderateQueueAdd).toHaveBeenCalledWith(
+        'moderate-item',
+        expect.objectContaining({ itemId: 'item-1' }),
+        expect.any(Object),
+      );
+      expect(repo.transitionToPublished).not.toHaveBeenCalled();
+      expect(result.status).toBe(PortfolioItemStatus.HIDDEN_PENDING_REVIEW);
     });
   });
 

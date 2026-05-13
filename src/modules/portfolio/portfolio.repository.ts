@@ -287,6 +287,100 @@ export class PortfolioRepository {
   }
 
   /**
+   * Transición DRAFT → HIDDEN_PENDING_REVIEW con estado de moderación PENDING.
+   *
+   * Usado cuando `PORTFOLIO_AI_ENABLED=true` al publicar: el item queda oculto
+   * mientras el worker `portfolio-moderate` procesa la moderación asíncrona.
+   */
+  async transitionToAiPending(itemId: string): Promise<PortfolioItem> {
+    return this.prisma.portfolioItem.update({
+      where: { id: itemId },
+      data: {
+        status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+        aiModerationStatus: AiModerationStatus.PENDING,
+      },
+    });
+  }
+
+  /**
+   * Aplica el veredicto del worker `portfolio-moderate` tras la moderación IA.
+   *
+   * - `OK`    → PUBLISHED + log
+   * - `FLAGGED`/`ERROR` → HIDDEN_PENDING_REVIEW + log (fail-closed)
+   * Operación atómica en transacción.
+   */
+  async applyAiModerationVerdict(input: {
+    itemId: string;
+    aiModerationStatus: AiModerationStatus;
+    modelRef: string;
+    transitionType?: ModerationTransitionType;
+    reason?: string;
+    scores?: Record<string, number>;
+    latencyMs?: number;
+    policyVersion?: string;
+    errorCode?: string;
+    errorMessage?: string;
+  }): Promise<PortfolioItem> {
+    const {
+      itemId,
+      aiModerationStatus,
+      modelRef,
+      transitionType = ModerationTransitionType.INITIAL,
+      reason,
+      scores,
+      latencyMs,
+      policyVersion,
+      errorCode,
+      errorMessage,
+    } = input;
+
+    const newStatus =
+      aiModerationStatus === AiModerationStatus.OK
+        ? PortfolioItemStatus.PUBLISHED
+        : PortfolioItemStatus.HIDDEN_PENDING_REVIEW;
+
+    const logStatus =
+      aiModerationStatus === AiModerationStatus.OK
+        ? 'OK'
+        : aiModerationStatus === AiModerationStatus.FLAGGED
+          ? 'FLAGGED'
+          : 'ERROR';
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.portfolioItem.update({
+        where: { id: itemId },
+        data: {
+          status: newStatus,
+          publishedAt:
+            newStatus === PortfolioItemStatus.PUBLISHED
+              ? new Date()
+              : undefined,
+          aiModerationStatus,
+          aiModerationModelRef: modelRef,
+          aiModeratedAt: new Date(),
+        },
+      });
+
+      await tx.portfolioModerationLog.create({
+        data: {
+          portfolioItemId: itemId,
+          modelRef,
+          transitionType,
+          status: logStatus,
+          reason: reason ?? null,
+          scores: scores ? (scores as Prisma.InputJsonValue) : undefined,
+          latencyMs: latencyMs ?? null,
+          policyVersion: policyVersion ?? null,
+          errorCode: errorCode ?? null,
+          errorMessage: errorMessage ?? null,
+        },
+      });
+
+      return updated;
+    });
+  }
+
+  /**
    * Soft-delete idempotente de un PortfolioItem.
    *
    * Usa `updateMany` con `deletedAt: null` en el `where` para no

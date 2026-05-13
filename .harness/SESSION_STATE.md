@@ -7,7 +7,7 @@
 ## Estado Actual del Proyecto
 
 **Fase:** Implementación de dominios core + harness alineado al código
-**Fecha de última actualización:** 2026-05-13 (Harness alineado: throttle, lecturas públicas, moderación admin/reporte, SESSION/spec)
+**Fecha de última actualización:** 2026-05-13 (AiModule + worker portfolio-moderate + caché + locks + sharp + circuit breaker + policyVersion)
 
 ---
 
@@ -22,7 +22,8 @@
 | `diagnostics` | **Implementado** | Sin spec larga — ver `src/modules/diagnostics/` + `.harness/INDEX.md` |
 | `categories` | **Implementado** | (Swagger tag `categories`) |
 | `search` | **Implementado** | `.harness/specs/search-matching.md` |
-| `portfolio` | **Owner CRUD + consent + BullMQ + públicos + throttle + moderación admin** | `.harness/specs/portfolio-module.md` — reminder/expiración consent; notificaciones in-app; `GET /api/professionals/:id/portfolio` y detalle público; cola `SUPER_ADMIN`, `PATCH …/moderate`, `POST …/report` autenticado; **pendiente:** worker IA real y `portfolio-cleanup` físico (stub) |
+| `portfolio` | **Owner CRUD + consent + BullMQ + públicos + throttle + moderación admin + worker IA** | `.harness/specs/portfolio-module.md` — reminder/expiración consent; notificaciones in-app; `GET /api/professionals/:id/portfolio` y detalle público; cola `SUPER_ADMIN`, `PATCH …/moderate`, `POST …/report` autenticado; worker `portfolio-moderate` cableado con AiModule (flag `PORTFOLIO_AI_ENABLED`); **pendiente:** `portfolio-cleanup` físico (stub) |
+| `ai` | **Implementado** | `src/modules/ai/` — módulo IA compartido: PiiSanitizer, InferenceCache L1/L2, InferenceLock (Redlock), ImagePrepService (sharp), CategoryMatcher, OpenAiTextModeration, AwsRekognitionImageSafety, AiContentModerationService (circuit breaker opossum). Caché cross-módulo con policyVersion + hitsCount. |
 | Escrow, Urgency, Dispute, Reviews, Chat, Notifications | **Roadmap / parcial** | Specs y evals en harness; ver tabla legacy abajo |
 
 ### Roadmap (legacy harness)
@@ -57,7 +58,7 @@
 | Logging HTTP (Pino) | **Completado** — `nestjs-pino` en `LoggerModule` |
 | Sentry | **Completado** — `setupSentry` en bootstrap |
 | Startup diagnostics | **Completado** — `DiagnosticsService.runStartupChecks()` antes de listen |
-| BullMQ (Redis) | **Parcial** — `BullModule.forRootAsync` en `AppModule`; colas portfolio + **processor** de consent (reminder + expiración horaria); workers `portfolio-cleanup` y `portfolio-moderate` (IA) siguen stub |
+| BullMQ (Redis) | **Parcial** — `BullModule.forRootAsync` en `AppModule`; colas portfolio + **processor** de consent (reminder + expiración horaria) + **processor** `portfolio-moderate` cableado con AiModule; worker `portfolio-cleanup` sigue stub |
 | Throttler (`@nestjs/throttler`) | **Completado** — guard global 100 req/min por IP; `AuthController` 10/min; `PortfolioConsentController` 30/min; health sin throttle |
 
 ---
@@ -86,6 +87,7 @@
 
 > Agregar observaciones de sesión aquí.
 
+- **2026-05-13 (AiModule + worker IA):** Nuevo `AiModule` en `src/modules/ai/` con: `PiiSanitizerService`, `InferenceCacheService` (Redis L1 + Postgres L2, `hitsCount`, `policyVersion`), `InferenceLockService` (Redlock, `finally` unlock, TTL > timeout, jitter en colisión, shutdown hook), `ImagePrepService` (sharp, `durationMs` + `outputBytes`), `CategoryMatcherService` (`parentId` + CATEGORY_MAX_DEPTH), `OpenAiTextModerationProvider`, `AwsRekognitionImageSafetyProvider`, `AiContentModerationService` (circuit breaker opossum, fail-closed). Worker `portfolio-moderate` operativo: descarga buffers R2, llama provider, escribe veredicto en BD con `policyVersion` en `PortfolioModerationLog`. `PortfolioModule` usa `AiContentModerationService` cuando `PORTFOLIO_AI_ENABLED=true`; stub cuando false. Nueva tabla `AiInferenceCache` en Prisma. `downloadObject` en `IStorageService`. `ai.config.ts` registrado en `AppModule`.
 - **2026-05-13:** Throttler global + límites en auth/consent; lecturas públicas; cola/moderación admin y reporte autenticado; `AuditAction` ampliado; catálogo `TOO_MANY_REQUESTS` (429 RFC 7807). Harness (`SESSION_STATE`, `portfolio-module.md`) alineado al código.
 
 - **2026-05-07:** Alineación harness: AGENTS.md, SESSION_STATE actualizado al estado real (filtro RFC 7807, ValidationPipe, Pino, Sentry, diagnostics), nota JWKS en spec de auth, reglas `auth-jwt` + checklist de performance, tests de `supabase-jwks.util.ts`, smoke E2E `/health/live`.

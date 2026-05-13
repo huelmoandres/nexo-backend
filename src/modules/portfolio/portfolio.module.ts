@@ -8,6 +8,9 @@ import { StorageModule } from '@modules/storage/storage.module';
 import { AuthorizationService } from '@modules/users/services/authorization.service';
 import { RolesGuard } from '@modules/users/guards/roles.guard';
 import { authConfig } from '@config/auth.config';
+import { portfolioConfig } from '@config/portfolio.config';
+import { AiModule } from '@modules/ai/ai.module';
+import { AiContentModerationService } from '@modules/ai/services/ai-content-moderation.service';
 import {
   PORTFOLIO_CLEANUP_QUEUE,
   PORTFOLIO_CONSENT_REMINDER_QUEUE,
@@ -26,15 +29,22 @@ import {
   LoggingPortfolioCleanupQueue,
   PORTFOLIO_CLEANUP_QUEUE_TOKEN,
 } from './queues/portfolio-cleanup.queue';
+import { PortfolioModerateProcessor } from './queues/portfolio-moderate.processor';
 import {
   AlwaysApprovedModerationProvider,
   CONTENT_MODERATION_PROVIDER_TOKEN,
+  type IContentModerationProvider,
 } from './services/content-moderation.provider';
 import { PortfolioStorageCacheService } from './services/portfolio-storage-cache.service';
 import { PortfolioBullInvariantService } from './services/portfolio-bull-invariant.service';
 
 /**
  * Módulo `portfolio`: gestión owner del portfolio público del profesional.
+ *
+ * Cuando `PORTFOLIO_AI_ENABLED=true`, registra `AiContentModerationService`
+ * (de AiModule) como implementación de CONTENT_MODERATION_PROVIDER_TOKEN y activa
+ * el worker `portfolio-moderate` para moderación asíncrona.
+ * Con el flag a false, usa el stub `AlwaysApprovedModerationProvider`.
  *
  * Ver [.harness/specs/portfolio-module.md](.harness/specs/portfolio-module.md)
  * para el spec completo (alcance, estado machine, contratos).
@@ -44,6 +54,7 @@ import { PortfolioBullInvariantService } from './services/portfolio-bull-invaria
     AuthModule,
     StorageModule,
     NotificationsModule,
+    AiModule,
     ConfigModule,
     BullModule.registerQueue({ name: PORTFOLIO_CONSENT_REMINDER_QUEUE }),
     BullModule.registerQueue({ name: PORTFOLIO_CLEANUP_QUEUE }),
@@ -61,6 +72,7 @@ import { PortfolioBullInvariantService } from './services/portfolio-bull-invaria
     PortfolioBullInvariantService,
     PortfolioConsentQueueProcessor,
     PortfolioConsentQueueBootstrap,
+    PortfolioModerateProcessor,
     AuthorizationService,
     RolesGuard,
     PortfolioStorageCacheService,
@@ -70,7 +82,12 @@ import { PortfolioBullInvariantService } from './services/portfolio-bull-invaria
     },
     {
       provide: CONTENT_MODERATION_PROVIDER_TOKEN,
-      useClass: AlwaysApprovedModerationProvider,
+      inject: [portfolioConfig.KEY, AiContentModerationService],
+      useFactory: (
+        cfg: ConfigType<typeof portfolioConfig>,
+        aiService: AiContentModerationService,
+      ): IContentModerationProvider =>
+        cfg.ai.enabled ? aiService : new AlwaysApprovedModerationProvider(),
     },
     {
       provide: PORTFOLIO_REDIS_CLIENT,
