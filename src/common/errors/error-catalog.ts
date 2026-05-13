@@ -157,6 +157,42 @@ export const ERRORS = {
     title: 'Storage no disponible',
     slug: 'storage-unavailable',
   },
+  /** Fallback RFC 7807 para HTTP 410 sin `code` explícito en el cuerpo. */
+  GONE: {
+    status: 410,
+    title: 'Ya no disponible',
+    slug: 'gone',
+  },
+  CONSENT_TOKEN_NOT_FOUND: {
+    status: 404,
+    title: 'Token de consentimiento no encontrado',
+    slug: 'consent-token-not-found',
+  },
+  CONSENT_TOKEN_EXPIRED: {
+    status: 410,
+    title: 'Token de consentimiento expirado',
+    slug: 'consent-token-expired',
+  },
+  CONSENT_ALREADY_RESOLVED: {
+    status: 410,
+    title: 'Consentimiento ya respondido',
+    slug: 'consent-already-resolved',
+  },
+  PORTFOLIO_ALREADY_VERIFIED: {
+    status: 409,
+    title: 'Portfolio ya verificado',
+    slug: 'portfolio-already-verified',
+  },
+  PORTFOLIO_CONSENT_EXISTS: {
+    status: 409,
+    title: 'Ya existe solicitud de verificación',
+    slug: 'portfolio-consent-exists',
+  },
+  PORTFOLIO_VERIFICATION_NOT_ELIGIBLE: {
+    status: 400,
+    title: 'Item no elegible para verificación',
+    slug: 'portfolio-verification-not-eligible',
+  },
   PORTFOLIO_ITEM_NOT_FOUND: {
     status: 404,
     title: 'PortfolioItem no encontrado',

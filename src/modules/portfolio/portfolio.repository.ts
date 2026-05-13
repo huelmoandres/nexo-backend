@@ -1,7 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  GoneException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   AiModerationStatus,
+  AuditAction,
+  ConsentDeclineReason,
+  ConsentStatus,
   PortfolioItemStatus,
+  Prisma,
   type Category,
   type Job,
   type PortfolioItem,
@@ -329,6 +338,246 @@ export class PortfolioRepository {
           displayOrder: { gt: photo.displayOrder },
         },
         data: { displayOrder: { decrement: 1 } },
+      });
+    });
+  }
+
+  async findConsentByPortfolioItemId(
+    portfolioItemId: string,
+  ): Promise<{ id: string } | null> {
+    return this.prisma.portfolioConsent.findUnique({
+      where: { portfolioItemId },
+      select: { id: true },
+    });
+  }
+
+  /**
+   * Job vinculado al item para solicitar verificación (incluye `clientId`).
+   */
+  async findJobForVerification(
+    jobId: string,
+    professionalId: string,
+  ): Promise<{
+    id: string;
+    status: Job['status'];
+    clientId: string;
+    title: string;
+    completedAt: Date | null;
+    categoryId: string;
+  } | null> {
+    return this.prisma.job.findFirst({
+      where: { id: jobId, professionalId, deletedAt: null },
+      select: {
+        id: true,
+        status: true,
+        clientId: true,
+        title: true,
+        completedAt: true,
+        categoryId: true,
+      },
+    });
+  }
+
+  async createPortfolioConsent(input: {
+    portfolioItemId: string;
+    jobId: string;
+    clientUserId: string;
+    token: string;
+    expiresAt: Date;
+  }): Promise<void> {
+    await this.prisma.portfolioConsent.create({ data: input });
+  }
+
+  async findConsentPreviewByToken(token: string) {
+    return this.prisma.portfolioConsent.findFirst({
+      where: { token },
+      include: {
+        portfolioItem: {
+          include: {
+            category: { select: { id: true, name: true } },
+            photos: {
+              orderBy: { displayOrder: 'asc' },
+              select: {
+                id: true,
+                fileKey: true,
+                caption: true,
+                displayOrder: true,
+              },
+            },
+            professional: {
+              select: { user: { select: { fullName: true } } },
+            },
+            job: {
+              include: {
+                category: { select: { id: true, name: true } },
+                client: { select: { id: true, fullName: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  async acceptPortfolioConsent(token: string): Promise<void> {
+    await this.prisma.$transaction(
+      async (tx) => {
+        const consent = await tx.portfolioConsent.findUnique({
+          where: { token },
+          include: {
+            portfolioItem: { select: { id: true, verifiedFromJob: true } },
+          },
+        });
+        if (!consent) {
+          throw new NotFoundException(
+            buildProblem(
+              'CONSENT_TOKEN_NOT_FOUND',
+              'El enlace de consentimiento no es válido.',
+            ),
+          );
+        }
+        if (consent.status !== ConsentStatus.PENDING) {
+          throw new GoneException(
+            buildProblem(
+              'CONSENT_ALREADY_RESOLVED',
+              'Este consentimiento ya fue respondido.',
+            ),
+          );
+        }
+        if (consent.expiresAt <= new Date()) {
+          throw new GoneException(
+            buildProblem(
+              'CONSENT_TOKEN_EXPIRED',
+              'El enlace de consentimiento expiró.',
+            ),
+          );
+        }
+
+        const u1 = await tx.portfolioConsent.updateMany({
+          where: { id: consent.id, status: ConsentStatus.PENDING },
+          data: {
+            status: ConsentStatus.ACCEPTED,
+            respondedAt: new Date(),
+          },
+        });
+        if (u1.count === 0) {
+          throw new GoneException(
+            buildProblem(
+              'CONSENT_ALREADY_RESOLVED',
+              'Este consentimiento ya fue respondido.',
+            ),
+          );
+        }
+
+        const u2 = await tx.portfolioItem.updateMany({
+          where: {
+            id: consent.portfolioItemId,
+            verifiedFromJob: false,
+          },
+          data: { verifiedFromJob: true },
+        });
+        if (u2.count === 0) {
+          throw new ConflictException(
+            buildProblem(
+              'PORTFOLIO_ALREADY_VERIFIED',
+              'El portfolio ya estaba verificado.',
+            ),
+          );
+        }
+
+        await tx.auditLog.create({
+          data: {
+            userId: consent.clientUserId,
+            action: AuditAction.PORTFOLIO_CONSENT_ACCEPTED,
+            entityType: 'PortfolioConsent',
+            entityId: consent.id,
+            metadata: {
+              portfolioItemId: consent.portfolioItemId,
+            },
+          },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  }
+
+  async declinePortfolioConsent(
+    token: string,
+    input: {
+      reason: ConsentDeclineReason;
+      notes?: string;
+      ipAddress?: string;
+      userAgent?: string;
+    },
+  ): Promise<void> {
+    const notes =
+      input.notes !== undefined && input.notes.length > 500
+        ? input.notes.slice(0, 500)
+        : input.notes;
+
+    await this.prisma.$transaction(async (tx) => {
+      const consent = await tx.portfolioConsent.findUnique({
+        where: { token },
+        include: {
+          portfolioItem: { select: { id: true, status: true } },
+        },
+      });
+      if (!consent) {
+        throw new NotFoundException(
+          buildProblem(
+            'CONSENT_TOKEN_NOT_FOUND',
+            'El enlace de consentimiento no es válido.',
+          ),
+        );
+      }
+      if (consent.status !== ConsentStatus.PENDING) {
+        throw new GoneException(
+          buildProblem(
+            'CONSENT_ALREADY_RESOLVED',
+            'Este consentimiento ya fue respondido.',
+          ),
+        );
+      }
+      if (consent.expiresAt <= new Date()) {
+        throw new GoneException(
+          buildProblem(
+            'CONSENT_TOKEN_EXPIRED',
+            'El enlace de consentimiento expiró.',
+          ),
+        );
+      }
+
+      await tx.portfolioConsent.update({
+        where: { id: consent.id },
+        data: {
+          status: ConsentStatus.DECLINED,
+          declineReason: input.reason,
+          declineNotes: notes ?? null,
+          respondedAt: new Date(),
+        },
+      });
+
+      if (input.reason === ConsentDeclineReason.INAPPROPRIATE) {
+        await tx.portfolioItem.update({
+          where: { id: consent.portfolioItemId },
+          data: { status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: consent.clientUserId,
+          action: AuditAction.PORTFOLIO_CONSENT_DECLINED,
+          entityType: 'PortfolioConsent',
+          entityId: consent.id,
+          metadata: {
+            portfolioItemId: consent.portfolioItemId,
+            reason: input.reason,
+            notes: notes ?? null,
+          },
+          ipAddress: input.ipAddress,
+          userAgent: input.userAgent,
+        },
       });
     });
   }

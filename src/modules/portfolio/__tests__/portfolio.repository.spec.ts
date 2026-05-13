@@ -1,5 +1,16 @@
+import {
+  ConflictException,
+  GoneException,
+  NotFoundException,
+} from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import { JobStatus, PortfolioItemStatus } from '@prisma/client';
+import {
+  ConsentDeclineReason,
+  ConsentStatus,
+  JobStatus,
+  PortfolioItemStatus,
+  Prisma,
+} from '@prisma/client';
 import { PortfolioRepository } from '../portfolio.repository';
 
 describe('PortfolioRepository', () => {
@@ -574,6 +585,409 @@ describe('PortfolioRepository', () => {
       expect(callArg.data.aiModerationStatus).toBe('APPROVED');
       expect(callArg.data.aiModerationModelRef).toBe('stub:none:v0');
       expect(result).toEqual(updated);
+    });
+  });
+
+  describe('consent y verificación', () => {
+    type ConsentTx = {
+      portfolioConsent: {
+        findUnique: ReturnType<typeof vi.fn>;
+        updateMany: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+      };
+      portfolioItem: {
+        updateMany: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+      };
+      auditLog: { create: ReturnType<typeof vi.fn> };
+    };
+
+    const makeConsentRepo = () => {
+      const tx: ConsentTx = {
+        portfolioConsent: {
+          findUnique: vi.fn(),
+          updateMany: vi.fn(),
+          update: vi.fn(),
+        },
+        portfolioItem: {
+          updateMany: vi.fn(),
+          update: vi.fn(),
+        },
+        auditLog: { create: vi.fn() },
+      };
+      const prisma = {
+        portfolioConsent: {
+          findUnique: vi.fn(),
+          findFirst: vi.fn(),
+          create: vi.fn(),
+        },
+        job: { findFirst: vi.fn() },
+        $transaction: vi.fn(),
+      };
+      return {
+        repo: new PortfolioRepository(prisma as never),
+        prisma,
+        tx,
+      };
+    };
+
+    const futureExpiry = () => new Date(Date.now() + 86_400_000);
+    const pastExpiry = () => new Date(Date.now() - 86_400_000);
+
+    it('findConsentByPortfolioItemId delega a findUnique', async () => {
+      const { repo, prisma } = makeConsentRepo();
+      prisma.portfolioConsent.findUnique.mockResolvedValue({ id: 'cons-1' });
+
+      const result = await repo.findConsentByPortfolioItemId('item-1');
+
+      expect(result).toEqual({ id: 'cons-1' });
+      expect(prisma.portfolioConsent.findUnique).toHaveBeenCalledWith({
+        where: { portfolioItemId: 'item-1' },
+        select: { id: true },
+      });
+    });
+
+    it('findJobForVerification delega a job.findFirst', async () => {
+      const { repo, prisma } = makeConsentRepo();
+      const row = {
+        id: 'job-1',
+        status: JobStatus.CLOSED,
+        clientId: 'u-client',
+        title: 'Obra',
+        completedAt: new Date('2026-01-01'),
+        categoryId: 'cat-1',
+      };
+      prisma.job.findFirst.mockResolvedValue(row);
+
+      const result = await repo.findJobForVerification('job-1', 'prof-1');
+
+      expect(result).toEqual(row);
+      expect(prisma.job.findFirst).toHaveBeenCalledWith({
+        where: { id: 'job-1', professionalId: 'prof-1', deletedAt: null },
+        select: {
+          id: true,
+          status: true,
+          clientId: true,
+          title: true,
+          completedAt: true,
+          categoryId: true,
+        },
+      });
+    });
+
+    it('createPortfolioConsent delega a create', async () => {
+      const { repo, prisma } = makeConsentRepo();
+      prisma.portfolioConsent.create.mockResolvedValue({});
+
+      await repo.createPortfolioConsent({
+        portfolioItemId: 'item-1',
+        jobId: 'job-1',
+        clientUserId: 'c1',
+        token: 'tok',
+        expiresAt: futureExpiry(),
+      });
+
+      expect(prisma.portfolioConsent.create).toHaveBeenCalledWith({
+        data: {
+          portfolioItemId: 'item-1',
+          jobId: 'job-1',
+          clientUserId: 'c1',
+          token: 'tok',
+          expiresAt: expect.any(Date),
+        },
+      });
+    });
+
+    it('findConsentPreviewByToken delega a findFirst con include', async () => {
+      const { repo, prisma } = makeConsentRepo();
+      const preview = { id: 'c1', token: 't1' };
+      prisma.portfolioConsent.findFirst.mockResolvedValue(preview);
+
+      const result = await repo.findConsentPreviewByToken('t1');
+
+      expect(result).toBe(preview);
+      expect(prisma.portfolioConsent.findFirst).toHaveBeenCalledWith({
+        where: { token: 't1' },
+        include: expect.any(Object),
+      });
+    });
+
+    it('acceptPortfolioConsent actualiza consent, item y audit en tx Serializable', async () => {
+      const { repo, prisma, tx } = makeConsentRepo();
+      tx.portfolioConsent.findUnique.mockResolvedValue({
+        id: 'cons-1',
+        status: ConsentStatus.PENDING,
+        expiresAt: futureExpiry(),
+        portfolioItemId: 'item-1',
+        clientUserId: 'client-1',
+        portfolioItem: { id: 'item-1', verifiedFromJob: false },
+      });
+      tx.portfolioConsent.updateMany.mockResolvedValue({ count: 1 });
+      tx.portfolioItem.updateMany.mockResolvedValue({ count: 1 });
+      prisma.$transaction.mockImplementation(
+        (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
+      );
+
+      await repo.acceptPortfolioConsent('550e8400-e29b-41d4-a716-446655440000');
+
+      expect(tx.portfolioConsent.updateMany).toHaveBeenCalled();
+      expect(tx.portfolioItem.updateMany).toHaveBeenCalled();
+      expect(tx.auditLog.create).toHaveBeenCalled();
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    });
+
+    it('acceptPortfolioConsent lanza NotFound si no existe token', async () => {
+      const { repo, prisma, tx } = makeConsentRepo();
+      tx.portfolioConsent.findUnique.mockResolvedValue(null);
+      prisma.$transaction.mockImplementation(
+        (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
+      );
+
+      await expect(
+        repo.acceptPortfolioConsent('550e8400-e29b-41d4-a716-446655440000'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('acceptPortfolioConsent lanza Gone si status no es PENDING', async () => {
+      const { repo, prisma, tx } = makeConsentRepo();
+      tx.portfolioConsent.findUnique.mockResolvedValue({
+        id: 'cons-1',
+        status: ConsentStatus.ACCEPTED,
+        expiresAt: futureExpiry(),
+        portfolioItemId: 'item-1',
+        clientUserId: 'c1',
+        portfolioItem: { id: 'item-1', verifiedFromJob: true },
+      });
+      prisma.$transaction.mockImplementation(
+        (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
+      );
+
+      await expect(
+        repo.acceptPortfolioConsent('550e8400-e29b-41d4-a716-446655440000'),
+      ).rejects.toBeInstanceOf(GoneException);
+    });
+
+    it('acceptPortfolioConsent lanza Gone si expiró', async () => {
+      const { repo, prisma, tx } = makeConsentRepo();
+      tx.portfolioConsent.findUnique.mockResolvedValue({
+        id: 'cons-1',
+        status: ConsentStatus.PENDING,
+        expiresAt: pastExpiry(),
+        portfolioItemId: 'item-1',
+        clientUserId: 'c1',
+        portfolioItem: { id: 'item-1', verifiedFromJob: false },
+      });
+      prisma.$transaction.mockImplementation(
+        (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
+      );
+
+      await expect(
+        repo.acceptPortfolioConsent('550e8400-e29b-41d4-a716-446655440000'),
+      ).rejects.toBeInstanceOf(GoneException);
+    });
+
+    it('acceptPortfolioConsent lanza Gone si updateMany del consent afectó 0 filas', async () => {
+      const { repo, prisma, tx } = makeConsentRepo();
+      tx.portfolioConsent.findUnique.mockResolvedValue({
+        id: 'cons-1',
+        status: ConsentStatus.PENDING,
+        expiresAt: futureExpiry(),
+        portfolioItemId: 'item-1',
+        clientUserId: 'c1',
+        portfolioItem: { id: 'item-1', verifiedFromJob: false },
+      });
+      tx.portfolioConsent.updateMany.mockResolvedValue({ count: 0 });
+      prisma.$transaction.mockImplementation(
+        (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
+      );
+
+      await expect(
+        repo.acceptPortfolioConsent('550e8400-e29b-41d4-a716-446655440000'),
+      ).rejects.toBeInstanceOf(GoneException);
+    });
+
+    it('acceptPortfolioConsent lanza Conflict si el item ya estaba verificado', async () => {
+      const { repo, prisma, tx } = makeConsentRepo();
+      tx.portfolioConsent.findUnique.mockResolvedValue({
+        id: 'cons-1',
+        status: ConsentStatus.PENDING,
+        expiresAt: futureExpiry(),
+        portfolioItemId: 'item-1',
+        clientUserId: 'c1',
+        portfolioItem: { id: 'item-1', verifiedFromJob: false },
+      });
+      tx.portfolioConsent.updateMany.mockResolvedValue({ count: 1 });
+      tx.portfolioItem.updateMany.mockResolvedValue({ count: 0 });
+      prisma.$transaction.mockImplementation(
+        (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
+      );
+
+      await expect(
+        repo.acceptPortfolioConsent('550e8400-e29b-41d4-a716-446655440000'),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('declinePortfolioConsent actualiza consent y audit', async () => {
+      const { repo, prisma, tx } = makeConsentRepo();
+      tx.portfolioConsent.findUnique.mockResolvedValue({
+        id: 'cons-1',
+        status: ConsentStatus.PENDING,
+        expiresAt: futureExpiry(),
+        portfolioItemId: 'item-1',
+        clientUserId: 'client-1',
+        portfolioItem: { id: 'item-1', status: PortfolioItemStatus.PUBLISHED },
+      });
+      tx.portfolioConsent.update.mockResolvedValue({});
+      prisma.$transaction.mockImplementation(
+        (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
+      );
+
+      await repo.declinePortfolioConsent('tok', {
+        reason: ConsentDeclineReason.NOT_MINE,
+      });
+
+      expect(tx.portfolioConsent.update).toHaveBeenCalled();
+      expect(tx.portfolioItem.update).not.toHaveBeenCalled();
+      expect(tx.auditLog.create).toHaveBeenCalled();
+    });
+
+    it('declinePortfolioConsent con INAPPROPRIATE oculta el item', async () => {
+      const { repo, prisma, tx } = makeConsentRepo();
+      tx.portfolioConsent.findUnique.mockResolvedValue({
+        id: 'cons-1',
+        status: ConsentStatus.PENDING,
+        expiresAt: futureExpiry(),
+        portfolioItemId: 'item-1',
+        clientUserId: 'client-1',
+        portfolioItem: { id: 'item-1', status: PortfolioItemStatus.PUBLISHED },
+      });
+      tx.portfolioConsent.update.mockResolvedValue({});
+      prisma.$transaction.mockImplementation(
+        (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
+      );
+
+      await repo.declinePortfolioConsent('tok', {
+        reason: ConsentDeclineReason.INAPPROPRIATE,
+      });
+
+      expect(tx.portfolioItem.update).toHaveBeenCalledWith({
+        where: { id: 'item-1' },
+        data: { status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW },
+      });
+    });
+
+    it('declinePortfolioConsent trunca notes a 500 caracteres', async () => {
+      const { repo, prisma, tx } = makeConsentRepo();
+      tx.portfolioConsent.findUnique.mockResolvedValue({
+        id: 'cons-1',
+        status: ConsentStatus.PENDING,
+        expiresAt: futureExpiry(),
+        portfolioItemId: 'item-1',
+        clientUserId: 'client-1',
+        portfolioItem: { id: 'item-1', status: PortfolioItemStatus.PUBLISHED },
+      });
+      tx.portfolioConsent.update.mockResolvedValue({});
+      prisma.$transaction.mockImplementation(
+        (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
+      );
+
+      const longNotes = 'n'.repeat(501);
+      await repo.declinePortfolioConsent('tok', {
+        reason: ConsentDeclineReason.OTHER,
+        notes: longNotes,
+      });
+
+      const updateArg = tx.portfolioConsent.update.mock.calls[0][0] as {
+        data: { declineNotes: string | null };
+      };
+      expect(updateArg.data.declineNotes).toHaveLength(500);
+    });
+
+    it('declinePortfolioConsent lanza NotFound si no hay consent', async () => {
+      const { repo, prisma, tx } = makeConsentRepo();
+      tx.portfolioConsent.findUnique.mockResolvedValue(null);
+      prisma.$transaction.mockImplementation(
+        (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
+      );
+
+      await expect(
+        repo.declinePortfolioConsent('tok', {
+          reason: ConsentDeclineReason.OTHER,
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('declinePortfolioConsent lanza Gone si ya no está PENDING', async () => {
+      const { repo, prisma, tx } = makeConsentRepo();
+      tx.portfolioConsent.findUnique.mockResolvedValue({
+        id: 'cons-1',
+        status: ConsentStatus.DECLINED,
+        expiresAt: futureExpiry(),
+        portfolioItemId: 'item-1',
+        clientUserId: 'c1',
+        portfolioItem: { id: 'item-1', status: PortfolioItemStatus.PUBLISHED },
+      });
+      prisma.$transaction.mockImplementation(
+        (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
+      );
+
+      await expect(
+        repo.declinePortfolioConsent('tok', {
+          reason: ConsentDeclineReason.OTHER,
+        }),
+      ).rejects.toBeInstanceOf(GoneException);
+    });
+
+    it('declinePortfolioConsent lanza Gone si expiró', async () => {
+      const { repo, prisma, tx } = makeConsentRepo();
+      tx.portfolioConsent.findUnique.mockResolvedValue({
+        id: 'cons-1',
+        status: ConsentStatus.PENDING,
+        expiresAt: pastExpiry(),
+        portfolioItemId: 'item-1',
+        clientUserId: 'c1',
+        portfolioItem: { id: 'item-1', status: PortfolioItemStatus.PUBLISHED },
+      });
+      prisma.$transaction.mockImplementation(
+        (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
+      );
+
+      await expect(
+        repo.declinePortfolioConsent('tok', {
+          reason: ConsentDeclineReason.OTHER,
+        }),
+      ).rejects.toBeInstanceOf(GoneException);
+    });
+
+    it('declinePortfolioConsent persiste ip y userAgent en audit', async () => {
+      const { repo, prisma, tx } = makeConsentRepo();
+      tx.portfolioConsent.findUnique.mockResolvedValue({
+        id: 'cons-1',
+        status: ConsentStatus.PENDING,
+        expiresAt: futureExpiry(),
+        portfolioItemId: 'item-1',
+        clientUserId: 'client-1',
+        portfolioItem: { id: 'item-1', status: PortfolioItemStatus.PUBLISHED },
+      });
+      tx.portfolioConsent.update.mockResolvedValue({});
+      prisma.$transaction.mockImplementation(
+        (fn: (t: ConsentTx) => Promise<void>) => fn(tx),
+      );
+
+      await repo.declinePortfolioConsent('tok', {
+        reason: ConsentDeclineReason.PRIVACY,
+        ipAddress: '10.0.0.1',
+        userAgent: 'UA/1',
+      });
+
+      expect(tx.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          ipAddress: '10.0.0.1',
+          userAgent: 'UA/1',
+        }),
+      });
     });
   });
 });

@@ -158,6 +158,17 @@ Estos slugs son la **fuente de verdad**. Cualquier otro nombre de error para el 
 | `PORTFOLIO_PHOTOS_REQUIRED` | 409 | Publicar sin fotos. |
 | `PORTFOLIO_PHOTOS_NOT_READY` | 409 | Fotos aún no visibles en storage (HEAD). |
 | `PORTFOLIO_PHOTOS_STORAGE_UNAVAILABLE` | 503 | Storage no responde al comprobar fotos. |
+| `PORTFOLIO_VERIFICATION_NOT_ELIGIBLE` | 400 | Solicitar verificación sin item `PUBLISHED` con `jobId` o ya verificado. |
+| `PORTFOLIO_CONSENT_EXISTS` | 409 | Ya existe fila `PortfolioConsent` para el item. |
+| `PORTFOLIO_ALREADY_VERIFIED` | 409 | Race en `accept`: el item ya tenía `verifiedFromJob=true`. |
+
+## 2.5.1 Consentimiento de verificación (cliente por token, sin JWT)
+
+| `code` | HTTP | Cuándo usar |
+|--------|------|-------------|
+| `CONSENT_TOKEN_NOT_FOUND` | 404 | Token UUID inexistente. |
+| `CONSENT_TOKEN_EXPIRED` | 410 | `expiresAt` vencido y el consent seguía `PENDING`. |
+| `CONSENT_ALREADY_RESOLVED` | 410 | Consent no está `PENDING` (aceptado, declinado o expirado por job). |
 
 ## 2.6 Slugs genéricos (filtro global y excepciones sin catálogo)
 
@@ -172,6 +183,7 @@ Estos slugs son la **fuente de verdad**. Cualquier otro nombre de error para el 
 | `INTERNAL_SERVER_ERROR` | 500 | Errores no controlados; cuerpo RFC 7807 en producción. |
 | `HTTP_ERROR` | 500 | Variante genérica de error HTTP mapeado. |
 | `SERVICE_UNAVAILABLE` | 503 | Fallback cuando el status es 503 y no hay `code` en el cuerpo. |
+| `GONE` | 410 | Fallback cuando el status es 410 y no hay `code` en el cuerpo. |
 
 ## 3. Paginación Estándar
 Cualquier endpoint que devuelva una lista debe incluir el objeto `meta`:
