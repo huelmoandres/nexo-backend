@@ -9,6 +9,8 @@ import { registerAs } from '@nestjs/config';
  *   - `PORTFOLIO_CONSENT_TTL_DAYS`             — TTL del token de consent en días (default: 14).
  *   - `PORTFOLIO_REMINDER_DELAY_DAYS`          — delay del recordatorio en días (default: 3).
  *   - `PORTFOLIO_REMINDER_ZOMBIE_RECLAIM_MS`   — ventana de zombie reclaim en ms (default: 300000).
+ *   - `BULLMQ_LOCK_DURATION_MS`                — lockDuration de workers BullMQ (default: 30000).
+ *   - `BULLMQ_MAX_STALLED_COUNT`             — maxStalledCount global (default: 1).
  *   - `PORTFOLIO_PHOTOS_HEAD_TIMEOUT_MS`       — timeout de HEAD check por foto (default: 2000).
  *   - `PORTFOLIO_PHOTOS_HEAD_CACHE_TTL_SECONDS`— TTL de cache storage:exists:* en Redis (default: 60).
  *   - `PORTFOLIO_AI_ENABLED`                   — activa moderación IA (default: false).
@@ -44,6 +46,16 @@ export const portfolioConfig = registerAs('portfolio', () => {
      */
     reminderZombieReclaimMs: parseInt(
       process.env['PORTFOLIO_REMINDER_ZOMBIE_RECLAIM_MS'] ?? '300000',
+      10,
+    ),
+    /** `lockDuration` de jobs BullMQ (ms). Debe cumplirse con `reminderZombieReclaimMs`. */
+    bullMqLockDurationMs: parseInt(
+      process.env['BULLMQ_LOCK_DURATION_MS'] ?? '30000',
+      10,
+    ),
+    /** `maxStalledCount` por defecto de workers BullMQ. */
+    bullMqMaxStalledCount: parseInt(
+      process.env['BULLMQ_MAX_STALLED_COUNT'] ?? '1',
       10,
     ),
     /** Timeout individual por HEAD check al publicar (ms). */

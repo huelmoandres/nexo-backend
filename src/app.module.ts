@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { BullModule } from '@nestjs/bullmq';
+import { ConfigModule, ConfigType } from '@nestjs/config';
+import Redis from 'ioredis';
 import { GlobalExceptionFilter } from '@common/filters/global-exception.filter';
 import { AppLoggerModule } from '@common/logger/logger.module';
 import { appConfig } from '@config/app.config';
@@ -35,6 +37,16 @@ import { UsersModule } from '@modules/users/users.module';
         usersConfig,
       ],
       validate: validateEnv,
+    }),
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [authConfig.KEY],
+      useFactory: (auth: ConfigType<typeof authConfig>) => ({
+        connection: new Redis(auth.redisUrl, {
+          maxRetriesPerRequest: null,
+          enableReadyCheck: false,
+        }),
+      }),
     }),
     AppLoggerModule,
     DiagnosticsModule,
