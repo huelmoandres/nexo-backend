@@ -120,8 +120,7 @@ export class SearchRepository {
 
     let textFilter = '';
     let relevanceExpr = '0';
-    const hasText =
-      filters.expandedTerms && filters.expandedTerms.length > 0;
+    const hasText = filters.expandedTerms && filters.expandedTerms.length > 0;
 
     if (hasText) {
       const tsqueryParts: string[] = [];

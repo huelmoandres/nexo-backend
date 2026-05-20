@@ -62,8 +62,7 @@ export class RutRegistrationService {
    * Comprueba que el RUT no esté registrado en Company ni ProfessionalProfile.
    */
   async assertRutAvailable(normalizedRut: string): Promise<void> {
-    const taken =
-      await this.usersRepository.isRutTakenGlobally(normalizedRut);
+    const taken = await this.usersRepository.isRutTakenGlobally(normalizedRut);
     if (taken) {
       throw new ConflictException(
         buildProblem(

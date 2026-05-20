@@ -122,6 +122,15 @@ Estos slugs son la **fuente de verdad**. Cualquier otro nombre de error para el 
 | `USER_ALREADY_OWNS_COMPANY` | 409 | El usuario ya es administrador de una empresa. |
 | `PROFESSIONAL_PROFILE_EXISTS` | 409 | El usuario ya tiene un `ProfessionalProfile`. |
 | `PROFESSIONAL_ONBOARDING_ROLE_CONFLICT` | 409 | Rol incompatible con onboarding profesional (`COMPANY_*`, `SUPER_ADMIN`). |
+| `DGI_VERIFICATION_NO_RUT` | 400 | Sujeto sin RUT registrado. |
+| `DGI_VERIFICATION_ALREADY_VERIFIED` | 409 | RUT ya verificado automáticamente. |
+| `DGI_VERIFICATION_IN_PROGRESS` | 409 | Job de verificación DGI en curso. |
+| `DGI_QR_URL_INVALID` | 400 | URL del QR no es dominio DGI oficial. |
+| `DGI_SERVICE_UNAVAILABLE` | 503 | Consulta a efactura.dgi.gub.uy falló. |
+| `DGI_RUT_MISMATCH` | 422 | RUT del documento no coincide con el registrado. |
+| `DGI_VERIFICATION_REJECTED` | 409 | Verificación rechazada (admin o automático). |
+| `DGI_VERIFICATION_SUBJECT_NOT_FOUND` | 404 | Empresa/perfil no encontrado para el usuario. |
+| `DGI_VERIFICATION_INVALID_FILE` | 400 | Solo PDF en paths `users/.../verification/`. |
 | `PROFESSIONAL_PROFILE_NOT_FOUND` | 404 | Se requiere perfil profesional (p. ej. presign de documentos) y no existe. |
 | `INVALID_CATEGORY_IDS` | 400 | Algún `categoryId` del DTO de perfil no existe (validación antes de persistir). |
 | `KYC_INVALID_FILE_EXTENSION` | 400 | Extensión de archivo no permitida en flujos KYC/presign. |

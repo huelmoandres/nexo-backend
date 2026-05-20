@@ -138,6 +138,51 @@ export const ERRORS = {
     title: 'Rol no compatible con onboarding profesional',
     slug: 'professional-onboarding-role-conflict',
   },
+  DGI_VERIFICATION_NO_RUT: {
+    status: 400,
+    title: 'RUT requerido para verificación DGI',
+    slug: 'dgi-verification-no-rut',
+  },
+  DGI_VERIFICATION_ALREADY_VERIFIED: {
+    status: 409,
+    title: 'RUT ya verificado',
+    slug: 'dgi-verification-already-verified',
+  },
+  DGI_VERIFICATION_IN_PROGRESS: {
+    status: 409,
+    title: 'Verificación DGI en curso',
+    slug: 'dgi-verification-in-progress',
+  },
+  DGI_QR_URL_INVALID: {
+    status: 400,
+    title: 'URL del QR no pertenece a DGI',
+    slug: 'dgi-qr-url-invalid',
+  },
+  DGI_SERVICE_UNAVAILABLE: {
+    status: 503,
+    title: 'Servicio DGI no disponible',
+    slug: 'dgi-service-unavailable',
+  },
+  DGI_RUT_MISMATCH: {
+    status: 422,
+    title: 'RUT del documento no coincide',
+    slug: 'dgi-rut-mismatch',
+  },
+  DGI_VERIFICATION_REJECTED: {
+    status: 409,
+    title: 'Verificación DGI rechazada',
+    slug: 'dgi-verification-rejected',
+  },
+  DGI_VERIFICATION_SUBJECT_NOT_FOUND: {
+    status: 404,
+    title: 'Sujeto de verificación no encontrado',
+    slug: 'dgi-verification-subject-not-found',
+  },
+  DGI_VERIFICATION_INVALID_FILE: {
+    status: 400,
+    title: 'Solo se aceptan documentos PDF para verificación DGI',
+    slug: 'dgi-verification-invalid-file',
+  },
   STORAGE_FORBIDDEN_KEY: {
     status: 403,
     title: 'Acceso denegado al storage',

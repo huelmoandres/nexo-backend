@@ -29,6 +29,14 @@ export class AuthorizationService {
     this.roleCache.delete(supabaseUid);
   }
 
+  /**
+   * @param supabaseUid - `sub` del JWT.
+   * @returns Rol actual del usuario en base de datos (con caché en memoria).
+   */
+  async getUserRole(supabaseUid: string): Promise<Role> {
+    return this.resolveRole(supabaseUid);
+  }
+
   async assertUserHasAnyRole(
     supabaseUid: string | undefined,
     requiredRoles: Role[],

@@ -92,6 +92,22 @@ describe('SearchRepository', () => {
       expect(sql).not.toContain('ProfessionalCategory');
     });
 
+    it('usa el primer expandedTerm como q cuando q no se provee', async () => {
+      const { repo, prisma } = makeRepo(makePrisma([]));
+      const filters: SearchFilters = {
+        ...baseFilters,
+        expandedTerms: ['electricidad'],
+      };
+
+      await repo.findProfessionals(filters);
+
+      const [, ...params] = prisma.$queryRawUnsafe.mock.calls[0] as [
+        string,
+        ...unknown[],
+      ];
+      expect(params).toContain('electricidad');
+    });
+
     it('genera tsquery OR con múltiples expandedTerms', async () => {
       const { repo, prisma } = makeRepo(makePrisma([]));
       const filters: SearchFilters = {

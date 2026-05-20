@@ -54,13 +54,49 @@ describe('UsersRepository', () => {
     });
   });
 
+  it('createProfessionalProfileWithPostgis sin promover rol si flag false', async () => {
+    const profileRow = professionalProfileFactory.build({
+      id: 'p2',
+      userId: 'u2',
+    }) as never;
+    const userUpdate = vi.fn();
+    const tx = {
+      professionalProfile: {
+        create: vi.fn().mockResolvedValue(profileRow as never),
+      },
+      $executeRawUnsafe: vi.fn().mockResolvedValue(1),
+      professionalIdentity: { create: vi.fn().mockResolvedValue({}) },
+      trustProfile: { create: vi.fn().mockResolvedValue({}) },
+      user: { update: userUpdate },
+    };
+    const prisma = {
+      $transaction: vi
+        .fn()
+        .mockImplementation(
+          async (cb: (t: typeof tx) => Promise<typeof profileRow>) => cb(tx),
+        ),
+    } as unknown as PrismaService;
+
+    const repo = new UsersRepository(prisma);
+    await repo.createProfessionalProfileWithPostgis({
+      userId: 'u2',
+      experienceYears: 1,
+      latitude: -34.9,
+      longitude: -56.16,
+      categoryIds: ['cat1'],
+      promoteRoleToIndependentPro: false,
+    });
+
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
   it('createProfessionalProfileWithPostgis ejecuta UPDATE PostGIS', async () => {
     const profileRow = professionalProfileFactory.build({
       id: 'p1',
       userId: 'u1',
       bio: 'x',
       experienceYears: 3,
-    });
+    }) as never;
 
     const userUpdate = vi.fn().mockResolvedValue({});
     const tx = {

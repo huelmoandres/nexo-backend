@@ -45,6 +45,15 @@ export const PORTFOLIO_PHOTO_KEY_PATTERN = new RegExp(
 );
 
 /**
+ * Regex de validación para constancias DGI (PDF).
+ *
+ * Formato: `users/<userId>/verification/<uuid>.pdf`
+ */
+export const VERIFICATION_DOC_KEY_PATTERN = new RegExp(
+  `^users/[A-Za-z0-9_-]+/verification/${UUID_RE_PART}\\.pdf$`,
+);
+
+/**
  * Devuelve el prefijo canónico del scope de un usuario.
  *
  * @param userId - ID del usuario (UUID o slug compatible con `[A-Za-z0-9_-]+`).
@@ -104,6 +113,19 @@ export function buildPortfolioPhotoKey(
   assertValidIdSegment(itemId, 'itemId');
   const safeExt = normalizeExtension(ext, ['jpg', 'jpeg', 'png', 'webp']);
   return `${portfolioItemScope(userId, itemId)}${randomUUID()}.${safeExt}`;
+}
+
+/**
+ * Construye la key canónica para una constancia DGI (PDF).
+ *
+ * @param userId - Usuario que sube el documento.
+ * @param ext - Extensión sin punto (solo `pdf` permitido).
+ * @returns Cadena `users/<userId>/verification/<uuid>.pdf`.
+ */
+export function buildVerificationDocKey(userId: string, ext: string): string {
+  assertValidUserId(userId);
+  const safeExt = normalizeExtension(ext, ['pdf']);
+  return `${userScope(userId)}verification/${randomUUID()}.${safeExt}`;
 }
 
 /**

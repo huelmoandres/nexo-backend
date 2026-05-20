@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import {
   AuditAction,
+  DgiVerificationStatus,
   Role,
+  TrustStatus,
+  VerificationDocumentStatus,
+  VerificationDocumentType,
   VerificationSubjectType,
   type Company,
   type Prisma,
@@ -24,6 +28,20 @@ export type UserWithMeRelations = Prisma.UserGetPayload<{
     ownedCompany: true;
   };
 }>;
+
+/** Sujeto resuelto para verificación DGI (empresa o perfil profesional). */
+export interface DgiVerificationSubjectRow {
+  subjectType: VerificationSubjectType;
+  subjectId: string;
+  userId: string;
+  rut: string;
+  dgiVerificationStatus: DgiVerificationStatus;
+  trustProfileId: string;
+  dgiRazonSocial: string | null;
+  dgiVerificationDocKey: string | null;
+  dgiVerificationMethod: string | null;
+  dgiVerifiedAt: Date | null;
+}
 
 /**
  * Persistencia de usuarios, empresas y perfiles profesionales (incl. PostGIS vía SQL raw).
@@ -63,9 +81,7 @@ export class UsersRepository {
    * @param rut - RUT normalizado (12 dígitos).
    * @returns Perfil profesional activo con ese RUT, o `null`.
    */
-  async findProfileByRut(
-    rut: string,
-  ): Promise<{ id: string } | null> {
+  async findProfileByRut(rut: string): Promise<{ id: string } | null> {
     return this.prisma.professionalProfile.findFirst({
       where: { rut, deletedAt: null },
       select: { id: true },
@@ -296,5 +312,336 @@ export class UsersRepository {
       where: { userId: input.userId },
       data,
     });
+  }
+
+  /**
+   * Resuelve el sujeto de verificación DGI para el usuario autenticado.
+   */
+  async findDgiVerificationSubject(input: {
+    supabaseUid: string;
+    subjectType: VerificationSubjectType;
+  }): Promise<DgiVerificationSubjectRow | null> {
+    const user = await this.prisma.user.findFirst({
+      where: { supabaseUid: input.supabaseUid, deletedAt: null },
+      include: {
+        ownedCompany: true,
+        professionalProfile: true,
+      },
+    });
+    if (!user) {
+      return null;
+    }
+
+    if (input.subjectType === VerificationSubjectType.COMPANY) {
+      const company = user.ownedCompany;
+      if (!company || company.deletedAt !== null) {
+        return null;
+      }
+      const trust = await this.prisma.trustProfile.findFirst({
+        where: {
+          companyId: company.id,
+          subjectType: VerificationSubjectType.COMPANY,
+        },
+        select: { id: true },
+      });
+      if (!trust) {
+        return null;
+      }
+      return {
+        subjectType: VerificationSubjectType.COMPANY,
+        subjectId: company.id,
+        userId: user.id,
+        rut: company.rut,
+        dgiVerificationStatus: company.dgiVerificationStatus,
+        trustProfileId: trust.id,
+        dgiRazonSocial: company.dgiRazonSocial,
+        dgiVerificationDocKey: company.dgiVerificationDocKey,
+        dgiVerificationMethod: company.dgiVerificationMethod,
+        dgiVerifiedAt: company.dgiVerifiedAt,
+      };
+    }
+
+    const profile = user.professionalProfile;
+    if (!profile || profile.deletedAt !== null || !profile.rut) {
+      return null;
+    }
+    const trust = await this.prisma.trustProfile.findFirst({
+      where: {
+        professionalProfileId: profile.id,
+        subjectType: VerificationSubjectType.PROFESSIONAL,
+      },
+      select: { id: true },
+    });
+    if (!trust) {
+      return null;
+    }
+    return {
+      subjectType: VerificationSubjectType.PROFESSIONAL,
+      subjectId: profile.id,
+      userId: user.id,
+      rut: profile.rut,
+      dgiVerificationStatus: profile.dgiVerificationStatus,
+      trustProfileId: trust.id,
+      dgiRazonSocial: profile.dgiRazonSocial,
+      dgiVerificationDocKey: profile.dgiVerificationDocKey,
+      dgiVerificationMethod: profile.dgiVerificationMethod,
+      dgiVerifiedAt: profile.dgiVerifiedAt,
+    };
+  }
+
+  /**
+   * Marca verificación en PROCESSING y registra/actualiza documento RUT_PROOF.
+   */
+  async markDgiVerificationProcessing(input: {
+    subjectType: VerificationSubjectType;
+    subjectId: string;
+    storageKey: string;
+    trustProfileId: string;
+  }): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const status = DgiVerificationStatus.PROCESSING;
+      if (input.subjectType === VerificationSubjectType.COMPANY) {
+        await tx.company.update({
+          where: { id: input.subjectId },
+          data: {
+            dgiVerificationStatus: status,
+            dgiVerificationDocKey: input.storageKey,
+          },
+        });
+      } else {
+        await tx.professionalProfile.update({
+          where: { id: input.subjectId },
+          data: {
+            dgiVerificationStatus: status,
+            dgiVerificationDocKey: input.storageKey,
+          },
+        });
+      }
+
+      const existing = await tx.verificationDocument.findFirst({
+        where: {
+          trustProfileId: input.trustProfileId,
+          documentType: VerificationDocumentType.RUT_PROOF,
+        },
+      });
+      if (existing) {
+        await tx.verificationDocument.update({
+          where: { id: existing.id },
+          data: {
+            storageKey: input.storageKey,
+            status: VerificationDocumentStatus.PENDING,
+            reviewedAt: null,
+            reviewedBy: null,
+            rejectionReason: null,
+          },
+        });
+      } else {
+        await tx.verificationDocument.create({
+          data: {
+            trustProfileId: input.trustProfileId,
+            documentType: VerificationDocumentType.RUT_PROOF,
+            storageKey: input.storageKey,
+            status: VerificationDocumentStatus.PENDING,
+          },
+        });
+      }
+    });
+  }
+
+  /**
+   * Persiste resultado automático o manual del worker/admin.
+   */
+  async applyDgiVerificationResult(input: {
+    subjectType: VerificationSubjectType;
+    subjectId: string;
+    trustProfileId: string;
+    status: DgiVerificationStatus;
+    method?: string;
+    dgiRazonSocial?: string;
+    documentStatus: VerificationDocumentStatus;
+    rejectionReason?: string;
+    reviewedBy?: string;
+  }): Promise<void> {
+    const verifiedAt =
+      input.status === DgiVerificationStatus.VERIFIED_AUTO
+        ? new Date()
+        : undefined;
+    const trustStatus =
+      input.status === DgiVerificationStatus.VERIFIED_AUTO
+        ? TrustStatus.VERIFIED
+        : undefined;
+
+    await this.prisma.$transaction(async (tx) => {
+      const data = {
+        dgiVerificationStatus: input.status,
+        dgiVerificationMethod: input.method ?? null,
+        dgiRazonSocial: input.dgiRazonSocial ?? undefined,
+        dgiVerifiedAt: verifiedAt,
+      };
+
+      if (input.subjectType === VerificationSubjectType.COMPANY) {
+        await tx.company.update({
+          where: { id: input.subjectId },
+          data,
+        });
+      } else {
+        await tx.professionalProfile.update({
+          where: { id: input.subjectId },
+          data,
+        });
+      }
+
+      if (trustStatus) {
+        await tx.trustProfile.update({
+          where: { id: input.trustProfileId },
+          data: {
+            status: trustStatus,
+            verifiedAt: new Date(),
+          },
+        });
+      }
+
+      await tx.verificationDocument.updateMany({
+        where: {
+          trustProfileId: input.trustProfileId,
+          documentType: VerificationDocumentType.RUT_PROOF,
+        },
+        data: {
+          status: input.documentStatus,
+          reviewedAt:
+            input.documentStatus !== VerificationDocumentStatus.PENDING
+              ? new Date()
+              : null,
+          reviewedBy: input.reviewedBy ?? null,
+          rejectionReason: input.rejectionReason ?? null,
+        },
+      });
+    });
+  }
+
+  /** Listado admin: empresas y profesionales en revisión manual. */
+  async listPendingManualDgiVerifications(): Promise<
+    Array<{
+      subjectType: VerificationSubjectType;
+      subjectId: string;
+      rut: string;
+      dgiRazonSocial: string | null;
+      dgiVerificationDocKey: string | null;
+      updatedAt: Date;
+    }>
+  > {
+    const [companies, profiles] = await Promise.all([
+      this.prisma.company.findMany({
+        where: {
+          dgiVerificationStatus: DgiVerificationStatus.PENDING_MANUAL_REVIEW,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          rut: true,
+          dgiRazonSocial: true,
+          dgiVerificationDocKey: true,
+          updatedAt: true,
+        },
+      }),
+      this.prisma.professionalProfile.findMany({
+        where: {
+          dgiVerificationStatus: DgiVerificationStatus.PENDING_MANUAL_REVIEW,
+          deletedAt: null,
+          rut: { not: null },
+        },
+        select: {
+          id: true,
+          rut: true,
+          dgiRazonSocial: true,
+          dgiVerificationDocKey: true,
+          updatedAt: true,
+        },
+      }),
+    ]);
+
+    const companyRows = companies.map((c) => ({
+      subjectType: VerificationSubjectType.COMPANY,
+      subjectId: c.id,
+      rut: c.rut,
+      dgiRazonSocial: c.dgiRazonSocial,
+      dgiVerificationDocKey: c.dgiVerificationDocKey,
+      updatedAt: c.updatedAt,
+    }));
+
+    const profileRows = profiles
+      .filter((p): p is typeof p & { rut: string } => p.rut !== null)
+      .map((p) => ({
+        subjectType: VerificationSubjectType.PROFESSIONAL,
+        subjectId: p.id,
+        rut: p.rut,
+        dgiRazonSocial: p.dgiRazonSocial,
+        dgiVerificationDocKey: p.dgiVerificationDocKey,
+        updatedAt: p.updatedAt,
+      }));
+
+    return [...companyRows, ...profileRows].sort(
+      (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+    );
+  }
+
+  /** Resuelve sujeto por id para revisión admin (sin filtro de usuario). */
+  async findDgiSubjectById(input: {
+    subjectType: VerificationSubjectType;
+    subjectId: string;
+  }): Promise<DgiVerificationSubjectRow | null> {
+    if (input.subjectType === VerificationSubjectType.COMPANY) {
+      const company = await this.prisma.company.findFirst({
+        where: { id: input.subjectId, deletedAt: null },
+      });
+      if (!company) {
+        return null;
+      }
+      const trust = await this.prisma.trustProfile.findFirst({
+        where: { companyId: company.id },
+        select: { id: true },
+      });
+      if (!trust) {
+        return null;
+      }
+      return {
+        subjectType: VerificationSubjectType.COMPANY,
+        subjectId: company.id,
+        userId: company.adminId,
+        rut: company.rut,
+        dgiVerificationStatus: company.dgiVerificationStatus,
+        trustProfileId: trust.id,
+        dgiRazonSocial: company.dgiRazonSocial,
+        dgiVerificationDocKey: company.dgiVerificationDocKey,
+        dgiVerificationMethod: company.dgiVerificationMethod,
+        dgiVerifiedAt: company.dgiVerifiedAt,
+      };
+    }
+
+    const profile = await this.prisma.professionalProfile.findFirst({
+      where: { id: input.subjectId, deletedAt: null },
+    });
+    if (!profile?.rut) {
+      return null;
+    }
+    const trust = await this.prisma.trustProfile.findFirst({
+      where: { professionalProfileId: profile.id },
+      select: { id: true },
+    });
+    if (!trust) {
+      return null;
+    }
+    return {
+      subjectType: VerificationSubjectType.PROFESSIONAL,
+      subjectId: profile.id,
+      userId: profile.userId,
+      rut: profile.rut,
+      dgiVerificationStatus: profile.dgiVerificationStatus,
+      trustProfileId: trust.id,
+      dgiRazonSocial: profile.dgiRazonSocial,
+      dgiVerificationDocKey: profile.dgiVerificationDocKey,
+      dgiVerificationMethod: profile.dgiVerificationMethod,
+      dgiVerifiedAt: profile.dgiVerifiedAt,
+    };
   }
 }

@@ -17,6 +17,7 @@ import { diagnosticsConfig } from '@config/diagnostics.config';
 import { searchConfig } from '@config/search.config';
 import { portfolioConfig } from '@config/portfolio.config';
 import { storageConfig } from '@config/storage.config';
+import { dgiConfig } from '@config/dgi.config';
 import { usersConfig } from '@config/users.config';
 import { validateEnv } from '@config/env.validation';
 import { AuthModule } from '@modules/auth/auth.module';
@@ -43,6 +44,7 @@ import { UsersModule } from '@modules/users/users.module';
         searchConfig,
         storageConfig,
         usersConfig,
+        dgiConfig,
       ],
       validate: validateEnv,
     }),

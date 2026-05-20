@@ -3,10 +3,12 @@ import { ForbiddenException } from '@nestjs/common';
 import {
   KYC_KEY_PATTERN,
   PORTFOLIO_PHOTO_KEY_PATTERN,
+  VERIFICATION_DOC_KEY_PATTERN,
   USER_ROOT_PREFIX,
   assertKeyBelongsToUser,
   buildKycKey,
   buildPortfolioPhotoKey,
+  buildVerificationDocKey,
   parseUserIdFromKey,
   portfolioItemScope,
   userScope,
@@ -105,6 +107,21 @@ describe('storage-paths', () => {
       const a = buildKycKey('user1', 'SELFIE', 'jpg');
       const b = buildKycKey('user1', 'SELFIE', 'jpg');
       expect(a).not.toBe(b);
+    });
+  });
+
+  describe('buildVerificationDocKey', () => {
+    it('construye key PDF bajo verification/', () => {
+      const key = buildVerificationDocKey('user1', 'pdf');
+      expect(key).toMatch(VERIFICATION_DOC_KEY_PATTERN);
+      expect(key.startsWith('users/user1/verification/')).toBe(true);
+      expect(key.endsWith('.pdf')).toBe(true);
+    });
+
+    it('rechaza extensiones distintas de pdf', () => {
+      expect(() => buildVerificationDocKey('user1', 'jpg')).toThrow(
+        /not in allowed set/,
+      );
     });
   });
 

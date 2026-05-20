@@ -31,7 +31,8 @@ describe('parseExpansionTermsJson', () => {
   });
 
   it('parsea array envuelto en markdown', () => {
-    const raw = '```json\n["electricista", "electricidad", "instalaciones eléctricas"]\n```';
+    const raw =
+      '```json\n["electricista", "electricidad", "instalaciones eléctricas"]\n```';
     expect(parseExpansionTermsJson(raw)).toEqual([
       'electricista',
       'electricidad',

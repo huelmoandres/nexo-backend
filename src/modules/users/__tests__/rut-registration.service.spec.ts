@@ -1,7 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-} from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { RutRegistrationService } from '../services/rut-registration.service';
 
@@ -30,6 +27,11 @@ describe('RutRegistrationService', () => {
   it('resolveRequiredRut exige valor', () => {
     const svc = new RutRegistrationService(makeRepo() as never);
     expect(() => svc.resolveRequiredRut('   ')).toThrow(BadRequestException);
+  });
+
+  it('resolveRequiredRut devuelve RUT normalizado válido', () => {
+    const svc = new RutRegistrationService(makeRepo() as never);
+    expect(svc.resolveRequiredRut('000000000000')).toBe('000000000000');
   });
 
   it('assertRutAvailable lanza RUT_ALREADY_REGISTERED', async () => {

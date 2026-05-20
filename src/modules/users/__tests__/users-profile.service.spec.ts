@@ -157,6 +157,27 @@ describe('UsersProfileService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('createProfessionalProfile lanza conflicto para rol no permitido (rama secundaria)', async () => {
+    const weirdUser = {
+      ...baseUser,
+      role: 'UNKNOWN_ROLE' as Role,
+    };
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue(weirdUser),
+      hasProfessionalProfile: vi.fn().mockResolvedValue(false),
+    };
+    const service = createService(repo);
+
+    await expect(
+      service.createProfessionalProfile('sub', {
+        experienceYears: 2,
+        latitude: -34.9,
+        longitude: -56.1,
+        categoryIds: ['cat1'],
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
   it('createProfessionalProfile lanza PROFESSIONAL_ONBOARDING_ROLE_CONFLICT para COMPANY_ADMIN', async () => {
     const repo = {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue({
@@ -175,6 +196,36 @@ describe('UsersProfileService', () => {
         categoryIds: ['cat1'],
       }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('createProfessionalProfile valida RUT opcional cuando se provee', async () => {
+    const rutRegistration = makeRutRegistration();
+    rutRegistration.resolveRut.mockReturnValue('214567890013');
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue(baseUser),
+      hasProfessionalProfile: vi.fn().mockResolvedValue(false),
+      countCategoriesByIds: vi.fn().mockResolvedValue(1),
+      createProfessionalProfileWithPostgis: vi.fn().mockResolvedValue({
+        id: 'p1',
+        bio: 'Bio',
+        experienceYears: 2,
+        categories: [],
+      }),
+      getProfileCoordinates: vi.fn().mockResolvedValue(null),
+    };
+    const service = createService(repo, {}, rutRegistration);
+
+    await service.createProfessionalProfile('sub', {
+      experienceYears: 2,
+      latitude: -34.9,
+      longitude: -56.2,
+      categoryIds: ['cat1'],
+      rut: '214567890013',
+    });
+
+    expect(rutRegistration.assertRutAvailable).toHaveBeenCalledWith(
+      '214567890013',
+    );
   });
 
   it('createProfessionalProfile promueve CLIENT e invalida cache de rol', async () => {

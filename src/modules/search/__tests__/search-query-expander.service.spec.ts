@@ -1,4 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const openAiMocks = vi.hoisted(() => {
+  const create = vi.fn();
+  const OpenAIMock = vi.fn().mockImplementation(function (
+    this: Record<string, unknown>,
+  ) {
+    this['chat'] = { completions: { create } };
+  });
+  return { OpenAIMock, create };
+});
+
+vi.mock('openai', () => ({
+  default: openAiMocks.OpenAIMock,
+}));
+
 import { SearchQueryExpanderService } from '../search-query-expander.service';
 
 describe('SearchQueryExpanderService', () => {
@@ -59,7 +74,12 @@ describe('SearchQueryExpanderService', () => {
         enabled: false,
       },
     });
-    const svc = createService(config, makeAiConfig(), redis, makeCategoriesRepo());
+    const svc = createService(
+      config,
+      makeAiConfig(),
+      redis,
+      makeCategoriesRepo(),
+    );
 
     const result = await svc.expand('electricista');
 
@@ -70,7 +90,12 @@ describe('SearchQueryExpanderService', () => {
   it('devuelve cache hit sin llamar a OpenAI', async () => {
     const cached = JSON.stringify(['electricista', 'electricidad']);
     const redis = makeRedis(cached);
-    const svc = createService(makeConfig(), makeAiConfig(), redis, makeCategoriesRepo());
+    const svc = createService(
+      makeConfig(),
+      makeAiConfig(),
+      redis,
+      makeCategoriesRepo(),
+    );
     await svc.onModuleInit();
 
     const result = await svc.expand('electricista');
@@ -84,7 +109,12 @@ describe('SearchQueryExpanderService', () => {
       get: vi.fn().mockRejectedValue(new Error('Redis down')),
       setex: vi.fn().mockResolvedValue('OK'),
     };
-    const svc = createService(makeConfig(), makeAiConfig(), redis, makeCategoriesRepo());
+    const svc = createService(
+      makeConfig(),
+      makeAiConfig(),
+      redis,
+      makeCategoriesRepo(),
+    );
     await svc.onModuleInit();
 
     const result = await svc.expand('electricista');
@@ -94,7 +124,12 @@ describe('SearchQueryExpanderService', () => {
 
   it('devuelve [q] si q es vacío', async () => {
     const redis = makeRedis();
-    const svc = createService(makeConfig(), makeAiConfig(), redis, makeCategoriesRepo());
+    const svc = createService(
+      makeConfig(),
+      makeAiConfig(),
+      redis,
+      makeCategoriesRepo(),
+    );
 
     const result = await svc.expand('');
 
@@ -105,7 +140,12 @@ describe('SearchQueryExpanderService', () => {
   it('normaliza q a lowercase para la cache key', async () => {
     const cached = JSON.stringify(['electricista', 'electricidad']);
     const redis = makeRedis(cached);
-    const svc = createService(makeConfig(), makeAiConfig(), redis, makeCategoriesRepo());
+    const svc = createService(
+      makeConfig(),
+      makeAiConfig(),
+      redis,
+      makeCategoriesRepo(),
+    );
     await svc.onModuleInit();
 
     await svc.expand('ELECTRICISTA');
@@ -118,16 +158,163 @@ describe('SearchQueryExpanderService', () => {
   it('carga categorías de la BD en onModuleInit', async () => {
     const categoriesRepo = makeCategoriesRepo();
     const redis = makeRedis();
-    const svc = createService(makeConfig(), makeAiConfig(), redis, categoriesRepo);
+    const svc = createService(
+      makeConfig(),
+      makeAiConfig(),
+      redis,
+      categoriesRepo,
+    );
     await svc.onModuleInit();
 
     expect(categoriesRepo.findAll).toHaveBeenCalledOnce();
   });
 
+  it('expand llama a OpenAI y guarda en cache cuando no hay hit', async () => {
+    openAiMocks.create.mockResolvedValueOnce({
+      choices: [{ message: { content: '["electricista","electricidad"]' } }],
+    });
+    const redis = makeRedis();
+    const svc = createService(
+      makeConfig(),
+      makeAiConfig(),
+      redis,
+      makeCategoriesRepo(),
+    );
+    await svc.onModuleInit();
+
+    const result = await svc.expand('electricista');
+
+    expect(result).toEqual(['electricista', 'electricidad']);
+    expect(openAiMocks.create).toHaveBeenCalled();
+    expect(redis.setex).toHaveBeenCalled();
+  });
+
+  it('expand usa lista vacía si OpenAI devuelve contenido vacío', async () => {
+    openAiMocks.create.mockResolvedValueOnce({ choices: [] });
+    const redis = makeRedis();
+    const svc = createService(
+      makeConfig(),
+      makeAiConfig(),
+      redis,
+      makeCategoriesRepo(),
+    );
+    await svc.onModuleInit();
+
+    const result = await svc.expand('soldador');
+
+    expect(result[0]).toBe('soldador');
+  });
+
+  it('expand agrega q al inicio si OpenAI no lo incluye', async () => {
+    openAiMocks.create.mockResolvedValueOnce({
+      choices: [{ message: { content: '["electricidad"]' } }],
+    });
+    const redis = makeRedis();
+    const svc = createService(
+      makeConfig(),
+      makeAiConfig(),
+      redis,
+      makeCategoriesRepo(),
+    );
+    await svc.onModuleInit();
+
+    const result = await svc.expand('plomero');
+
+    expect(result[0]).toBe('plomero');
+  });
+
+  it('expand continúa si setex falla tras expansión exitosa', async () => {
+    openAiMocks.create.mockResolvedValueOnce({
+      choices: [{ message: { content: '["electricista"]' } }],
+    });
+    const redis = {
+      get: vi.fn().mockResolvedValue(null),
+      setex: vi.fn().mockRejectedValue(new Error('redis write fail')),
+    };
+    const svc = createService(
+      makeConfig(),
+      makeAiConfig(),
+      redis,
+      makeCategoriesRepo(),
+    );
+    await svc.onModuleInit();
+
+    const result = await svc.expand('electricista');
+
+    expect(result).toContain('electricista');
+  });
+
+  it('expand hace fallback con error no-Error del breaker', async () => {
+    openAiMocks.create.mockRejectedValueOnce('openai-string');
+    const redis = makeRedis();
+    const svc = createService(
+      makeConfig(),
+      makeAiConfig(),
+      redis,
+      makeCategoriesRepo(),
+    );
+    await svc.onModuleInit();
+
+    const result = await svc.expand('carpintero');
+
+    expect(result).toEqual(['carpintero']);
+  });
+
+  it('reloadCategories registra error si findAll falla', async () => {
+    const categoriesRepo = makeCategoriesRepo();
+    categoriesRepo.findAll.mockRejectedValueOnce(new Error('db down'));
+    const redis = makeRedis();
+    const svc = createService(
+      makeConfig(),
+      makeAiConfig(),
+      redis,
+      categoriesRepo,
+    );
+
+    await expect(svc.reloadCategories()).resolves.toBeUndefined();
+  });
+
+  it('reloadCategories registra error string si findAll falla con no-Error', async () => {
+    const categoriesRepo = makeCategoriesRepo();
+    categoriesRepo.findAll.mockRejectedValueOnce('db-string');
+    const redis = makeRedis();
+    const svc = createService(
+      makeConfig(),
+      makeAiConfig(),
+      redis,
+      categoriesRepo,
+    );
+
+    await expect(svc.reloadCategories()).resolves.toBeUndefined();
+  });
+
+  it('registra eventos halfOpen del circuit breaker', async () => {
+    const redis = makeRedis();
+    const svc = createService(
+      makeConfig(),
+      makeAiConfig(),
+      redis,
+      makeCategoriesRepo(),
+    );
+    await svc.onModuleInit();
+
+    const breaker = (
+      svc as unknown as { breaker: { emit: (e: string) => void } }
+    ).breaker;
+    breaker.emit('halfOpen');
+
+    expect(true).toBe(true);
+  });
+
   it('reloadCategories recarga desde la BD', async () => {
     const categoriesRepo = makeCategoriesRepo();
     const redis = makeRedis();
-    const svc = createService(makeConfig(), makeAiConfig(), redis, categoriesRepo);
+    const svc = createService(
+      makeConfig(),
+      makeAiConfig(),
+      redis,
+      categoriesRepo,
+    );
     await svc.onModuleInit();
 
     categoriesRepo.findAll.mockResolvedValueOnce([

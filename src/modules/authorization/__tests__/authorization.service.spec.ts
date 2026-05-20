@@ -95,6 +95,22 @@ describe('AuthorizationService', () => {
     expect(findFirst).toHaveBeenCalledTimes(2);
   });
 
+  it('getUserRole devuelve el rol del usuario', async () => {
+    const prisma = {
+      user: {
+        findFirst: vi.fn().mockResolvedValue({ role: Role.INDEPENDENT_PRO }),
+      },
+    };
+    const service = new AuthorizationService(
+      prisma as never,
+      makeUsersConfig(),
+    );
+
+    await expect(service.getUserRole('uid')).resolves.toBe(
+      Role.INDEPENDENT_PRO,
+    );
+  });
+
   it('refresca rol desde DB cuando el cache expiró', async () => {
     vi.useFakeTimers();
     const findFirst = vi.fn().mockResolvedValue({ role: Role.COMPANY_ADMIN });

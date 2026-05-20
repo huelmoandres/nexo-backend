@@ -89,6 +89,15 @@ enum VerificationDocumentType {
   PROFESSIONAL_CERTIFICATION
 }
 
+/// Estado de verificación de RUT vía constancia DGI (empresa o profesional con RUT).
+enum DgiVerificationStatus {
+  UNVERIFIED
+  PROCESSING
+  VERIFIED_AUTO
+  PENDING_MANUAL_REVIEW
+  REJECTED
+}
+
 enum SubscriptionPlan {
   FREE
   MEDIUM
@@ -357,6 +366,12 @@ model Company {
   contacts CompanyContact[]
   trustProfiles TrustProfile[]
 
+  dgiVerificationStatus DgiVerificationStatus @default(UNVERIFIED)
+  dgiVerificationMethod String?
+  dgiRazonSocial          String?
+  dgiVerifiedAt           DateTime?             @db.Timestamptz
+  dgiVerificationDocKey   String?
+
   /// Soft Delete
   deletedAt DateTime? @db.Timestamptz
   createdAt DateTime  @default(now()) @db.Timestamptz
@@ -410,6 +425,12 @@ model ProfessionalProfile {
   trustProfiles   TrustProfile[]
   certifications  ProfessionalCertification[]
   portfolioItems  PortfolioItem[]
+
+  dgiVerificationStatus DgiVerificationStatus @default(UNVERIFIED)
+  dgiVerificationMethod String?
+  dgiRazonSocial          String?
+  dgiVerifiedAt           DateTime?             @db.Timestamptz
+  dgiVerificationDocKey   String?
 
   /// Soft Delete
   deletedAt DateTime? @db.Timestamptz

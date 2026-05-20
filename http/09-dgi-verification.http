@@ -1,0 +1,50 @@
+### Verificación DGI — empresa (COMPANY_ADMIN)
+# @name presignCompanyDgi
+POST {{baseUrl}}/api/users/verification/presign-document
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "subjectType": "COMPANY",
+  "fileExtension": "pdf"
+}
+
+###
+# Subir PDF a uploadUrl, luego:
+POST {{baseUrl}}/api/users/verification/submit
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "subjectType": "COMPANY",
+  "storageKey": "users/REEMPLAZAR/verification/REEMPLAZAR.pdf"
+}
+
+###
+GET {{baseUrl}}/api/users/verification/status?subjectType=COMPANY
+Authorization: Bearer {{accessToken}}
+
+###
+### Verificación DGI — profesional con RUT (INDEPENDENT_PRO)
+POST {{baseUrl}}/api/users/verification/presign-document
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "subjectType": "PROFESSIONAL",
+  "fileExtension": "pdf"
+}
+
+###
+### Admin — cola revisión manual
+GET {{baseUrl}}/api/admin/verification/pending
+Authorization: Bearer {{accessToken}}
+
+###
+POST {{baseUrl}}/api/admin/verification/COMPANY/{{companyId}}/review
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "action": "APPROVE"
+}

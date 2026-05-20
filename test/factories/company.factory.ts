@@ -1,6 +1,10 @@
 import { faker } from '@faker-js/faker';
 import { Factory } from 'fishery';
-import type { Company, Prisma } from '@prisma/client';
+import {
+  DgiVerificationStatus,
+  type Company,
+  type Prisma,
+} from '@prisma/client';
 
 /**
  * Factory para entidades Company de Prisma.
@@ -31,6 +35,11 @@ export const companyFactory = Factory.define<
     billingStateId: null,
     billingCityId: null,
     billingNeighborhoodId: null,
+    dgiVerificationStatus: DgiVerificationStatus.UNVERIFIED,
+    dgiVerificationMethod: null,
+    dgiRazonSocial: null,
+    dgiVerifiedAt: null,
+    dgiVerificationDocKey: null,
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),

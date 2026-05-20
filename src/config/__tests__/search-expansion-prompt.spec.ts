@@ -25,7 +25,9 @@ describe('buildSearchExpansionSystemPrompt', () => {
   it('marca subcategorías con el nombre del padre', () => {
     const prompt = buildSearchExpansionSystemPrompt(MOCK_CATEGORIES);
 
-    expect(prompt).toContain('Electricidad de urgencia (subcategoría de Electricidad)');
+    expect(prompt).toContain(
+      'Electricidad de urgencia (subcategoría de Electricidad)',
+    );
   });
 
   it('no marca como subcategoría a las raíz', () => {

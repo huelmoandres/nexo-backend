@@ -31,10 +31,10 @@ export const portfolioConfig = registerAs('portfolio', () => {
       process.env['PORTFOLIO_REMINDER_DELAY_DAYS'] ?? '3',
       10,
     ),
-  /**
-   * Ventana de zombie reclaim para el outbox del recordatorio de consent.
-   * Debe ser estrictamente mayor que bullMqLockDurationMs * (maxStalledCount + 1).
-   */
+    /**
+     * Ventana de zombie reclaim para el outbox del recordatorio de consent.
+     * Debe ser estrictamente mayor que bullMqLockDurationMs * (maxStalledCount + 1).
+     */
     reminderZombieReclaimMs: 300_000,
     bullMqLockDurationMs: BULLMQ_LOCK_DURATION_MS,
     bullMqMaxStalledCount: BULLMQ_MAX_STALLED_COUNT,

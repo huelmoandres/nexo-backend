@@ -170,7 +170,7 @@
     },
     {
       "name": "Users",
-      "description": "Gestión de perfil, empresa y documentos KYC.",
+      "description": "Gestión de perfil, empresa, documentos KYC y verificación DGI (constancia PDF).",
       "item": [
         {
           "name": "Mi perfil",
@@ -227,6 +227,236 @@
             },
             "url": "{{baseUrl}}/api/users/documents/presign",
             "description": "Genera URL firmada para subir documento KYC. documentKind: IDENTITY_CARD | SELFIE."
+          }
+        },
+        {
+          "name": "Verificación DGI",
+          "description": "Constancia DGI en PDF: presign → subir a uploadUrl → submit (async). subjectType: COMPANY | PROFESSIONAL.",
+          "item": [
+            {
+              "name": "[Empresa] Presign constancia PDF",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.environment.set('current_email', pm.environment.get('company_admin_email') || 'demo.company@nexos.local');",
+                      "pm.environment.set('current_uid', pm.environment.get('company_admin_uid') || '00000000-0000-4000-8000-000000000003');",
+                      "pm.environment.unset('access_token');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  const body = pm.response.json();",
+                      "  pm.environment.set('verification_upload_url', body.uploadUrl);",
+                      "  pm.environment.set('verification_storage_key', body.key);",
+                      "  pm.test('Presign DGI OK', () => pm.expect(body.key).to.include('/verification/'));",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"subjectType\": \"COMPANY\",\n  \"fileExtension\": \"pdf\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": "{{baseUrl}}/api/users/verification/presign-document",
+                "description": "Requiere COMPANY_ADMIN y empresa con RUT. Guarda key y sube el PDF a uploadUrl (PUT, Content-Type: application/pdf)."
+              }
+            },
+            {
+              "name": "[Empresa] Submit constancia",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.environment.set('current_email', pm.environment.get('company_admin_email') || 'demo.company@nexos.local');",
+                      "pm.environment.set('current_uid', pm.environment.get('company_admin_uid') || '00000000-0000-4000-8000-000000000003');",
+                      "pm.environment.unset('access_token');"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"subjectType\": \"COMPANY\",\n  \"storageKey\": \"{{verification_storage_key}}\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": "{{baseUrl}}/api/users/verification/submit",
+                "description": "202 Accepted — procesamiento async (cola dgi-verify). QR válido → VERIFIED_AUTO; solo texto → PENDING_MANUAL_REVIEW."
+              }
+            },
+            {
+              "name": "[Empresa] Estado verificación",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.environment.set('current_email', pm.environment.get('company_admin_email') || 'demo.company@nexos.local');",
+                      "pm.environment.set('current_uid', pm.environment.get('company_admin_uid') || '00000000-0000-4000-8000-000000000003');",
+                      "pm.environment.unset('access_token');"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/users/verification/status?subjectType=COMPANY",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "users", "verification", "status"],
+                  "query": [
+                    { "key": "subjectType", "value": "COMPANY" }
+                  ]
+                },
+                "description": "status: UNVERIFIED | PROCESSING | VERIFIED_AUTO | PENDING_MANUAL_REVIEW | REJECTED"
+              }
+            },
+            {
+              "name": "[Profesional] Presign constancia PDF",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  const body = pm.response.json();",
+                      "  pm.environment.set('verification_upload_url', body.uploadUrl);",
+                      "  pm.environment.set('verification_storage_key', body.key);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"subjectType\": \"PROFESSIONAL\",\n  \"fileExtension\": \"pdf\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": "{{baseUrl}}/api/users/verification/presign-document",
+                "description": "Requiere INDEPENDENT_PRO y professionalProfile.rut definido."
+              }
+            },
+            {
+              "name": "[Profesional] Submit constancia",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"subjectType\": \"PROFESSIONAL\",\n  \"storageKey\": \"{{verification_storage_key}}\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": "{{baseUrl}}/api/users/verification/submit",
+                "description": "Mismo flujo async que empresa."
+              }
+            },
+            {
+              "name": "[Profesional] Estado verificación",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/users/verification/status?subjectType=PROFESSIONAL",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "users", "verification", "status"],
+                  "query": [
+                    { "key": "subjectType", "value": "PROFESSIONAL" }
+                  ]
+                },
+                "description": "Consulta estado DGI del perfil profesional."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin - Verificación DGI",
+      "description": "Revisión manual de constancias (Plan B). Requiere SUPER_ADMIN.",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.environment.set('current_email', pm.environment.get('admin_email'));",
+              "pm.environment.set('current_uid', pm.environment.get('admin_uid'));",
+              "pm.environment.unset('access_token');"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "Listar pendientes de revisión",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/admin/verification/pending",
+            "description": "Empresas y profesionales en PENDING_MANUAL_REVIEW."
+          }
+        },
+        {
+          "name": "Aprobar verificación (empresa)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"APPROVE\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/admin/verification/COMPANY/{{companyId}}/review",
+            "description": "Aprueba manualmente → VERIFIED_AUTO. action: APPROVE | REJECT (reason opcional)."
+          }
+        },
+        {
+          "name": "Rechazar verificación (empresa)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"REJECT\",\n  \"reason\": \"Documento ilegible o alterado.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/admin/verification/COMPANY/{{companyId}}/review",
+            "description": "Rechaza → REJECTED."
           }
         }
       ]

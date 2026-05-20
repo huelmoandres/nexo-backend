@@ -1,6 +1,6 @@
 import { faker } from '@faker-js/faker';
 import { Factory } from 'fishery';
-import type { Prisma } from '@prisma/client';
+import { DgiVerificationStatus, type Prisma } from '@prisma/client';
 
 /**
  * Tipo que incluye la relación de categorías, igual que en `UsersRepository`.
@@ -34,6 +34,11 @@ export const professionalProfileFactory =
     averageRating: 0,
     bio: null,
     rut: null,
+    dgiVerificationStatus: DgiVerificationStatus.UNVERIFIED,
+    dgiVerificationMethod: null,
+    dgiRazonSocial: null,
+    dgiVerifiedAt: null,
+    dgiVerificationDocKey: null,
     experienceYears: 1,
     documentFrontKey: null,
     documentBackKey: null,
