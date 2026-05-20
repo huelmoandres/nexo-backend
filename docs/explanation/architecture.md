@@ -8,14 +8,19 @@
 ### 1.1 Estado actual: implementado vs roadmap
 
 Actualmente el backend implementa de forma activa estos módulos Nest:
-- `AuthModule`
-- `UsersModule`
-- `StorageModule`
-- `HealthModule`
-- `CategoriesModule`
-- `SearchModule`
+- `AuthModule` — autenticación JWT Supabase + blocklist Redis
+- `UsersModule` — perfil, empresa, KYC presign
+- `StorageModule` — abstracción Cloudflare R2/S3 (presign, HEAD, download)
+- `HealthModule` — probes Kubernetes (live/ready)
+- `DiagnosticsModule` — startup checks, checks periódicos
+- `CategoriesModule` — CRUD + árbol jerárquico (cacheado Redis)
+- `SearchModule` — búsqueda geoespacial + FTS
+- `PortfolioModule` — vidriera del profesional (CRUD, publish, moderation, consent, cleanup)
+- `NotificationsModule` — notificaciones transaccionales multi-canal
+- `AiModule` — moderación IA compartida (OpenAI text, AWS Rekognition image, cache L1/L2, lock, circuit breaker)
+- `AuthorizationModule` — RBAC (roles guard, authorization service)
 
-Dominios como `jobs`, `escrow`, `urgencies`, `disputes`, `reviews`, `chat`, `portfolio` y `notifications` forman parte del roadmap y del modelo objetivo. Su presencia en documentación o schema no implica que estén productivos como módulos HTTP en la versión actual.
+Dominios como `jobs`, `escrow`, `urgencies`, `disputes`, `reviews` y `chat` forman parte del roadmap y del modelo objetivo. Su presencia en documentación o schema no implica que estén productivos como módulos HTTP en la versión actual.
 
 El `PortfolioModule` es marketing pre-transacción (vidriera del profesional) y no maneja dinero ni transacciones. Spec: [.harness/specs/portfolio-module.md](../../.harness/specs/portfolio-module.md). Distinto de `WorkEvidence` (forense para disputas) y de `Review` (post-transacción).
 

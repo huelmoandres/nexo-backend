@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   AuditAction,
+  Role,
   VerificationSubjectType,
   type Company,
   type Prisma,
@@ -56,6 +57,30 @@ export class UsersRepository {
     return this.prisma.company.findFirst({
       where: { rut, deletedAt: null },
     });
+  }
+
+  /**
+   * @param rut - RUT normalizado (12 dígitos).
+   * @returns Perfil profesional activo con ese RUT, o `null`.
+   */
+  async findProfileByRut(
+    rut: string,
+  ): Promise<{ id: string } | null> {
+    return this.prisma.professionalProfile.findFirst({
+      where: { rut, deletedAt: null },
+      select: { id: true },
+    });
+  }
+
+  /**
+   * `true` si el RUT existe en Company o ProfessionalProfile (registro global).
+   */
+  async isRutTakenGlobally(rut: string): Promise<boolean> {
+    const [company, profile] = await Promise.all([
+      this.findCompanyByRut(rut),
+      this.findProfileByRut(rut),
+    ]);
+    return company !== null || profile !== null;
   }
 
   /**
@@ -172,6 +197,8 @@ export class UsersRepository {
     stateId?: string;
     cityId?: string;
     neighborhoodId?: string;
+    rut?: string;
+    promoteRoleToIndependentPro?: boolean;
   }): Promise<ProfessionalProfileWithCategories> {
     return this.prisma.$transaction(async (tx) => {
       const profile = await tx.professionalProfile.create({
@@ -179,6 +206,7 @@ export class UsersRepository {
           userId: input.userId,
           bio: input.bio,
           experienceYears: input.experienceYears,
+          rut: input.rut,
           countryId: input.countryId,
           stateId: input.stateId,
           cityId: input.cityId,
@@ -212,6 +240,13 @@ export class UsersRepository {
           professionalProfileId: profile.id,
         },
       });
+
+      if (input.promoteRoleToIndependentPro) {
+        await tx.user.update({
+          where: { id: input.userId },
+          data: { role: Role.INDEPENDENT_PRO },
+        });
+      }
 
       return profile;
     });

@@ -1,61 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import { AiModerationStatus } from '@prisma/client';
-
-/** Input al provider de moderación de contenido. */
-export interface ModerationInput {
-  /** Texto a evaluar (title + description). El provider aplica PiiSanitizer internamente. */
-  text: string;
-  /** Lista de `fileKey`s de fotos a evaluar. */
-  photoFileKeys: string[];
-  /**
-   * Buffers de las imágenes originales indexados por `fileKey`.
-   * El worker descarga las imágenes de R2 y las pasa aquí para que el provider
-   * calcule el SHA-256 del original y aplique sharp para el resize.
-   * Si está ausente, el provider omite la moderación de imagen para esa foto.
-   */
-  imageBuffersByKey?: Record<string, Buffer>;
-}
-
-/** Resultado de la moderación, mapeable directo a `PortfolioItem`. */
-export interface ModerationResult {
-  status: AiModerationStatus;
-  reason?: string;
-  /**
-   * Referencia estructurada al modelo/proveedor que emitió el veredicto.
-   * Formato `<provider>:<model>:<version>` para auditoría cross-proveedor.
-   */
-  modelRef: string;
-}
-
-/**
- * Contrato del provider de moderación de contenido (IA).
- *
- * Implementaciones reales: OpenAI Moderation API, AWS Rekognition.
- * Fallback: si el provider falla o timeout, el service del publish
- * deja el item en `HIDDEN_PENDING_REVIEW` para revisión humana
- * (regla fail-safe en spec §F).
- */
-export interface IContentModerationProvider {
-  moderate(input: ModerationInput): Promise<ModerationResult>;
-}
-
-/** Token DI para el contrato. */
-export const CONTENT_MODERATION_PROVIDER_TOKEN = Symbol(
-  'CONTENT_MODERATION_PROVIDER_TOKEN',
-);
-
-/**
- * Stub que aprueba todo. Aceptable en desarrollo y mientras se cablea
- * el provider real. `PORTFOLIO_AI_ENABLED=false` mantiene este stub
- * activo incluso en otros entornos.
- */
-@Injectable()
-export class AlwaysApprovedModerationProvider implements IContentModerationProvider {
-  async moderate(input: ModerationInput): Promise<ModerationResult> {
-    void input;
-    return Promise.resolve({
-      status: AiModerationStatus.OK,
-      modelRef: 'stub:none:v0',
-    });
-  }
-}
+export {
+  type ModerationInput,
+  type ModerationResult,
+  type IContentModerationProvider,
+  CONTENT_MODERATION_PROVIDER_TOKEN,
+  AlwaysApprovedModerationProvider,
+} from '@common/contracts/content-moderation.provider';

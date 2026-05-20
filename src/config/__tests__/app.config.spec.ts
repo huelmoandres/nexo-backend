@@ -39,11 +39,9 @@ describe('appConfig', () => {
     expect(cfg.sentryDsn).toBe('https://test@sentry.io/123');
   });
 
-  it('sentryDsn usa default cuando SENTRY_DSN no está definido', () => {
+  it('sentryDsn es vacío cuando SENTRY_DSN no está definido', () => {
     delete process.env['SENTRY_DSN'];
     const cfg = appConfig();
-    expect(cfg.sentryDsn).toBe(
-      'https://c49398cbac334d799089a58f2c3f9dc0@o4511344452042752.ingest.us.sentry.io/4511349881241600',
-    );
+    expect(cfg.sentryDsn).toBe('');
   });
 });

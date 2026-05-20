@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -10,14 +9,14 @@ import type { CreateCompanyDto } from '../dto/create-company.dto';
 import type { CompanyCreatedResponseDto } from '../dto/company-created-response.dto';
 import { UsersRepository } from '../users.repository';
 import { type RequestMeta } from '../users.types';
-import {
-  normalizeRutDigits,
-  validateUruguayRut12,
-} from '../utils/rut.validator';
+import { RutRegistrationService } from './rut-registration.service';
 
 @Injectable()
 export class UsersCompanyService {
-  constructor(private readonly usersRepository: UsersRepository) {}
+  constructor(
+    private readonly usersRepository: UsersRepository,
+    private readonly rutRegistration: RutRegistrationService,
+  ) {}
 
   async createCompany(
     supabaseUid: string,
@@ -34,15 +33,8 @@ export class UsersCompanyService {
       );
     }
 
-    const rutNormalized = normalizeRutDigits(dto.rut);
-    if (!validateUruguayRut12(rutNormalized)) {
-      throw new BadRequestException(
-        buildProblem(
-          'RUT_INVALID',
-          'El RUT no supera la validacion del digito verificador DGI.',
-        ),
-      );
-    }
+    const rutNormalized = this.rutRegistration.resolveRequiredRut(dto.rut);
+    await this.rutRegistration.assertRutAvailable(rutNormalized);
 
     const existingOwn = await this.usersRepository.findCompanyByAdminId(
       user.id,
@@ -52,16 +44,6 @@ export class UsersCompanyService {
         buildProblem(
           'USER_ALREADY_OWNS_COMPANY',
           'Este usuario ya administro el registro de una empresa.',
-        ),
-      );
-    }
-
-    const rutTaken = await this.usersRepository.findCompanyByRut(rutNormalized);
-    if (rutTaken) {
-      throw new ConflictException(
-        buildProblem(
-          'COMPANY_RUT_DUPLICATE',
-          'Ya existe una empresa registrada con este RUT.',
         ),
       );
     }

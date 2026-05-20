@@ -1,0 +1,68 @@
+# PREREQUISITOS:
+# - Servidor corriendo: npm run start:dev
+# - Para crear/editar/eliminar: usuario SUPER_ADMIN sincronizado
+
+@baseUrl = http://localhost:3000
+
+### Obtener token admin
+# @name login
+GET {{baseUrl}}/api/auth/dev-token?email=admin@nexos.local&uid=00000000-0000-4000-8000-000000000001
+
+###
+
+@adminToken = {{login.response.body.$.token}}
+
+### Listar categorías (público, lista plana)
+GET {{baseUrl}}/api/categories
+
+###
+
+### Árbol jerárquico de categorías (público, cacheado)
+GET {{baseUrl}}/api/categories/tree
+
+###
+
+### Crear categoría raíz (SUPER_ADMIN)
+POST {{baseUrl}}/api/categories
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Herrería",
+  "slug": "herreria",
+  "supportsUrgency": false
+}
+
+###
+
+### Crear subcategoría (SUPER_ADMIN)
+POST {{baseUrl}}/api/categories
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Portones automáticos",
+  "slug": "portones-automaticos",
+  "supportsUrgency": true,
+  "parentId": "PEGAR_PARENT_CATEGORY_ID"
+}
+
+###
+
+### Actualizar categoría (SUPER_ADMIN)
+PATCH {{baseUrl}}/api/categories/PEGAR_CATEGORY_ID
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Herrería y soldadura",
+  "supportsUrgency": true
+}
+
+###
+
+### Eliminar categoría (SUPER_ADMIN, soft-delete)
+DELETE {{baseUrl}}/api/categories/PEGAR_CATEGORY_ID
+Authorization: Bearer {{adminToken}}
+
+###

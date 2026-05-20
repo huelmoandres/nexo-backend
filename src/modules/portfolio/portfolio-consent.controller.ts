@@ -18,20 +18,22 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
+import { Public } from '@common/decorators/public.decorator';
 import { ProblemDetail } from '@common/dto/problem-detail.dto';
 import { ConsentPreviewResponseDto } from './dto/consent-preview-response.dto';
 import { DeclineConsentDto } from './dto/decline-consent.dto';
-import { PortfolioService } from './portfolio.service';
+import { PortfolioConsentService } from './services/portfolio-consent.service';
 
 /**
  * Endpoints de consentimiento del portfolio (cliente con token, sin JWT).
  */
+@Public()
 @ApiTags('portfolio')
 @ApiExtraModels(ConsentPreviewResponseDto, DeclineConsentDto, ProblemDetail)
 @Throttle({ default: { limit: 30, ttl: 60_000 } })
 @Controller('portfolio')
 export class PortfolioConsentController {
-  constructor(private readonly portfolioService: PortfolioService) {}
+  constructor(private readonly consentService: PortfolioConsentService) {}
 
   @Get('consents/:token')
   @HttpCode(HttpStatus.OK)
@@ -55,7 +57,7 @@ export class PortfolioConsentController {
   async getConsentPreview(
     @Param('token', ParseUUIDPipe) token: string,
   ): Promise<ConsentPreviewResponseDto> {
-    return this.portfolioService.getConsentPreview(token);
+    return this.consentService.getConsentPreview(token);
   }
 
   @Post('consents/:token/accept')
@@ -85,7 +87,7 @@ export class PortfolioConsentController {
   async acceptConsent(
     @Param('token', ParseUUIDPipe) token: string,
   ): Promise<void> {
-    await this.portfolioService.acceptConsent(token);
+    await this.consentService.acceptConsent(token);
   }
 
   @Post('consents/:token/decline')
@@ -112,7 +114,7 @@ export class PortfolioConsentController {
     @Body() dto: DeclineConsentDto,
     @Req() req: Request,
   ): Promise<void> {
-    await this.portfolioService.declineConsent(token, dto, {
+    await this.consentService.declineConsent(token, dto, {
       ipAddress: req.ip,
       userAgent: req.get('user-agent') ?? undefined,
     });

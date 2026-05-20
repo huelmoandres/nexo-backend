@@ -1,12 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Inject, Module, OnModuleDestroy } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigType } from '@nestjs/config';
 import Redis from 'ioredis';
 import { AuthModule } from '@modules/auth/auth.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { StorageModule } from '@modules/storage/storage.module';
-import { AuthorizationService } from '@modules/users/services/authorization.service';
-import { RolesGuard } from '@modules/users/guards/roles.guard';
+import { AuthorizationModule } from '@modules/authorization/authorization.module';
 import { authConfig } from '@config/auth.config';
 import { portfolioConfig } from '@config/portfolio.config';
 import { AiModule } from '@modules/ai/ai.module';
@@ -26,15 +25,17 @@ import { PortfolioService } from './portfolio.service';
 import { PortfolioConsentQueueBootstrap } from './queues/portfolio-consent-queue.bootstrap';
 import { PortfolioConsentQueueProcessor } from './queues/portfolio-consent-queue.processor';
 import {
-  LoggingPortfolioCleanupQueue,
+  BullPortfolioCleanupQueue,
   PORTFOLIO_CLEANUP_QUEUE_TOKEN,
 } from './queues/portfolio-cleanup.queue';
+import { PortfolioCleanupProcessor } from './queues/portfolio-cleanup.processor';
 import { PortfolioModerateProcessor } from './queues/portfolio-moderate.processor';
 import {
   AlwaysApprovedModerationProvider,
   CONTENT_MODERATION_PROVIDER_TOKEN,
   type IContentModerationProvider,
 } from './services/content-moderation.provider';
+import { PortfolioConsentService } from './services/portfolio-consent.service';
 import { PortfolioStorageCacheService } from './services/portfolio-storage-cache.service';
 import { PortfolioBullInvariantService } from './services/portfolio-bull-invariant.service';
 
@@ -52,6 +53,7 @@ import { PortfolioBullInvariantService } from './services/portfolio-bull-invaria
 @Module({
   imports: [
     AuthModule,
+    AuthorizationModule,
     StorageModule,
     NotificationsModule,
     AiModule,
@@ -73,12 +75,12 @@ import { PortfolioBullInvariantService } from './services/portfolio-bull-invaria
     PortfolioConsentQueueProcessor,
     PortfolioConsentQueueBootstrap,
     PortfolioModerateProcessor,
-    AuthorizationService,
-    RolesGuard,
+    PortfolioCleanupProcessor,
+    PortfolioConsentService,
     PortfolioStorageCacheService,
     {
       provide: PORTFOLIO_CLEANUP_QUEUE_TOKEN,
-      useClass: LoggingPortfolioCleanupQueue,
+      useClass: BullPortfolioCleanupQueue,
     },
     {
       provide: CONTENT_MODERATION_PROVIDER_TOKEN,
@@ -100,4 +102,10 @@ import { PortfolioBullInvariantService } from './services/portfolio-bull-invaria
   ],
   exports: [PortfolioService],
 })
-export class PortfolioModule {}
+export class PortfolioModule implements OnModuleDestroy {
+  constructor(@Inject(PORTFOLIO_REDIS_CLIENT) private readonly redis: Redis) {}
+
+  async onModuleDestroy(): Promise<void> {
+    await this.redis.quit();
+  }
+}

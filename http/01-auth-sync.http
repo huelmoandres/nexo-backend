@@ -1,0 +1,53 @@
+# PREREQUISITOS:
+# - Servidor corriendo: npm run start:dev
+# - Postgres y Redis levantados
+
+@baseUrl = http://localhost:3000
+
+### Obtener token profesional
+# @name loginPro
+GET {{baseUrl}}/api/auth/dev-token?email=demo.pro@nexos.local&uid=00000000-0000-4000-8000-000000000002
+
+###
+
+@proToken = {{loginPro.response.body.$.token}}
+
+### Obtener token cliente
+# @name loginClient
+GET {{baseUrl}}/api/auth/dev-token?email=demo.client@nexos.local&uid=00000000-0000-4000-8000-000000000003
+
+###
+
+@clientToken = {{loginClient.response.body.$.token}}
+
+### Sync usuario profesional (JIT provisioning)
+# Crea el usuario en Postgres si no existe, o lo retorna si ya fue creado.
+# El rol inicial es CLIENT; para portfolio se necesita INDEPENDENT_PRO (via seed o DB manual).
+POST {{baseUrl}}/api/auth/sync
+Authorization: Bearer {{proToken}}
+Content-Type: application/json
+
+{
+  "email": "demo.pro@nexos.local",
+  "fullName": "Profesional Demo Nexos"
+}
+
+###
+
+### Sync usuario cliente
+POST {{baseUrl}}/api/auth/sync
+Authorization: Bearer {{clientToken}}
+Content-Type: application/json
+
+{
+  "email": "demo.client@nexos.local",
+  "fullName": "Cliente Demo Nexos"
+}
+
+###
+
+### Logout (invalida sesión en Redis)
+POST {{baseUrl}}/api/auth/logout
+Authorization: Bearer {{proToken}}
+
+###

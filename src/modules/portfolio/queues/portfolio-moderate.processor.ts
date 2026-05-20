@@ -122,9 +122,8 @@ export class PortfolioModerateProcessor extends WorkerHost {
             itemId,
             err: repoErr instanceof Error ? repoErr.message : String(repoErr),
           });
+          throw repoErr;
         });
-
-      throw err;
     }
   }
 

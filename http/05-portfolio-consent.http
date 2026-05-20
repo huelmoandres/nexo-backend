@@ -1,0 +1,50 @@
+# PREREQUISITOS:
+# 1. Servidor corriendo: npm run start:dev
+# 2. Item de portfolio publicado (ver 04-portfolio-full-flow.http)
+# 3. El item debe tener jobId vinculado (para request-verification)
+#
+# FLUJO: Solicitar verificación → Cliente recibe token → Acepta/Rechaza
+
+@baseUrl = http://localhost:3000
+
+### Obtener token profesional
+# @name login
+GET {{baseUrl}}/api/auth/dev-token?email=demo.pro@nexos.local&uid=00000000-0000-4000-8000-000000000002
+
+###
+
+@authToken = {{login.response.body.$.token}}
+
+# Item publicado con jobId vinculado
+@itemId = PEGAR_ITEM_ID
+
+### 1. Solicitar verificación del item
+# Genera un consent token enviado al cliente del job vinculado.
+# Requiere que el item tenga `jobId` y el job esté CLOSED.
+POST {{baseUrl}}/api/portfolio/items/{{itemId}}/request-verification
+Authorization: Bearer {{authToken}}
+
+# La respuesta contiene un consentToken (o se envía por email al cliente).
+# Copiar token → @consentToken
+
+###
+
+@consentToken = PEGAR_CONSENT_TOKEN
+
+### 2. Preview del consentimiento (público, sin auth)
+# El cliente accede con el token recibido por email.
+GET {{baseUrl}}/api/portfolio/consents/{{consentToken}}
+
+###
+
+### 3. Aceptar verificación
+# El cliente confirma que el trabajo fue realizado correctamente.
+POST {{baseUrl}}/api/portfolio/consents/{{consentToken}}/accept
+
+###
+
+### 3-alt. Rechazar verificación
+# El cliente indica que no está conforme con el trabajo mostrado.
+POST {{baseUrl}}/api/portfolio/consents/{{consentToken}}/decline
+
+###

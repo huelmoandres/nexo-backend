@@ -622,6 +622,7 @@ describe('PortfolioRepository', () => {
           findUnique: vi.fn(),
           findFirst: vi.fn(),
           create: vi.fn(),
+          updateMany: vi.fn(),
         },
         job: { findFirst: vi.fn() },
         $transaction: vi.fn(),
@@ -1060,6 +1061,59 @@ describe('PortfolioRepository', () => {
         }),
       });
     });
+
+    it('claimConsentReminderAttempt retorna true cuando updateMany afecta 1 fila', async () => {
+      const { repo, prisma } = makeConsentRepo();
+      prisma.portfolioConsent.updateMany.mockResolvedValue({ count: 1 });
+      const claimed = await repo.claimConsentReminderAttempt('cons-1', 60_000);
+      expect(claimed).toBe(true);
+    });
+
+    it('claimConsentReminderAttempt retorna false cuando no hay filas', async () => {
+      const { repo, prisma } = makeConsentRepo();
+      prisma.portfolioConsent.updateMany.mockResolvedValue({ count: 0 });
+      const claimed = await repo.claimConsentReminderAttempt('cons-1', 60_000);
+      expect(claimed).toBe(false);
+    });
+
+    it('findConsentReminderPayload retorna null si falta job', async () => {
+      const { repo, prisma } = makeConsentRepo();
+      prisma.portfolioConsent.findFirst.mockResolvedValue({
+        clientUserId: 'c1',
+        portfolioItemId: 'item-1',
+        portfolioItem: { job: null },
+      });
+      await expect(
+        repo.findConsentReminderPayload('cons-1'),
+      ).resolves.toBeNull();
+    });
+
+    it('findConsentReminderPayload devuelve datos del recordatorio', async () => {
+      const { repo, prisma } = makeConsentRepo();
+      prisma.portfolioConsent.findFirst.mockResolvedValue({
+        clientUserId: 'c1',
+        portfolioItemId: 'item-1',
+        portfolioItem: { job: { title: 'Obra' } },
+      });
+      await expect(repo.findConsentReminderPayload('cons-1')).resolves.toEqual({
+        clientUserId: 'c1',
+        portfolioItemId: 'item-1',
+        jobTitle: 'Obra',
+      });
+    });
+
+    it('markConsentReminderSent delega updateMany', async () => {
+      const { repo, prisma } = makeConsentRepo();
+      prisma.portfolioConsent.updateMany.mockResolvedValue({ count: 1 });
+      await repo.markConsentReminderSent('cons-1');
+      expect(prisma.portfolioConsent.updateMany).toHaveBeenCalled();
+    });
+
+    it('expirePendingPortfolioConsents retorna count', async () => {
+      const { repo, prisma } = makeConsentRepo();
+      prisma.portfolioConsent.updateMany.mockResolvedValue({ count: 4 });
+      await expect(repo.expirePendingPortfolioConsents()).resolves.toBe(4);
+    });
   });
 
   describe('listPublishedItemsByProfessionalId', () => {
@@ -1184,6 +1238,22 @@ describe('PortfolioRepository', () => {
       expect(out?.job?.id).toBe('job-1');
     });
 
+    it('verifiedJobClientFirstName null si cliente sin nombre', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.findFirst.mockResolvedValue(
+        publishedRow({
+          verifiedFromJob: true,
+          consent: {
+            status: ConsentStatus.ACCEPTED,
+            clientUserId: 'client-1',
+          },
+        }),
+      );
+      prisma.user.findUnique.mockResolvedValue({ fullName: '   ' });
+      const out = await repo.findPublishedPortfolioItemPublicDetail('i1');
+      expect(out?.verifiedJobClientFirstName).toBeNull();
+    });
+
     it('no expone nombre si consent no está ACCEPTED', async () => {
       const { repo, prisma } = makeRepo();
       prisma.portfolioItem.findFirst.mockResolvedValue(
@@ -1261,6 +1331,17 @@ describe('PortfolioRepository', () => {
       };
       return { repo: new PortfolioRepository(prisma as never), prisma, tx };
     };
+
+    it('reportPublishedPortfolioItem: 404 si reporter no existe', async () => {
+      const { repo, prisma } = makeReportTxRepo();
+      prisma.user.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        repo.reportPublishedPortfolioItem({
+          itemId: 'item-1',
+          reporterSupabaseUid: 'sub-unknown',
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
 
     it('reportPublishedPortfolioItem: happy path', async () => {
       const { repo, prisma, tx } = makeReportTxRepo();
@@ -1346,6 +1427,115 @@ describe('PortfolioRepository', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
+    it('transitionToAiPending pone item en HIDDEN_PENDING_REVIEW', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.update.mockResolvedValue({
+        id: 'item-1',
+        status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+      });
+      const item = await repo.transitionToAiPending('item-1');
+      expect(item.status).toBe(PortfolioItemStatus.HIDDEN_PENDING_REVIEW);
+      expect(prisma.portfolioItem.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'item-1' },
+          data: expect.objectContaining({
+            aiModerationStatus: AiModerationStatus.PENDING,
+          }),
+        }),
+      );
+    });
+
+    const makeAiVerdictTxRepo = () => {
+      const tx = {
+        portfolioItem: {
+          update: vi.fn().mockResolvedValue({ id: 'item-1' }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        portfolioModerationLog: { create: vi.fn().mockResolvedValue({}) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      };
+      const prisma = {
+        user: { findFirst: vi.fn(), findUnique: vi.fn() },
+        portfolioItem: {
+          create: vi.fn(),
+          findFirst: vi.fn(),
+          update: vi.fn(),
+          updateMany: vi.fn(),
+          findMany: vi.fn(),
+          count: vi.fn(),
+        },
+        category: { findFirst: vi.fn() },
+        job: { findFirst: vi.fn() },
+        portfolioPhoto: {
+          count: vi.fn(),
+          findFirst: vi.fn(),
+          findMany: vi.fn(),
+        },
+        $transaction: vi.fn((fn: (t: typeof tx) => unknown) =>
+          Promise.resolve(fn(tx)),
+        ),
+      };
+      return { repo: new PortfolioRepository(prisma as never), prisma, tx };
+    };
+
+    it('applyAiModerationVerdict OK publica y registra log', async () => {
+      const { repo, tx } = makeAiVerdictTxRepo();
+      await repo.applyAiModerationVerdict({
+        itemId: 'item-1',
+        aiModerationStatus: AiModerationStatus.OK,
+        modelRef: 'aws:rekognition:v1',
+        scores: { nsfw: 0.1 },
+        latencyMs: 120,
+        policyVersion: '1.0.0',
+      });
+      expect(tx.portfolioItem.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: PortfolioItemStatus.PUBLISHED,
+            publishedAt: expect.any(Date),
+          }),
+        }),
+      );
+      expect(tx.portfolioModerationLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ status: 'OK' }),
+      });
+    });
+
+    it('applyAiModerationVerdict FLAGGED mantiene oculto', async () => {
+      const { repo, tx } = makeAiVerdictTxRepo();
+      await repo.applyAiModerationVerdict({
+        itemId: 'item-1',
+        aiModerationStatus: AiModerationStatus.FLAGGED,
+        modelRef: 'aws:rekognition:v1',
+        reason: 'explicit',
+        errorCode: 'AI_FLAG',
+        errorMessage: 'flagged content',
+      });
+      expect(tx.portfolioItem.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+            publishedAt: undefined,
+          }),
+        }),
+      );
+      expect(tx.portfolioModerationLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ status: 'FLAGGED' }),
+      });
+    });
+
+    it('applyAiModerationVerdict PENDING registra log ERROR', async () => {
+      const { repo, tx } = makeAiVerdictTxRepo();
+      await repo.applyAiModerationVerdict({
+        itemId: 'item-1',
+        aiModerationStatus: AiModerationStatus.PENDING,
+        modelRef: 'ai:pending',
+      });
+      expect(tx.portfolioModerationLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ status: 'ERROR' }),
+      });
+    });
+
     const makeModerateTxRepo = () => {
       const tx = {
         portfolioItem: {
@@ -1377,6 +1567,20 @@ describe('PortfolioRepository', () => {
       };
       return { repo: new PortfolioRepository(prisma as never), prisma, tx };
     };
+
+    it('applyAdminPortfolioModeration: reason en blanco se guarda como null', async () => {
+      const { repo, prisma, tx } = makeModerateTxRepo();
+      prisma.user.findFirst.mockResolvedValueOnce({ id: 'admin-1' });
+      await repo.applyAdminPortfolioModeration({
+        adminSupabaseUid: 'sub-a',
+        itemId: 'item-1',
+        action: 'hide',
+        reason: '   ',
+      });
+      expect(tx.portfolioModerationLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ reason: null }),
+      });
+    });
 
     it('applyAdminPortfolioModeration: approve', async () => {
       const { repo, prisma, tx } = makeModerateTxRepo();

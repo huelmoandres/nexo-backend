@@ -1,5 +1,7 @@
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { AuditAction } from '@prisma/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '@prisma/prisma.service';
 import { userFactory } from '@test/factories';
 import { AuthService } from '../auth.service';
@@ -83,6 +85,27 @@ describe('AuthService', () => {
     expect(auditCall?.data.userAgent).toBe('Vitest');
   });
 
+  it('rechaza sync cuando email del body no coincide con JWT', async () => {
+    const prismaMock = {
+      user: { findUnique: vi.fn() },
+      $transaction: vi.fn(),
+    } as unknown as PrismaService;
+    const service = new AuthService(
+      prismaMock,
+      { set: vi.fn() } as never,
+      makeAuthConfig(),
+    );
+
+    await expect(
+      service.syncUser(
+        { sub: 'supabase-1', email: 'jwt@nexos.com' },
+        { email: 'other@nexos.com', fullName: 'Test User' },
+        {},
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+  });
+
   it('no crea duplicado cuando usuario ya existe', async () => {
     const transactionMock = vi.fn();
     const prismaMock = {
@@ -139,7 +162,7 @@ describe('AuthService', () => {
       await service.logout('raw-token', { sub: 'supabase-1', exp });
 
       expect(redisMock.set).toHaveBeenCalledWith(
-        'blocklist:raw-token',
+        expect.stringMatching(/^blocklist:[a-f0-9]{64}$/),
         '1',
         'EX',
         expect.any(Number),
@@ -227,6 +250,54 @@ describe('AuthService', () => {
       response: expect.objectContaining({ code: 'INTERNAL_SERVER_ERROR' }),
     });
     vi.useRealTimers();
+  });
+
+  describe('generateDevToken', () => {
+    it('genera JWT válido con claims correctos', () => {
+      const config = makeAuthConfig();
+      config.supabaseJwtSecret = 'test-secret-for-dev-token';
+      const prismaMock = {
+        user: { findUnique: vi.fn() },
+        $transaction: vi.fn(),
+      } as unknown as PrismaService;
+      const redisMock = { set: vi.fn() };
+      const service = new AuthService(prismaMock, redisMock as never, config);
+
+      const result = service.generateDevToken('test@nexos.com', 'uid-123');
+
+      expect(result.token).toBeDefined();
+      const decoded = jwt.verify(
+        result.token,
+        'test-secret-for-dev-token',
+      ) as jwt.JwtPayload;
+      expect(decoded.sub).toBe('uid-123');
+      expect(decoded.email).toBe('test@nexos.com');
+      expect(decoded.role).toBe('authenticated');
+      expect(decoded.aud).toBe('authenticated');
+    });
+
+    it('lanza NotFoundException en producción', () => {
+      const originalEnv = process.env['NODE_ENV'];
+      process.env['NODE_ENV'] = 'production';
+      try {
+        const prismaMock = {
+          user: { findUnique: vi.fn() },
+          $transaction: vi.fn(),
+        } as unknown as PrismaService;
+        const redisMock = { set: vi.fn() };
+        const service = new AuthService(
+          prismaMock,
+          redisMock as never,
+          makeAuthConfig(),
+        );
+
+        expect(() => service.generateDevToken('a@b.com', 'uid')).toThrow(
+          NotFoundException,
+        );
+      } finally {
+        process.env['NODE_ENV'] = originalEnv;
+      }
+    });
   });
 
   it('lanza AUTH_INVALID_TOKEN en logout cuando payload no tiene exp', async () => {

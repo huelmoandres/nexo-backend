@@ -1,5 +1,6 @@
+import { Logger } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import { NotificationType } from '@prisma/client';
+import { ConsentDeclineReason, NotificationType } from '@prisma/client';
 import { NotificationsService } from '../notifications.service';
 
 describe('NotificationsService', () => {
@@ -26,5 +27,83 @@ describe('NotificationsService', () => {
         relatedEntityId: 'item-1',
       }),
     });
+  });
+
+  it('notifyPortfolioConsentReminder persiste notificación in-app', async () => {
+    const { svc, prisma } = make();
+    await svc.notifyPortfolioConsentReminder({
+      clientUserId: 'client-1',
+      jobTitle: 'Obra',
+      portfolioItemId: 'item-1',
+    });
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: NotificationType.PORTFOLIO_CONSENT_REMINDER,
+      }),
+    });
+  });
+
+  it('notifyProfessionalConsentAccepted persiste notificación in-app', async () => {
+    const { svc, prisma } = make();
+    await svc.notifyProfessionalConsentAccepted({
+      professionalUserId: 'pro-1',
+      portfolioItemId: 'item-1',
+      jobId: 'job-1',
+    });
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'pro-1',
+        type: NotificationType.PORTFOLIO_CONSENT_RESOLVED,
+      }),
+    });
+  });
+
+  it('notifyProfessionalConsentDeclined usa reason crudo si no está en el mapa', async () => {
+    const { svc, prisma } = make();
+    await svc.notifyProfessionalConsentDeclined({
+      professionalUserId: 'pro-1',
+      portfolioItemId: 'item-1',
+      jobId: 'job-1',
+      reason: 'CUSTOM_REASON' as ConsentDeclineReason,
+    });
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        message: expect.stringContaining('CUSTOM_REASON'),
+      }),
+    });
+  });
+
+  it('notifyProfessionalConsentDeclined incluye motivo en mensaje', async () => {
+    const { svc, prisma } = make();
+    await svc.notifyProfessionalConsentDeclined({
+      professionalUserId: 'pro-1',
+      portfolioItemId: 'item-1',
+      jobId: 'job-1',
+      reason: ConsentDeclineReason.INAPPROPRIATE,
+    });
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        message: expect.stringContaining('inapropiado'),
+      }),
+    });
+  });
+
+  it('logPushEmailStub registra operación diferida', async () => {
+    const logSpy = vi
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+    const { svc } = make();
+    await svc.notifyPortfolioConsentRequested({
+      clientUserId: 'c1',
+      jobTitle: 'T',
+      jobId: 'j1',
+      portfolioItemId: 'i1',
+    });
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        op: 'portfolio.consent.requested',
+        push: expect.any(String),
+      }),
+    );
   });
 });

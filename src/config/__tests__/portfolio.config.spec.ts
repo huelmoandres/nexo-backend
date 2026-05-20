@@ -2,13 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { portfolioConfig } from '../portfolio.config';
 
 const KEYS = [
-  'PORTFOLIO_MAX_ITEMS_PER_PRO',
-  'PORTFOLIO_MAX_PHOTOS_PER_ITEM',
   'PORTFOLIO_CONSENT_TTL_DAYS',
   'PORTFOLIO_REMINDER_DELAY_DAYS',
-  'PORTFOLIO_REMINDER_ZOMBIE_RECLAIM_MS',
-  'BULLMQ_LOCK_DURATION_MS',
-  'BULLMQ_MAX_STALLED_COUNT',
   'PORTFOLIO_PHOTOS_HEAD_TIMEOUT_MS',
   'PORTFOLIO_PHOTOS_HEAD_CACHE_TTL_SECONDS',
   'PORTFOLIO_AI_ENABLED',
@@ -57,14 +52,9 @@ describe('portfolioConfig', () => {
     expect(cfg.storage.existsMemoryWarnBytes).toBe(104_857_600);
   });
 
-  it('lee todos los valores desde las variables de entorno cuando están definidas', () => {
-    process.env['PORTFOLIO_MAX_ITEMS_PER_PRO'] = '20';
-    process.env['PORTFOLIO_MAX_PHOTOS_PER_ITEM'] = '5';
+  it('lee variables de entorno configurables cuando están definidas', () => {
     process.env['PORTFOLIO_CONSENT_TTL_DAYS'] = '7';
     process.env['PORTFOLIO_REMINDER_DELAY_DAYS'] = '1';
-    process.env['PORTFOLIO_REMINDER_ZOMBIE_RECLAIM_MS'] = '120000';
-    process.env['BULLMQ_LOCK_DURATION_MS'] = '45000';
-    process.env['BULLMQ_MAX_STALLED_COUNT'] = '2';
     process.env['PORTFOLIO_PHOTOS_HEAD_TIMEOUT_MS'] = '1000';
     process.env['PORTFOLIO_PHOTOS_HEAD_CACHE_TTL_SECONDS'] = '30';
     process.env['PORTFOLIO_AI_ENABLED'] = 'true';
@@ -74,13 +64,13 @@ describe('portfolioConfig', () => {
 
     const cfg = portfolioConfig();
 
-    expect(cfg.maxItemsPerProfessional).toBe(20);
-    expect(cfg.maxPhotosPerItem).toBe(5);
+    expect(cfg.maxItemsPerProfessional).toBe(50);
+    expect(cfg.maxPhotosPerItem).toBe(10);
     expect(cfg.consentTtlDays).toBe(7);
     expect(cfg.reminderDelayDays).toBe(1);
-    expect(cfg.reminderZombieReclaimMs).toBe(120_000);
-    expect(cfg.bullMqLockDurationMs).toBe(45_000);
-    expect(cfg.bullMqMaxStalledCount).toBe(2);
+    expect(cfg.reminderZombieReclaimMs).toBe(300_000);
+    expect(cfg.bullMqLockDurationMs).toBe(30_000);
+    expect(cfg.bullMqMaxStalledCount).toBe(1);
     expect(cfg.photosHeadTimeoutMs).toBe(1000);
     expect(cfg.photosHeadCacheTtlSeconds).toBe(30);
     expect(cfg.ai.enabled).toBe(true);

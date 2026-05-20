@@ -1,9 +1,21 @@
 import { ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { SupabaseAuthGuard } from '../guards/supabase-auth.guard';
 
+function mockContext(headers: Record<string, string>): ExecutionContext {
+  return {
+    switchToHttp: () => ({
+      getRequest: () => ({ headers }),
+    }),
+    getHandler: () => () => undefined,
+    getClass: () => class {},
+  } as unknown as ExecutionContext;
+}
+
 describe('SupabaseAuthGuard', () => {
   let redisClient: { get: ReturnType<typeof vi.fn> };
+  let reflector: Reflector;
   let guard: SupabaseAuthGuard;
   const mockAuthConfig = {
     supabaseJwtSecret: '',
@@ -17,15 +29,23 @@ describe('SupabaseAuthGuard', () => {
     redisClient = {
       get: vi.fn(),
     };
-    guard = new SupabaseAuthGuard(redisClient as never, mockAuthConfig);
+    reflector = new Reflector();
+    guard = new SupabaseAuthGuard(
+      reflector,
+      redisClient as never,
+      mockAuthConfig,
+    );
+  });
+
+  it('omite autenticación en rutas @Public', async () => {
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(true);
+    const result = await guard.canActivate(mockContext({}));
+    expect(result).toBe(true);
+    expect(redisClient.get).not.toHaveBeenCalled();
   });
 
   it('lanza AUTH_TOKEN_MISSING cuando no hay bearer token', async () => {
-    const context = {
-      switchToHttp: () => ({
-        getRequest: () => ({ headers: {} }),
-      }),
-    } as unknown as ExecutionContext;
+    const context = mockContext({});
 
     await expect(guard.canActivate(context)).rejects.toMatchObject({
       response: expect.objectContaining({
@@ -35,11 +55,7 @@ describe('SupabaseAuthGuard', () => {
   });
 
   it('lanza AUTH_TOKEN_MISSING cuando bearer está vacío', async () => {
-    const context = {
-      switchToHttp: () => ({
-        getRequest: () => ({ headers: { authorization: 'Bearer   ' } }),
-      }),
-    } as unknown as ExecutionContext;
+    const context = mockContext({ authorization: 'Bearer   ' });
 
     await expect(guard.canActivate(context)).rejects.toMatchObject({
       response: expect.objectContaining({
@@ -50,13 +66,7 @@ describe('SupabaseAuthGuard', () => {
 
   it('lanza AUTH_TOKEN_REVOKED cuando token está en blocklist', async () => {
     redisClient.get.mockResolvedValue('1');
-    const context = {
-      switchToHttp: () => ({
-        getRequest: () => ({
-          headers: { authorization: 'Bearer revoked-token' },
-        }),
-      }),
-    } as unknown as ExecutionContext;
+    const context = mockContext({ authorization: 'Bearer revoked-token' });
 
     await expect(guard.canActivate(context)).rejects.toMatchObject({
       response: expect.objectContaining({
@@ -67,13 +77,7 @@ describe('SupabaseAuthGuard', () => {
 
   it('retorna true cuando token no está revocado y passport valida', async () => {
     redisClient.get.mockResolvedValue(null);
-    const context = {
-      switchToHttp: () => ({
-        getRequest: () => ({
-          headers: { authorization: 'Bearer valid-token' },
-        }),
-      }),
-    } as unknown as ExecutionContext;
+    const context = mockContext({ authorization: 'Bearer valid-token' });
 
     const parentProto = Object.getPrototypeOf(SupabaseAuthGuard.prototype) as {
       canActivate: (ctx: ExecutionContext) => Promise<boolean>;
@@ -94,6 +98,40 @@ describe('SupabaseAuthGuard', () => {
     ).toThrowError();
     try {
       guard.handleRequest(null, false, undefined, {} as ExecutionContext);
+    } catch (error) {
+      expect(error).toMatchObject({
+        response: expect.objectContaining({
+          code: 'AUTH_INVALID_TOKEN',
+        }),
+      });
+    }
+  });
+
+  it('handleRequest usa detalle genérico si err.message está vacío', () => {
+    try {
+      guard.handleRequest(
+        { message: '   ' },
+        false,
+        undefined,
+        {} as ExecutionContext,
+      );
+    } catch (error) {
+      expect(error).toMatchObject({
+        response: expect.objectContaining({
+          code: 'AUTH_INVALID_TOKEN',
+        }),
+      });
+    }
+  });
+
+  it('handleRequest ignora info.message vacío y usa fallback', () => {
+    try {
+      guard.handleRequest(
+        null,
+        false,
+        { message: '   ' },
+        {} as ExecutionContext,
+      );
     } catch (error) {
       expect(error).toMatchObject({
         response: expect.objectContaining({

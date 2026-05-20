@@ -1,0 +1,59 @@
+# PREREQUISITOS:
+# 1. Servidor corriendo: npm run start:dev
+# 2. Profesionales con perfil (latitude/longitude) en DB
+# 3. No requiere autenticación (endpoint público)
+#
+# MOTOR DE BÚSQUEDA:
+# - PostGIS ST_DWithin (filtro geoespacial)
+# - FTS con stemming español sobre nombre + bio + categorías
+# - Expansión de query con IA (OpenAI gpt-4o-mini): "electricista" → ["electricista", "electricidad", ...]
+# - Fallback fuzzy con pg_trgm (word_similarity) para variantes no cubiertas por stemming
+# - Resultados rankeados: FTS exacto primero, luego trigram, ambos por distancia
+
+@baseUrl = http://localhost:3000
+
+# Coordenadas de referencia (Montevideo centro)
+@lat = -34.9011
+@lng = -56.1645
+
+# Categoría para filtrar (opcional)
+@categoryId = 740d5519-da6a-4066-bde0-7e9cb9f06bc2
+
+###
+
+### Buscar profesionales cerca (radio default 5km)
+GET {{baseUrl}}/api/search/professionals?latitude={{lat}}&longitude={{lng}}
+
+###
+
+### Buscar con radio extendido (20km)
+GET {{baseUrl}}/api/search/professionals?latitude={{lat}}&longitude={{lng}}&radiusKm=20
+
+###
+
+### Buscar con filtro de categoría
+GET {{baseUrl}}/api/search/professionals?latitude={{lat}}&longitude={{lng}}&categoryId={{categoryId}}
+
+###
+
+### Buscar con texto libre — expansión IA activa
+# "electricista" se expande automáticamente a sinónimos/variantes
+# y matchea categoría "Electricidad", bio con "electricidad", etc.
+GET {{baseUrl}}/api/search/professionals?latitude={{lat}}&longitude={{lng}}&q=electricista
+
+###
+
+### Búsqueda fuzzy — pg_trgm cubre errores de tipeo y variantes
+GET {{baseUrl}}/api/search/professionals?latitude={{lat}}&longitude={{lng}}&q=electrisista
+
+###
+
+### Búsqueda completa con todos los filtros
+GET {{baseUrl}}/api/search/professionals?latitude={{lat}}&longitude={{lng}}&radiusKm=15&categoryId={{categoryId}}&q=reformas&page=1&limit=10
+
+###
+
+### Buscar en otra zona (Punta del Este)
+GET {{baseUrl}}/api/search/professionals?latitude=-34.9667&longitude=-54.9500&radiusKm=30&q=plomero
+
+###

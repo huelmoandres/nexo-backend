@@ -326,7 +326,7 @@ En factories de módulos (proveedor de Redis, etc.), el patrón es el mismo:
 
 ### Dominios ya sensibles en el proyecto
 
-- **Búsqueda** (`search.repository.ts`): consultas FTS + PostGIS; mantener parámetros acotados y SQL parametrizado; revisar índices GiST/FTS en el schema cuando se añadan filtros.
+- **Búsqueda** (`search.repository.ts`): PostGIS (`ST_DWithin`) + FTS con categorías + expansión IA (`SearchQueryExpanderService`) + fallback pg_trgm (`word_similarity`); SQL siempre parametrizado; revisar índices GiST cuando se añadan filtros geo.
 - **Usuarios** (`users.repository.ts`): transacciones explícitas donde haya invariantes; evitar transacciones largas innecesarias.
 
 ### Olfatos a vigilar

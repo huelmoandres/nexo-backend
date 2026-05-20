@@ -40,7 +40,16 @@ Además del `SupabaseGuard` global, este módulo requiere la creación de un `Ro
   3. Vincular este nuevo usuario al `COMPANY_ADMIN` que hace la petición (requerirá ajustar la relación en Prisma si aún no está mapeada la jerarquía empresa-empleado).
   4. Devolver `201 Created` con los datos del empleado.
 
-### C. Endpoint: Subida de Documentos KYC (Sello Uruguay Pro)
+### C. Endpoint: Onboarding Perfil Profesional
+- **Ruta:** `POST /users/professional-profile`
+- **Protección:** `SupabaseGuard`
+- **Propósito:** Crear `ProfessionalProfile` y promover `CLIENT` → `INDEPENDENT_PRO` en la misma transacción.
+- **DTO (`CreateProfessionalProfileDto`):** `experienceYears`, `latitude`, `longitude`, `categoryIds` obligatorios; `bio`, `rut` opcionales. `rut` validado con `@IsRutUruguay` en HTTP; reglas de negocio en `RutRegistrationService`.
+- **Reglas de rol (service):** `CLIENT` o `INDEPENDENT_PRO` sin perfil → OK; `COMPANY_ADMIN` / `COMPANY_EMPLOYEE` / `SUPER_ADMIN` → `409 PROFESSIONAL_ONBOARDING_ROLE_CONFLICT`.
+- **RUT:** Opcional; si viene, `RutRegistrationService` normaliza, valida DGI y `assertRutAvailable` (409 `RUT_ALREADY_REGISTERED` si existe en empresa u otro perfil).
+- **Post-condición:** `AuthorizationService.invalidateRoleCache(supabaseUid)` para que `@Roles` vea el rol nuevo de inmediato.
+
+### D. Endpoint: Subida de Documentos KYC (Sello Uruguay Pro)
 - **Ruta:** `POST /users/verification/kyc`
 - **Protección:** `SupabaseGuard`
 - **Propósito:** Iniciar el proceso de validación de Cédula/RUT.

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Inject, Module, OnModuleDestroy } from '@nestjs/common';
 import { ConfigModule, ConfigType } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import Redis from 'ioredis';
@@ -32,4 +32,10 @@ import { SupabaseJwtStrategy } from './strategies/supabase-jwt.strategy';
   ],
   exports: [AuthService, SupabaseAuthGuard, REDIS_AUTH_CLIENT],
 })
-export class AuthModule {}
+export class AuthModule implements OnModuleDestroy {
+  constructor(@Inject(REDIS_AUTH_CLIENT) private readonly redis: Redis) {}
+
+  async onModuleDestroy(): Promise<void> {
+    await this.redis.quit();
+  }
+}

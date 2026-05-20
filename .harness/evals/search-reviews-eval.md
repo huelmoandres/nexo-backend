@@ -4,14 +4,24 @@
 
 ---
 
-## Checklist de Score de Relevancia (Búsqueda)
+## Checklist de Búsqueda Geoespacial + Texto Inteligente
 
-- [ ] El orden de los resultados de búsqueda se calcula completamente en SQL (dentro de `prisma.$queryRaw`), no en JavaScript después de obtener los datos. Una query que trae todos los resultados y los ordena en JS es un fallo de rendimiento.
-- [ ] La fórmula del Score pondera en el siguiente orden de importancia: **Cercanía > Rating > Plan de Suscripción**. La cercanía siempre tiene el mayor peso.
-- [ ] Los pesos de la fórmula se toman de `ConfigService` desde `src/config/search.config.ts`. Valores de ejemplo: `{ weightDistance: 0.5, weightRating: 0.3, weightPlan: 0.2 }`. Nunca son números mágicos en el código.
-- [ ] El score del plan de suscripción se mapea a valores discretos en SQL: `BUSINESS = 1.0`, `MEDIUM = 0.5`, `FREE = 0.0`. El `CASE WHEN` está en la query, no en JS.
-- [ ] La búsqueda filtra automáticamente por `isAvailable = true`, `kycStatus = 'VERIFIED'`, `ProfessionalProfile.deletedAt IS NULL` y `User.deletedAt IS NULL`. Un perfil eliminado o no verificado no aparece en ningún resultado.
-- [ ] La búsqueda soporta paginación cursor-based usando `PaginationQueryDto` (`cursor`, `limit`). No usa paginación por offset (`skip`/`take`) para evitar resultados inconsistentes en listas dinámicas.
+- [ ] El filtro y ordenamiento ocurren en SQL (`prisma.$queryRawUnsafe`), no en JavaScript post-query.
+- [ ] PostGIS filtra primero con `ST_DWithin` sobre índice GiST antes de FTS/trigram.
+- [ ] La búsqueda filtra por `isAvailable = true`, `ProfessionalProfile.deletedAt IS NULL` y `User.deletedAt IS NULL`.
+- [ ] FTS incluye **nombre + bio + nombres de categorías** en el `to_tsvector` (subquery `string_agg(c.name)`).
+- [ ] Con `q`, los términos expandidos se combinan con OR en `plainto_tsquery` (no solo el término original).
+- [ ] `word_similarity` de pg_trgm actúa como fallback OR cuando FTS no matchea.
+- [ ] Ranking: `relevance_rank ASC` (FTS exacto primero), luego `distance_m ASC`.
+- [ ] Paginación offset-based (`page`, `limit`) desde `search.config.ts`.
+
+## Checklist de Expansión IA (`SearchQueryExpanderService`)
+
+- [ ] Cache Redis hit evita llamada a OpenAI (`search:expand:{sha256}`).
+- [ ] Si OpenAI falla o timeout: devuelve `[q]` original sin bloquear la búsqueda.
+- [ ] Circuit breaker abre tras errores repetidos y degrada a `[q]`.
+- [ ] `SEARCH_EXPANSION_ENABLED=false` desactiva expansión sin romper búsqueda geo.
+- [ ] Prompt, maxTerms, cachePrefix y CB thresholds son constantes en `search.config.ts` (no env vars).
 
 ---
 
@@ -54,7 +64,7 @@
 
 - [ ] No existe ningún `console.log`. Todo logging usa `this.logger` con Pino.
 - [ ] Los errores siguen el formato RFC 7807 con slugs definidos: `professional-not-found`, `job-not-closed`, `escrow-not-released`, `review-already-exists`, `review-not-found`.
-- [ ] El `SearchService` no supera 200 líneas. La construcción de la SQL query está extraída en un helper `SearchQueryBuilder`.
+- [ ] El `SearchService` orquesta expansión + repo; la SQL vive en `SearchRepository.buildQuery()`.
 - [ ] El `ReviewService` no supera 200 líneas. El recálculo del `averageRating` está en un método privado `recalculateAverageRating(professionalId)`.
 
 ---
@@ -65,9 +75,8 @@
 CLIENT_JWT="eyJ..."
 JOB_ID="uuid-del-job-cerrado"
 
-# 1. Buscar profesionales de electricidad cerca de Montevideo Centro → debe devolver lista ordenada por Score
-curl "http://localhost:3000/search/professionals?categoryId=uuid-electricidad&lat=-34.9011&lng=-56.1645&radiusKm=8&limit=10" \
-  -H "Authorization: Bearer $CLIENT_JWT"
+# 1. Buscar profesionales con texto libre (expansión IA + FTS + categorías)
+curl "http://localhost:3000/api/search/professionals?latitude=-34.9011&longitude=-56.1645&radiusKm=20&q=electricista&limit=10"
 
 # 2. Crear reseña → debe devolver 201 con status PENDING_PHOTOS
 curl -X POST http://localhost:3000/reviews \

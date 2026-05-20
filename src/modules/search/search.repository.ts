@@ -8,16 +8,15 @@ export interface SearchFilters {
   radiusMeters: number;
   categoryId?: string;
   q?: string;
+  /** Términos expandidos por IA (incluye original). Undefined = sin FTS. */
+  expandedTerms?: string[];
   limit: number;
   offset: number;
-  /**
-   * Diccionario PostgreSQL para Full Text Search.
-   * Inyectado desde searchConfig para permitir configuración por entorno.
-   */
   ftsDictionary: string;
+  /** Umbral de word_similarity para fallback pg_trgm (0-1). */
+  trgmThreshold: number;
 }
 
-/** Fila raw devuelta por Postgres para la query de búsqueda. */
 interface SearchRow {
   id: string;
   userId: string;
@@ -27,9 +26,9 @@ interface SearchRow {
   averageRating: number;
   isAvailable: boolean;
   distance_m: number;
+  relevance_rank: number;
 }
 
-/** Fila raw para el COUNT (total de resultados sin paginar). */
 interface CountRow {
   total: bigint;
 }
@@ -39,8 +38,12 @@ interface CountRow {
  *
  * Estrategia de rendimiento:
  * 1. ST_DWithin sobre índice GiST — descarta la mayoría de filas sin scan completo.
- * 2. Filtro categoryId via EXISTS — evita duplicados por N-N.
- * 3. FTS (to_tsvector 'spanish') como ÚLTIMO filtro — solo sobre sobrevivientes del radio.
+ * 2. Filtro categoryId via JOIN — evita duplicados por N-N.
+ * 3. FTS + pg_trgm como ÚLTIMO filtro — solo sobre sobrevivientes del radio.
+ *
+ * El vector de texto incluye nombre, bio y nombres de categorías del profesional,
+ * permitiendo buscar por categoría vía texto libre ("electricista" matchea
+ * categoría "Electricidad" si la expansión IA lo incluye).
  *
  * Seguridad: todos los parámetros se pasan como $N posicionales.
  * NUNCA se concatena input del usuario en el string SQL.
@@ -73,30 +76,38 @@ export class SearchRepository {
   }
 
   /**
-   * Construye el SQL y el array de parámetros dinámicamente.
-   * El índice de cada parámetro ($N) se incrementa en orden de inserción.
-   *
-   * @param mode - 'results' devuelve columnas + ORDER BY + LIMIT/OFFSET.
-   *               'count'   devuelve COUNT(*) sin ORDER BY ni paginación.
+   * Texto de búsqueda concatenado: nombre + bio + nombres de categorías.
+   * Usado tanto para FTS como para pg_trgm.
    */
+  private searchTextExpr(): string {
+    return `(
+      COALESCE(u."fullName", '') || ' ' ||
+      COALESCE(pp.bio, '') || ' ' ||
+      COALESCE((
+        SELECT string_agg(c.name, ' ')
+        FROM "ProfessionalCategory" pc2
+        JOIN "Category" c ON c.id = pc2."categoryId"
+        WHERE pc2."professionalId" = pp.id
+      ), '')
+    )`;
+  }
+
   private buildQuery(
     filters: SearchFilters,
     mode: 'results' | 'count',
   ): { sql: string; params: unknown[] } {
     const params: unknown[] = [];
 
-    // Parámetros fijos (posiciones $1, $2, $3)
     params.push(filters.longitude); // $1
     params.push(filters.latitude); // $2
     params.push(filters.radiusMeters); // $3
 
     let paramIdx = 4;
 
-    // Cláusula JOIN opcional para categoryId
     let categoryJoin = '';
     let categoryFilter = '';
     if (filters.categoryId) {
-      params.push(filters.categoryId); // $4
+      params.push(filters.categoryId);
       categoryJoin = `
         JOIN "ProfessionalCategory" pc
           ON pc."professionalId" = pp.id AND pc."categoryId" = $${paramIdx}`;
@@ -104,17 +115,40 @@ export class SearchRepository {
       paramIdx++;
     }
 
-    // Cláusula FTS opcional — ÚLTIMA en el WHERE para que PostGIS filtre primero
-    let ftsFilter = '';
-    if (filters.q) {
-      params.push(filters.q); // $4 o $5
-      const dict = filters.ftsDictionary;
-      ftsFilter = `
-        AND (
-          to_tsvector('${dict}', COALESCE(u."fullName", '') || ' ' || COALESCE(pp.bio, ''))
-          @@ plainto_tsquery('${dict}', $${paramIdx})
-        )`;
+    const searchText = this.searchTextExpr();
+    const dict = filters.ftsDictionary;
+
+    let textFilter = '';
+    let relevanceExpr = '0';
+    const hasText =
+      filters.expandedTerms && filters.expandedTerms.length > 0;
+
+    if (hasText) {
+      const tsqueryParts: string[] = [];
+      for (const term of filters.expandedTerms!) {
+        params.push(term);
+        tsqueryParts.push(`plainto_tsquery('${dict}', $${paramIdx})`);
+        paramIdx++;
+      }
+      const combinedTsquery = tsqueryParts.join(' || ');
+
+      params.push(filters.q ?? filters.expandedTerms![0]);
+      const qOrigIdx = paramIdx;
       paramIdx++;
+
+      params.push(filters.trgmThreshold);
+      const threshIdx = paramIdx;
+      paramIdx++;
+
+      textFilter = `
+        AND (
+          to_tsvector('${dict}', ${searchText}) @@ (${combinedTsquery})
+          OR word_similarity($${qOrigIdx}, ${searchText}) > $${threshIdx}
+        )`;
+
+      relevanceExpr = `
+        CASE WHEN to_tsvector('${dict}', ${searchText}) @@ (${combinedTsquery})
+             THEN 0 ELSE 1 END`;
     }
 
     const basePoint = `ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography`;
@@ -131,14 +165,13 @@ export class SearchRepository {
           AND pp."isAvailable" = true
           AND ST_DWithin(pp.location, ${basePoint}, $3)
           ${categoryFilter}
-          ${ftsFilter}
+          ${textFilter}
       `;
       return { sql, params };
     }
 
-    // mode === 'results'
-    params.push(filters.limit); // $N
-    params.push(filters.offset); // $N+1
+    params.push(filters.limit);
+    params.push(filters.offset);
 
     const sql = `
       SELECT
@@ -149,7 +182,8 @@ export class SearchRepository {
         pp."experienceYears",
         pp."averageRating",
         pp."isAvailable",
-        ST_Distance(pp.location, ${basePoint}) AS distance_m
+        ST_Distance(pp.location, ${basePoint}) AS distance_m,
+        ${relevanceExpr} AS relevance_rank
       FROM "ProfessionalProfile" pp
       JOIN "User" u ON u.id = pp."userId"
       ${categoryJoin}
@@ -159,8 +193,8 @@ export class SearchRepository {
         AND pp."isAvailable" = true
         AND ST_DWithin(pp.location, ${basePoint}, $3)
         ${categoryFilter}
-        ${ftsFilter}
-      ORDER BY distance_m ASC
+        ${textFilter}
+      ORDER BY relevance_rank ASC, distance_m ASC
       LIMIT $${paramIdx} OFFSET $${paramIdx + 1}
     `;
 

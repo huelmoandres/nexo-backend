@@ -72,6 +72,15 @@ describe('createSupabaseJwtSecretProvider', () => {
     expect(secretOrKey).toBe('symmetric-secret');
   });
 
+  it('normaliza errores no-Error durante decode', async () => {
+    jwtDecodeMock.mockImplementation(() => {
+      throw 'decode-string-failure';
+    });
+    const provider = createSupabaseJwtSecretProvider(baseCfg);
+    const { err } = await runProvider(provider, 'raw');
+    expect(err?.message).toBe('JWT decode failure');
+  });
+
   it('rechaza JWT mal formado (decode string)', async () => {
     jwtDecodeMock.mockReturnValue('not-an-object');
     const provider = createSupabaseJwtSecretProvider(baseCfg);

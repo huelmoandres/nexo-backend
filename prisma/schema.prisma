@@ -383,6 +383,8 @@ model ProfessionalProfile {
   /// Índice GiST declarado abajo. Toda query sobre este campo usa prisma.$queryRaw.
   location Unsupported("geography(Point, 4326)")?
 
+  /// RUT uruguayo opcional (monotributo / unipersonal). Validación DGI en aplicación.
+  rut              String?          @unique
   kycStatus        KycStatus        @default(UNVERIFIED)
   subscriptionPlan SubscriptionPlan @default(FREE)
   isAvailable      Boolean          @default(false)

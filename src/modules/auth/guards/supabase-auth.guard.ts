@@ -5,8 +5,11 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
+import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
+import { createHash } from 'node:crypto';
 import Redis from 'ioredis';
+import { IS_PUBLIC_KEY } from '@common/decorators/public.decorator';
 import { buildProblem } from '@common/errors/problem.factory';
 import { authConfig } from '@config/auth.config';
 import { REDIS_AUTH_CLIENT } from '../auth.constants';
@@ -51,6 +54,7 @@ function readJwtFailureDetail(err: unknown, info: unknown): string | null {
 @Injectable()
 export class SupabaseAuthGuard extends AuthGuard('jwt') {
   constructor(
+    private readonly reflector: Reflector,
     @Inject(REDIS_AUTH_CLIENT)
     private readonly redisClient: Redis,
     @Inject(authConfig.KEY)
@@ -61,8 +65,14 @@ export class SupabaseAuthGuard extends AuthGuard('jwt') {
 
   /**
    * Extrae el Bearer token, comprueba revocacion en Redis y delega la validacion JWT a Passport.
+   * Rutas marcadas con @Public() se omiten.
    */
   override async canActivate(context: ExecutionContext): Promise<boolean> {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) return true;
     const request = context
       .switchToHttp()
       .getRequest<{ headers: { authorization?: string } }>();
@@ -75,8 +85,9 @@ export class SupabaseAuthGuard extends AuthGuard('jwt') {
       );
     }
 
+    const tokenHash = createHash('sha256').update(token).digest('hex');
     const isRevoked = await this.redisClient.get(
-      `${this.config.redisBlocklistPrefix}${token}`,
+      `${this.config.redisBlocklistPrefix}${tokenHash}`,
     );
     if (isRevoked) {
       throw this.unauthorized(

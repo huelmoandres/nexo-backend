@@ -10,6 +10,7 @@ describe('SearchRepository', () => {
     limit: 10,
     offset: 0,
     ftsDictionary: 'spanish',
+    trgmThreshold: 0.25,
   };
 
   const makePrisma = (
@@ -57,9 +58,13 @@ describe('SearchRepository', () => {
       expect(params).toContain('cat-uuid');
     });
 
-    it('incluye FTS cuando se provee q', async () => {
+    it('incluye FTS con categorías y trigram cuando se proveen expandedTerms', async () => {
       const { repo, prisma } = makeRepo(makePrisma([]));
-      const filters = { ...baseFilters, q: 'electricista' };
+      const filters: SearchFilters = {
+        ...baseFilters,
+        q: 'electricista',
+        expandedTerms: ['electricista', 'electricidad'],
+      };
 
       await repo.findProfessionals(filters);
 
@@ -69,17 +74,57 @@ describe('SearchRepository', () => {
       ];
       expect(sql).toContain("to_tsvector('spanish'");
       expect(sql).toContain("plainto_tsquery('spanish'");
+      expect(sql).toContain('word_similarity');
+      expect(sql).toContain('string_agg(c.name');
       expect(params).toContain('electricista');
+      expect(params).toContain('electricidad');
+      expect(params).toContain(0.25);
     });
 
-    it('NO incluye FTS ni JOIN cuando no hay q ni categoryId', async () => {
+    it('NO incluye FTS ni trigram cuando no hay expandedTerms', async () => {
       const { repo, prisma } = makeRepo(makePrisma([]));
 
       await repo.findProfessionals(baseFilters);
 
       const [sql] = prisma.$queryRawUnsafe.mock.calls[0] as [string];
       expect(sql).not.toContain('to_tsvector');
+      expect(sql).not.toContain('word_similarity');
       expect(sql).not.toContain('ProfessionalCategory');
+    });
+
+    it('genera tsquery OR con múltiples expandedTerms', async () => {
+      const { repo, prisma } = makeRepo(makePrisma([]));
+      const filters: SearchFilters = {
+        ...baseFilters,
+        q: 'plomero',
+        expandedTerms: ['plomero', 'plomería', 'cañerías'],
+      };
+
+      await repo.findProfessionals(filters);
+
+      const [sql, ...params] = prisma.$queryRawUnsafe.mock.calls[0] as [
+        string,
+        ...unknown[],
+      ];
+      expect(sql).toContain("plainto_tsquery('spanish'");
+      expect(params).toContain('plomero');
+      expect(params).toContain('plomería');
+      expect(params).toContain('cañerías');
+      expect(sql).toContain('||');
+    });
+
+    it('ordena por relevance_rank primero, luego distance_m', async () => {
+      const { repo, prisma } = makeRepo(makePrisma([]));
+      const filters: SearchFilters = {
+        ...baseFilters,
+        q: 'electricista',
+        expandedTerms: ['electricista'],
+      };
+
+      await repo.findProfessionals(filters);
+
+      const [sql] = prisma.$queryRawUnsafe.mock.calls[0] as [string];
+      expect(sql).toContain('relevance_rank ASC, distance_m ASC');
     });
 
     it('mapea las filas raw a SearchResultDto correctamente', async () => {
@@ -92,6 +137,7 @@ describe('SearchRepository', () => {
         averageRating: 4.5,
         isAvailable: true,
         distance_m: 1200.5,
+        relevance_rank: 0,
       };
       const { repo } = makeRepo(makePrisma([rawRow]));
 
@@ -119,6 +165,7 @@ describe('SearchRepository', () => {
         averageRating: 0,
         isAvailable: true,
         distance_m: 500,
+        relevance_rank: 0,
       };
       const { repo } = makeRepo(makePrisma([rawRow]));
 
@@ -128,9 +175,14 @@ describe('SearchRepository', () => {
       expect(typeof results[0].distanceMeters).toBe('number');
     });
 
-    it('incluye categoryId Y q cuando ambos se proveen', async () => {
+    it('incluye categoryId Y expandedTerms cuando ambos se proveen', async () => {
       const { repo, prisma } = makeRepo(makePrisma([]));
-      const filters = { ...baseFilters, categoryId: 'cat-id', q: 'plomero' };
+      const filters: SearchFilters = {
+        ...baseFilters,
+        categoryId: 'cat-id',
+        q: 'plomero',
+        expandedTerms: ['plomero'],
+      };
 
       await repo.findProfessionals(filters);
 
@@ -138,7 +190,7 @@ describe('SearchRepository', () => {
         string,
         ...unknown[],
       ];
-      expect(sql).toContain('ProfessionalCategory');
+      expect(sql).toContain('"ProfessionalCategory" pc');
       expect(sql).toContain("to_tsvector('spanish'");
       expect(params).toContain('cat-id');
       expect(params).toContain('plomero');
@@ -182,19 +234,24 @@ describe('SearchRepository', () => {
       expect(sql.toLowerCase()).not.toContain('limit');
     });
 
-    it('count incluye filtro FTS cuando se provee q', async () => {
+    it('count incluye filtro texto cuando se proveen expandedTerms', async () => {
       const prisma = {
         $queryRawUnsafe: vi.fn().mockResolvedValueOnce([{ total: 2n }]),
       };
       const repo = new SearchRepository(prisma as never);
 
-      await repo.countProfessionals({ ...baseFilters, q: 'carpintero' });
+      await repo.countProfessionals({
+        ...baseFilters,
+        q: 'carpintero',
+        expandedTerms: ['carpintero'],
+      });
 
       const [sql, ...params] = prisma.$queryRawUnsafe.mock.calls[0] as [
         string,
         ...unknown[],
       ];
       expect(sql).toContain("to_tsvector('spanish'");
+      expect(sql).toContain('word_similarity');
       expect(params).toContain('carpintero');
     });
 

@@ -96,4 +96,82 @@ describe('PortfolioConsentQueueProcessor', () => {
     });
     expect(markConsentReminderSent).toHaveBeenCalledWith('c1');
   });
+
+  it('ignora jobs desconocidos', async () => {
+    const repository = {
+      expirePendingPortfolioConsents: vi.fn(),
+    } as unknown as PortfolioRepository;
+    const proc = new PortfolioConsentQueueProcessor(
+      repository,
+      {} as NotificationsService,
+      cfg,
+    );
+    await proc.process({
+      name: 'unknown',
+      data: {},
+    } as Job<ConsentReminderJobData>);
+    expect(repository.expirePendingPortfolioConsents).not.toHaveBeenCalled();
+  });
+
+  it('reminder sin consentId no notifica', async () => {
+    const notifyPortfolioConsentReminder = vi.fn();
+    const repository = {
+      claimConsentReminderAttempt: vi.fn(),
+    } as unknown as PortfolioRepository;
+    const proc = new PortfolioConsentQueueProcessor(
+      repository,
+      { notifyPortfolioConsentReminder } as unknown as NotificationsService,
+      cfg,
+    );
+    await proc.process({
+      name: PORTFOLIO_CONSENT_REMINDER_JOB,
+      data: {},
+    } as Job<ConsentReminderJobData>);
+    expect(notifyPortfolioConsentReminder).not.toHaveBeenCalled();
+  });
+
+  it('reminder sin payload marca skip', async () => {
+    const repository = {
+      claimConsentReminderAttempt: vi.fn().mockResolvedValue(true),
+      findConsentReminderPayload: vi.fn().mockResolvedValue(null),
+    } as unknown as PortfolioRepository;
+    const notifyPortfolioConsentReminder = vi.fn();
+    const proc = new PortfolioConsentQueueProcessor(
+      repository,
+      { notifyPortfolioConsentReminder } as unknown as NotificationsService,
+      cfg,
+    );
+    await proc.process({
+      name: PORTFOLIO_CONSENT_REMINDER_JOB,
+      data: { consentId: 'c1' },
+    } as Job<ConsentReminderJobData>);
+    expect(notifyPortfolioConsentReminder).not.toHaveBeenCalled();
+  });
+
+  it('reminder captura error de notificación sin relanzar', async () => {
+    const repository = {
+      claimConsentReminderAttempt: vi.fn().mockResolvedValue(true),
+      findConsentReminderPayload: vi.fn().mockResolvedValue({
+        clientUserId: 'u1',
+        portfolioItemId: 'item-1',
+        jobTitle: 'J',
+      }),
+      markConsentReminderSent: vi.fn(),
+    } as unknown as PortfolioRepository;
+    const notifyPortfolioConsentReminder = vi
+      .fn()
+      .mockRejectedValue('smtp-down');
+    const proc = new PortfolioConsentQueueProcessor(
+      repository,
+      { notifyPortfolioConsentReminder } as unknown as NotificationsService,
+      cfg,
+    );
+    await expect(
+      proc.process({
+        name: PORTFOLIO_CONSENT_REMINDER_JOB,
+        data: { consentId: 'c1' },
+      } as Job<ConsentReminderJobData>),
+    ).resolves.toBeUndefined();
+    expect(repository.markConsentReminderSent).not.toHaveBeenCalled();
+  });
 });

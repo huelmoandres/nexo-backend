@@ -49,4 +49,14 @@ describe('CategoryMatcherService', () => {
 
     expect(await svc.isCategoryRelated('nonexistent', 'source')).toBe(false);
   });
+
+  it('registra warning al alcanzar profundidad máxima sin match', async () => {
+    for (let i = 0; i < 10; i += 1) {
+      prismaMock.category.findUnique.mockResolvedValueOnce({
+        parentId: `parent-${i}`,
+      });
+    }
+    expect(await svc.isCategoryRelated('leaf', 'root')).toBe(false);
+    expect(prismaMock.category.findUnique).toHaveBeenCalledTimes(10);
+  });
 });

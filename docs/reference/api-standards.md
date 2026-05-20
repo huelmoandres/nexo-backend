@@ -117,9 +117,11 @@ Estos slugs son la **fuente de verdad**. Cualquier otro nombre de error para el 
 |--------|------|-------------|
 | `USER_NOT_FOUND` | 404 | No existe fila `User` para el `sub` del JWT (datos inconsistentes). |
 | `RUT_INVALID` | 400 | RUT uruguayo de 12 dígitos con dígito verificador inválido (incluye caso `rem === 1`). |
-| `COMPANY_RUT_DUPLICATE` | 409 | El RUT ya está registrado en otra empresa. |
+| `RUT_ALREADY_REGISTERED` | 409 | El RUT ya existe en `Company` o `ProfessionalProfile` (unicidad global). |
+| `COMPANY_RUT_DUPLICATE` | 409 | *(legacy)* Alias de `RUT_ALREADY_REGISTERED` en alta de empresa. |
 | `USER_ALREADY_OWNS_COMPANY` | 409 | El usuario ya es administrador de una empresa. |
 | `PROFESSIONAL_PROFILE_EXISTS` | 409 | El usuario ya tiene un `ProfessionalProfile`. |
+| `PROFESSIONAL_ONBOARDING_ROLE_CONFLICT` | 409 | Rol incompatible con onboarding profesional (`COMPANY_*`, `SUPER_ADMIN`). |
 | `PROFESSIONAL_PROFILE_NOT_FOUND` | 404 | Se requiere perfil profesional (p. ej. presign de documentos) y no existe. |
 | `INVALID_CATEGORY_IDS` | 400 | Algún `categoryId` del DTO de perfil no existe (validación antes de persistir). |
 | `KYC_INVALID_FILE_EXTENSION` | 400 | Extensión de archivo no permitida en flujos KYC/presign. |

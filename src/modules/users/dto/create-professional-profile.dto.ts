@@ -11,6 +11,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { IsRutUruguay } from '../validators/is-rut-uruguay.decorator';
 
 export class CreateProfessionalProfileDto {
   @ApiPropertyOptional({
@@ -47,6 +48,16 @@ export class CreateProfessionalProfileDto {
   @Min(-180)
   @Max(180)
   longitude!: number;
+
+  @ApiPropertyOptional({
+    example: '214567890013',
+    description:
+      'RUT uruguayo opcional (12 dígitos, dígito verificador DGI). Monotributo / unipersonal.',
+  })
+  @IsOptional()
+  @IsString()
+  @IsRutUruguay()
+  rut?: string;
 
   @ApiProperty({
     example: [

@@ -8,11 +8,27 @@ describe('SearchService', () => {
     ...overrides,
   });
 
+  const makeExpander = (overrides: Record<string, unknown> = {}) => ({
+    expand: vi.fn().mockImplementation((q: string) => Promise.resolve([q])),
+    ...overrides,
+  });
+
   const makeSearchConfig = () => ({
     defaultRadiusKm: 5,
     defaultPage: 1,
     defaultLimit: 10,
     ftsDictionary: 'spanish',
+    expansion: {
+      enabled: true,
+      ttlSeconds: 604800,
+      timeoutMs: 2000,
+      model: 'gpt-4o-mini',
+      maxTerms: 8,
+      maxTokens: 200,
+      cachePrefix: 'search:expand:',
+      circuitBreaker: { errorThresholdPercentage: 50, resetTimeoutMs: 30_000 },
+    },
+    trgmThreshold: 0.25,
   });
 
   beforeEach(() => vi.clearAllMocks());
@@ -22,7 +38,12 @@ describe('SearchService', () => {
   describe('searchProfessionals', () => {
     it('aplica defaults: radiusKm=5, page=1, limit=10', async () => {
       const repo = makeRepo();
-      const service = new SearchService(repo as never, makeSearchConfig());
+      const expander = makeExpander();
+      const service = new SearchService(
+        repo as never,
+        expander as never,
+        makeSearchConfig(),
+      );
 
       await service.searchProfessionals(baseQuery);
 
@@ -37,7 +58,12 @@ describe('SearchService', () => {
 
     it('convierte radiusKm a metros correctamente', async () => {
       const repo = makeRepo();
-      const service = new SearchService(repo as never, makeSearchConfig());
+      const expander = makeExpander();
+      const service = new SearchService(
+        repo as never,
+        expander as never,
+        makeSearchConfig(),
+      );
 
       await service.searchProfessionals({ ...baseQuery, radiusKm: 20 });
 
@@ -48,7 +74,12 @@ describe('SearchService', () => {
 
     it('calcula offset correctamente para paginación', async () => {
       const repo = makeRepo();
-      const service = new SearchService(repo as never, makeSearchConfig());
+      const expander = makeExpander();
+      const service = new SearchService(
+        repo as never,
+        expander as never,
+        makeSearchConfig(),
+      );
 
       await service.searchProfessionals({ ...baseQuery, page: 3, limit: 5 });
 
@@ -69,38 +100,96 @@ describe('SearchService', () => {
           return Promise.resolve(0);
         }),
       };
-      const service = new SearchService(repo as never, makeSearchConfig());
+      const expander = makeExpander();
+      const service = new SearchService(
+        repo as never,
+        expander as never,
+        makeSearchConfig(),
+      );
 
       await service.searchProfessionals(baseQuery);
 
-      // Ambas deben llamarse (orden no importa ya que son paralelas)
       expect(callOrder).toContain('find');
       expect(callOrder).toContain('count');
     });
 
-    it('pasa categoryId y q al repositorio cuando se proveen', async () => {
+    it('expande q con el queryExpander y pasa expandedTerms al repo', async () => {
       const repo = makeRepo();
-      const service = new SearchService(repo as never, makeSearchConfig());
+      const expander = makeExpander({
+        expand: vi
+          .fn()
+          .mockResolvedValue(['electricista', 'electricidad', 'eléctrico']),
+      });
+      const service = new SearchService(
+        repo as never,
+        expander as never,
+        makeSearchConfig(),
+      );
 
       await service.searchProfessionals({
         ...baseQuery,
-        categoryId: 'cat-id',
         q: 'electricista',
       });
 
+      expect(expander.expand).toHaveBeenCalledWith('electricista');
       expect(repo.findProfessionals).toHaveBeenCalledWith(
-        expect.objectContaining({ categoryId: 'cat-id', q: 'electricista' }),
+        expect.objectContaining({
+          q: 'electricista',
+          expandedTerms: ['electricista', 'electricidad', 'eléctrico'],
+        }),
       );
     });
 
-    it('normaliza q vacío como undefined', async () => {
+    it('no llama al expander si q es undefined', async () => {
       const repo = makeRepo();
-      const service = new SearchService(repo as never, makeSearchConfig());
+      const expander = makeExpander();
+      const service = new SearchService(
+        repo as never,
+        expander as never,
+        makeSearchConfig(),
+      );
+
+      await service.searchProfessionals(baseQuery);
+
+      expect(expander.expand).not.toHaveBeenCalled();
+      expect(repo.findProfessionals).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: undefined,
+          expandedTerms: undefined,
+        }),
+      );
+    });
+
+    it('normaliza q vacío como undefined y no expande', async () => {
+      const repo = makeRepo();
+      const expander = makeExpander();
+      const service = new SearchService(
+        repo as never,
+        expander as never,
+        makeSearchConfig(),
+      );
 
       await service.searchProfessionals({ ...baseQuery, q: '   ' });
 
+      expect(expander.expand).not.toHaveBeenCalled();
       expect(repo.findProfessionals).toHaveBeenCalledWith(
-        expect.objectContaining({ q: undefined }),
+        expect.objectContaining({ q: undefined, expandedTerms: undefined }),
+      );
+    });
+
+    it('pasa trgmThreshold al repositorio', async () => {
+      const repo = makeRepo();
+      const expander = makeExpander();
+      const service = new SearchService(
+        repo as never,
+        expander as never,
+        makeSearchConfig(),
+      );
+
+      await service.searchProfessionals(baseQuery);
+
+      expect(repo.findProfessionals).toHaveBeenCalledWith(
+        expect.objectContaining({ trgmThreshold: 0.25 }),
       );
     });
 
@@ -119,7 +208,12 @@ describe('SearchService', () => {
         findProfessionals: vi.fn().mockResolvedValue([mockResult]),
         countProfessionals: vi.fn().mockResolvedValue(1),
       });
-      const service = new SearchService(repo as never, makeSearchConfig());
+      const expander = makeExpander();
+      const service = new SearchService(
+        repo as never,
+        expander as never,
+        makeSearchConfig(),
+      );
 
       const result = await service.searchProfessionals({
         ...baseQuery,

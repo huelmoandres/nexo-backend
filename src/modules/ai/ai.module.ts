@@ -12,6 +12,7 @@ import { PiiSanitizerService } from './lib/pii-sanitizer';
 import { ImagePrepService } from './lib/image-prep.service';
 import { InferenceCacheService } from './lib/inference-cache.service';
 import { InferenceLockService } from './lib/inference-lock.service';
+import { InferenceCacheGcService } from './lib/inference-cache-gc.service';
 import { CategoryMatcherService } from './lib/category-matcher';
 import { OpenAiTextModerationProvider } from './providers/openai-text-moderation.provider';
 import { AwsRekognitionImageSafetyProvider } from './providers/aws-rekognition-image-safety.provider';
@@ -49,6 +50,7 @@ import { AiContentModerationService } from './services/ai-content-moderation.ser
       useClass: AwsRekognitionImageSafetyProvider,
     },
     AiContentModerationService,
+    InferenceCacheGcService,
     {
       provide: AI_REDIS_CLIENT,
       inject: [authConfig.KEY],

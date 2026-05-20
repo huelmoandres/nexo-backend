@@ -1,0 +1,64 @@
+# PREREQUISITOS:
+# - Servidor corriendo: npm run start:dev
+# - Usuario sincronizado previamente (ver 01-auth-sync.http)
+
+@baseUrl = http://localhost:3000
+
+### Obtener token profesional
+# @name login
+GET {{baseUrl}}/api/auth/dev-token?email=demo.pro@nexos.local&uid=00000000-0000-4000-8000-000000000002
+
+###
+
+@authToken = {{login.response.body.$.token}}
+
+### Obtener perfil del usuario autenticado
+GET {{baseUrl}}/api/users/me
+Authorization: Bearer {{authToken}}
+
+###
+
+### Crear perfil profesional
+# Convierte un CLIENT en INDEPENDENT_PRO.
+# Requiere al menos 1 categoryId válido.
+POST {{baseUrl}}/api/users/professional-profile
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "bio": "Electricista matriculado con 10 años de experiencia en Montevideo. Especializado en instalaciones domiciliarias y comerciales.",
+  "experienceYears": 10,
+  "latitude": -34.9011,
+  "longitude": -56.1645,
+  "categoryIds": [
+    "740d5519-da6a-4066-bde0-7e9cb9f06bc2"
+  ],
+  "rut": "214567890013"
+}
+
+###
+
+### Crear empresa (requiere rol COMPANY_ADMIN)
+# Cambiar el email/uid del login a un usuario COMPANY_ADMIN
+POST {{baseUrl}}/api/users/company
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "name": "ACME Servicios Uruguay S.A.",
+  "rut": "214567890013"
+}
+
+###
+
+### Presign documento KYC
+POST {{baseUrl}}/api/users/documents/presign
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "documentType": "cedula_frente",
+  "fileExtension": "jpg"
+}
+
+###

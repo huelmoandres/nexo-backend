@@ -1,5 +1,7 @@
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { buildProblem } from '@common/errors/problem.factory';
 import { GlobalExceptionFilter } from '@common/filters/global-exception.filter';
@@ -10,9 +12,16 @@ import { DiagnosticsService } from '@modules/diagnostics/diagnostics.service';
 
 async function bootstrap() {
   setupSentry(appConfig().sentryDsn);
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // Startup Diagnostics: hace fail-fast si una hard dependency está caída.
+  app.set('trust proxy', 1);
+  app.use(helmet());
+  app.enableCors({
+    origin: process.env['CORS_ORIGINS']?.split(',') ?? [],
+    credentials: true,
+  });
+  app.useBodyParser('json', { limit: '1mb' });
+
   await app.get(DiagnosticsService).runStartupChecks();
 
   app.setGlobalPrefix('api', {

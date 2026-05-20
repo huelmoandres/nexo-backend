@@ -262,8 +262,19 @@ export class R2StorageService implements IStorageService {
           buildProblem('STORAGE_UNAVAILABLE', `Empty body for key: ${key}`),
         );
       }
+      const maxBytes = 50 * 1024 * 1024; // 50 MB safety limit
       const chunks: Uint8Array[] = [];
+      let totalSize = 0;
       for await (const chunk of stream as AsyncIterable<Uint8Array>) {
+        totalSize += chunk.length;
+        if (totalSize > maxBytes) {
+          throw new ServiceUnavailableException(
+            buildProblem(
+              'STORAGE_UNAVAILABLE',
+              `Object too large (>${maxBytes} bytes): ${key}`,
+            ),
+          );
+        }
         chunks.push(chunk);
       }
       return Buffer.concat(chunks);

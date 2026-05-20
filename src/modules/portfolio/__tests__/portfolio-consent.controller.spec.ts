@@ -9,19 +9,19 @@ const token = '550e8400-e29b-41d4-a716-446655440000';
 
 describe('PortfolioConsentController', () => {
   const make = () => {
-    const portfolioService = {
+    const consentService = {
       getConsentPreview: vi.fn(),
       acceptConsent: vi.fn(),
       declineConsent: vi.fn(),
     };
     return {
-      controller: new PortfolioConsentController(portfolioService as never),
-      portfolioService,
+      controller: new PortfolioConsentController(consentService as never),
+      consentService,
     };
   };
 
   it('getConsentPreview delega al service', async () => {
-    const { controller, portfolioService } = make();
+    const { controller, consentService } = make();
     const dto = {
       job: {
         id: 'job-1',
@@ -36,26 +36,26 @@ describe('PortfolioConsentController', () => {
       categoryCoincide: true,
       photos: [],
     } satisfies ConsentPreviewResponseDto;
-    portfolioService.getConsentPreview.mockResolvedValue(dto);
+    consentService.getConsentPreview.mockResolvedValue(dto);
 
     const out = await controller.getConsentPreview(token);
 
-    expect(portfolioService.getConsentPreview).toHaveBeenCalledWith(token);
+    expect(consentService.getConsentPreview).toHaveBeenCalledWith(token);
     expect(out).toEqual(dto);
   });
 
   it('acceptConsent delega al service', async () => {
-    const { controller, portfolioService } = make();
-    portfolioService.acceptConsent.mockResolvedValue(undefined);
+    const { controller, consentService } = make();
+    consentService.acceptConsent.mockResolvedValue(undefined);
 
     await controller.acceptConsent(token);
 
-    expect(portfolioService.acceptConsent).toHaveBeenCalledWith(token);
+    expect(consentService.acceptConsent).toHaveBeenCalledWith(token);
   });
 
   it('declineConsent pasa ip y user-agent al service', async () => {
-    const { controller, portfolioService } = make();
-    portfolioService.declineConsent.mockResolvedValue(undefined);
+    const { controller, consentService } = make();
+    consentService.declineConsent.mockResolvedValue(undefined);
     const body: DeclineConsentDto = {
       reason: ConsentDeclineReason.NOT_MINE,
       notes: 'x',
@@ -67,15 +67,15 @@ describe('PortfolioConsentController', () => {
 
     await controller.declineConsent(token, body, req);
 
-    expect(portfolioService.declineConsent).toHaveBeenCalledWith(token, body, {
+    expect(consentService.declineConsent).toHaveBeenCalledWith(token, body, {
       ipAddress: '203.0.113.10',
       userAgent: 'VitestAgent/1',
     });
   });
 
   it('declineConsent usa undefined en userAgent si el header falta', async () => {
-    const { controller, portfolioService } = make();
-    portfolioService.declineConsent.mockResolvedValue(undefined);
+    const { controller, consentService } = make();
+    consentService.declineConsent.mockResolvedValue(undefined);
     const body: DeclineConsentDto = { reason: ConsentDeclineReason.OTHER };
     const req = {
       ip: '127.0.0.1',
@@ -84,7 +84,7 @@ describe('PortfolioConsentController', () => {
 
     await controller.declineConsent(token, body, req);
 
-    expect(portfolioService.declineConsent).toHaveBeenCalledWith(token, body, {
+    expect(consentService.declineConsent).toHaveBeenCalledWith(token, body, {
       ipAddress: '127.0.0.1',
       userAgent: undefined,
     });

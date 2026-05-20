@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Queue } from 'bullmq';
 
 /**
  * Payload del job `portfolio-cleanup`: instruye al worker borrar las
@@ -30,12 +31,33 @@ export const PORTFOLIO_CLEANUP_QUEUE_TOKEN = Symbol(
 );
 
 /**
- * Implementación stub que solo loguea la intención de encolar.
- *
- * La integración real con BullMQ + worker que llama
- * `storage.deleteObjectAsSystem(...)` para cada `fileKey` del item
- * vive en un PR futuro. Mantener esta interfaz estable evita romper
- * los consumidores cuando se cablee la cola real.
+ * Implementación real con BullMQ que encola jobs para el processor.
+ */
+@Injectable()
+export class BullPortfolioCleanupQueue implements IPortfolioCleanupQueue {
+  private readonly logger = new Logger(BullPortfolioCleanupQueue.name);
+
+  constructor(
+    @Inject('BullQueue_portfolio-cleanup') private readonly queue: Queue,
+  ) {}
+
+  async enqueue(job: PortfolioCleanupJob): Promise<void> {
+    await this.queue.add('cleanup-item', job, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+      removeOnComplete: 100,
+      removeOnFail: 50,
+    });
+    this.logger.log({
+      op: 'portfolio.cleanup.enqueued',
+      professionalId: job.professionalId,
+      itemId: job.itemId,
+    });
+  }
+}
+
+/**
+ * Stub para tests que solo loguea. Mantenido por compatibilidad en tests.
  */
 @Injectable()
 export class LoggingPortfolioCleanupQueue implements IPortfolioCleanupQueue {

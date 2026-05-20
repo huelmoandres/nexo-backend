@@ -62,13 +62,15 @@ describe('UsersRepository', () => {
       experienceYears: 3,
     });
 
+    const userUpdate = vi.fn().mockResolvedValue({});
     const tx = {
       professionalProfile: {
-        create: vi.fn().mockResolvedValue(profileRow),
+        create: vi.fn().mockResolvedValue(profileRow as never),
       },
       $executeRawUnsafe: vi.fn().mockResolvedValue(1),
       professionalIdentity: { create: vi.fn().mockResolvedValue({}) },
       trustProfile: { create: vi.fn().mockResolvedValue({}) },
+      user: { update: userUpdate },
     };
 
     const prisma = {
@@ -87,9 +89,15 @@ describe('UsersRepository', () => {
       latitude: -34.9,
       longitude: -56.16,
       categoryIds: ['cat1'],
+      rut: '000000000000',
+      promoteRoleToIndependentPro: true,
     });
 
     expect(result.id).toBe('p1');
+    expect(userUpdate).toHaveBeenCalledWith({
+      where: { id: 'u1' },
+      data: { role: 'INDEPENDENT_PRO' },
+    });
     expect(tx.$executeRawUnsafe).toHaveBeenCalledWith(
       expect.stringContaining('ST_MakePoint'),
       -56.16,

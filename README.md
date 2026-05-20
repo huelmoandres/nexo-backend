@@ -11,9 +11,9 @@ Nexos es un marketplace que conecta clientes con profesionales de servicios del 
 
 **Stack principal (estado actual):** NestJS · PostgreSQL + PostGIS · Prisma · Supabase Auth · Redis
 
-**Roadmap técnico:** BullMQ y MongoDB para flujos asíncronos/alta frecuencia.
+**Procesamiento asíncrono:** BullMQ (moderación IA, cleanup, notificaciones, consent reminders).
 
-**Módulos activos en código:** `auth`, `users`, `storage`, `health`, `diagnostics`, `categories`, `search`.
+**Módulos activos en código:** `auth`, `users`, `storage`, `health`, `diagnostics`, `categories`, `search`, `portfolio`, `notifications`, `ai`, `authorization`.
 
 ---
 

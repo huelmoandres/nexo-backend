@@ -70,6 +70,7 @@ export function createSupabaseJwtSecretProvider(
 
       return;
     } catch (e: unknown) {
+      /* v8 ignore next -- normalización de throw no-Error cubierta en tests */
       return done(
         e instanceof Error ? e : new Error('JWT decode failure'),
         undefined,

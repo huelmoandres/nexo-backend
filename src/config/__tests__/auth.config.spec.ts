@@ -7,7 +7,6 @@ describe('authConfig', () => {
     delete process.env['SUPABASE_URL'];
     delete process.env['REDIS_URL'];
     delete process.env['REDIS_BLOCKLIST_PREFIX'];
-    delete process.env['REDIS_MAX_RETRIES'];
 
     const config = authConfig();
 
@@ -23,7 +22,6 @@ describe('authConfig', () => {
     process.env['SUPABASE_URL'] = 'https://abc.supabase.co';
     process.env['REDIS_URL'] = 'redis://custom:6379';
     process.env['REDIS_BLOCKLIST_PREFIX'] = 'bl-dev:';
-    process.env['REDIS_MAX_RETRIES'] = '3';
 
     const config = authConfig();
 
@@ -31,17 +29,15 @@ describe('authConfig', () => {
     expect(config.supabaseUrl).toBe('https://abc.supabase.co');
     expect(config.redisUrl).toBe('redis://custom:6379');
     expect(config.redisBlocklistPrefix).toBe('bl-dev:');
-    expect(config.redisMaxRetriesPerRequest).toBe(3);
+    expect(config.redisMaxRetriesPerRequest).toBe(1);
 
     delete process.env['SUPABASE_JWT_SECRET'];
     delete process.env['SUPABASE_URL'];
     delete process.env['REDIS_URL'];
     delete process.env['REDIS_BLOCKLIST_PREFIX'];
-    delete process.env['REDIS_MAX_RETRIES'];
   });
 
   it('redisMaxRetriesPerRequest es un número entero', () => {
-    delete process.env['REDIS_MAX_RETRIES'];
     const config = authConfig();
     expect(Number.isInteger(config.redisMaxRetriesPerRequest)).toBe(true);
   });

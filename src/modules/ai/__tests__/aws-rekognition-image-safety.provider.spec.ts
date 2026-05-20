@@ -35,6 +35,12 @@ describe('AwsRekognitionImageSafetyProvider', () => {
     provider = new AwsRekognitionImageSafetyProvider(aiCfg as never);
   });
 
+  it('devuelve flagged=false cuando ModerationLabels es undefined', async () => {
+    mocks.sendFn.mockResolvedValueOnce({});
+    const result = await provider.classify(Buffer.from('img'));
+    expect(result.flagged).toBe(false);
+  });
+
   it('devuelve flagged=false cuando no hay etiquetas', async () => {
     const result = await provider.classify(Buffer.from('img'));
     expect(result.flagged).toBe(false);
@@ -54,6 +60,18 @@ describe('AwsRekognitionImageSafetyProvider', () => {
     expect(result.flagged).toBe(true);
     expect(result.scores['explicit_nudity']).toBeCloseTo(0.905);
     expect(result.scores['violence']).toBeCloseTo(0.75);
+  });
+
+  it('ignora etiquetas sin nombre o confidence', async () => {
+    mocks.sendFn.mockResolvedValueOnce({
+      ModerationLabels: [
+        { Name: undefined, Confidence: 90 },
+        { Name: 'Violence', Confidence: undefined },
+      ],
+    });
+    const result = await provider.classify(Buffer.from('img'));
+    expect(result.flagged).toBe(false);
+    expect(result.scores).toEqual({});
   });
 
   it('pasa el buffer al comando como Image.Bytes', async () => {

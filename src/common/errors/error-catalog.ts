@@ -128,6 +128,16 @@ export const ERRORS = {
     title: 'RUT duplicado',
     slug: 'company-rut-duplicate',
   },
+  RUT_ALREADY_REGISTERED: {
+    status: 409,
+    title: 'RUT ya registrado',
+    slug: 'rut-already-registered',
+  },
+  PROFESSIONAL_ONBOARDING_ROLE_CONFLICT: {
+    status: 409,
+    title: 'Rol no compatible con onboarding profesional',
+    slug: 'professional-onboarding-role-conflict',
+  },
   STORAGE_FORBIDDEN_KEY: {
     status: 403,
     title: 'Acceso denegado al storage',

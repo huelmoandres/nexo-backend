@@ -33,6 +33,7 @@ export const professionalProfileFactory =
     isAvailable: false,
     averageRating: 0,
     bio: null,
+    rut: null,
     experienceYears: 1,
     documentFrontKey: null,
     documentBackKey: null,

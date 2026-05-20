@@ -66,19 +66,39 @@ describe('PortfolioModerateProcessor', () => {
     );
   });
 
+  it('aplica veredicto FLAGGED cuando el provider lo devuelve', async () => {
+    moderationMock.moderate.mockResolvedValueOnce({
+      status: AiModerationStatus.FLAGGED,
+      modelRef: 'aws:rekognition:v1',
+      reason: 'explicit',
+    });
+    const processor = makeProcessor();
+    await processor.process(
+      makeJob({
+        itemId: 'item-flagged',
+        photoFileKeys: [],
+        text: 'texto',
+      }),
+    );
+    expect(repoMock.applyAiModerationVerdict).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aiModerationStatus: AiModerationStatus.FLAGGED,
+        reason: 'explicit',
+      }),
+    );
+  });
+
   it('fail-closed: llama applyAiModerationVerdict con FLAGGED si el provider lanza', async () => {
     moderationMock.moderate.mockRejectedValueOnce(new Error('provider down'));
     const processor = makeProcessor();
 
-    await expect(
-      processor.process(
-        makeJob({
-          itemId: 'item-2',
-          photoFileKeys: [],
-          text: 'texto',
-        }),
-      ),
-    ).rejects.toThrow('provider down');
+    await processor.process(
+      makeJob({
+        itemId: 'item-2',
+        photoFileKeys: [],
+        text: 'texto',
+      }),
+    );
 
     expect(repoMock.applyAiModerationVerdict).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -96,6 +116,74 @@ describe('PortfolioModerateProcessor', () => {
     await processor.process(job);
 
     expect(repoMock.applyAiModerationVerdict).not.toHaveBeenCalled();
+  });
+
+  it('fail-closed con error no-Error del provider', async () => {
+    moderationMock.moderate.mockRejectedValueOnce('provider-string');
+    const processor = makeProcessor();
+    await processor.process(
+      makeJob({ itemId: 'item-str', photoFileKeys: [], text: 't' }),
+    );
+    expect(repoMock.applyAiModerationVerdict).toHaveBeenCalled();
+  });
+
+  it('fail-closed: loguea error no-Error si applyAiModerationVerdict falla', async () => {
+    moderationMock.moderate.mockRejectedValueOnce(new Error('provider down'));
+    repoMock.applyAiModerationVerdict.mockRejectedValueOnce('db-string-fail');
+    const processor = makeProcessor();
+    await expect(
+      processor.process(
+        makeJob({ itemId: 'item-db-str', photoFileKeys: [], text: 't' }),
+      ),
+    ).rejects.toBe('db-string-fail');
+  });
+
+  it('fail-closed: loguea error si applyAiModerationVerdict falla tras provider error', async () => {
+    moderationMock.moderate.mockRejectedValueOnce(new Error('provider down'));
+    repoMock.applyAiModerationVerdict.mockRejectedValueOnce(
+      new Error('db write failed'),
+    );
+    const processor = makeProcessor();
+
+    await expect(
+      processor.process(
+        makeJob({
+          itemId: 'item-fail-write',
+          photoFileKeys: [],
+          text: 'texto',
+        }),
+      ),
+    ).rejects.toThrow('db write failed');
+  });
+
+  it('omite foto si downloadObject falla con error no-Error', async () => {
+    storageMock.downloadObject.mockRejectedValueOnce('r2-string');
+    const processor = makeProcessor();
+    await processor.process(
+      makeJob({
+        itemId: 'item-5',
+        photoFileKeys: ['photos/bad.jpg'],
+        text: 'texto',
+      }),
+    );
+    expect(moderationMock.moderate).toHaveBeenCalled();
+  });
+
+  it('omite foto si downloadObject falla', async () => {
+    storageMock.downloadObject
+      .mockRejectedValueOnce(new Error('r2 timeout'))
+      .mockResolvedValueOnce(Buffer.from('ok'));
+    const processor = makeProcessor();
+
+    await processor.process(
+      makeJob({
+        itemId: 'item-4',
+        photoFileKeys: ['photos/bad.jpg', 'photos/good.jpg'],
+        text: 'texto',
+      }),
+    );
+
+    expect(moderationMock.moderate).toHaveBeenCalled();
   });
 
   it('descarga buffers de imágenes de R2', async () => {

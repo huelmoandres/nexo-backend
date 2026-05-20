@@ -119,6 +119,23 @@ describe('AuthController', () => {
     expect(response.message).toContain('Logout exitoso');
   });
 
+  it('devToken delega a authService.generateDevToken', () => {
+    const authService = {
+      syncUser: vi.fn(),
+      logout: vi.fn(),
+      generateDevToken: vi.fn().mockReturnValue({ token: 'jwt-test' }),
+    };
+    const controller = new AuthController(authService as never);
+
+    const result = controller.devToken('test@nexos.com', 'uid-123');
+
+    expect(authService.generateDevToken).toHaveBeenCalledWith(
+      'test@nexos.com',
+      'uid-123',
+    );
+    expect(result.token).toBe('jwt-test');
+  });
+
   it('logout envía token vacío si header no es Bearer', async () => {
     const authService = {
       syncUser: vi.fn(),

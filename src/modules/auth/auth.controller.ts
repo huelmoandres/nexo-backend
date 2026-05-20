@@ -1,22 +1,28 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiExcludeEndpoint,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
+import { Public } from '@common/decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AuthUserResponseDto } from './dto/auth-user-response.dto';
+import { DevTokenResponseDto } from './dto/dev-token-response.dto';
 import { LogoutResponseDto } from './dto/logout-response.dto';
 import { SyncUserDto } from './dto/sync-user.dto';
 import { SupabaseAuthGuard } from './guards/supabase-auth.guard';
@@ -64,6 +70,27 @@ export class AuthController {
       fullName: result.user.fullName,
       role: result.user.role,
     };
+  }
+
+  @Get('dev-token')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiExcludeEndpoint(process.env['NODE_ENV'] === 'production')
+  @ApiOperation({ summary: '[DEV] Genera un JWT local para testing' })
+  @ApiQuery({ name: 'email', required: true, example: 'demo.pro@nexos.local' })
+  @ApiQuery({
+    name: 'uid',
+    required: true,
+    example: '00000000-0000-4000-8000-000000000002',
+  })
+  @ApiResponse({ status: 200, type: DevTokenResponseDto })
+  @ApiResponse({ status: 404, description: 'No disponible en producción' })
+  devToken(
+    @Query('email') email: string,
+    @Query('uid') uid: string,
+  ): DevTokenResponseDto {
+    return this.authService.generateDevToken(email, uid);
   }
 
   @Post('logout')

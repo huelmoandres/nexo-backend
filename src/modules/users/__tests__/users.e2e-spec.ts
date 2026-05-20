@@ -43,7 +43,7 @@ describe('UsersController (e2e)', () => {
         supabaseUid,
         email: `user-${supabaseUid.slice(0, 8)}@nexos.com`,
         fullName: 'E2E Pro',
-        role: Role.INDEPENDENT_PRO,
+        role: Role.CLIENT,
       },
     });
 
@@ -72,6 +72,7 @@ describe('UsersController (e2e)', () => {
 
     const userRow = await prisma.user.findUnique({ where: { supabaseUid } });
     expect(userRow).toBeTruthy();
+    expect(userRow!.role).toBe(Role.INDEPENDENT_PRO);
     const profileId = (await prisma.professionalProfile.findUnique({
       where: { userId: userRow!.id },
     }))!.id;

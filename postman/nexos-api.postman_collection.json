@@ -1,0 +1,693 @@
+{
+  "info": {
+    "name": "Nexos API",
+    "_postman_id": "nexos-api-collection-v1",
+    "description": "Colección completa de la API Nexos Backend.\n\nEl pre-request script a nivel de colección auto-genera un JWT via GET /api/auth/dev-token (solo en desarrollo). Para cambiar de usuario, modificar `current_email` y `current_uid` en el environment y limpiar `access_token`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-token: genera JWT via /api/auth/dev-token si no hay token válido.",
+          "// Solo funciona en desarrollo (NODE_ENV !== 'production').",
+          "// Si skip_auto_token está seteado (post-logout), no regenerar.",
+          "",
+          "const noAuth = pm.request.auth && pm.request.auth.type === 'noauth';",
+          "if (noAuth) return;",
+          "",
+          "if (pm.environment.get('skip_auto_token') === 'true') return;",
+          "",
+          "const token = pm.environment.get('access_token');",
+          "const exp = parseInt(pm.environment.get('token_exp') || '0');",
+          "",
+          "if (token && Date.now() < exp) return;",
+          "",
+          "const email = pm.environment.get('current_email') || 'demo.pro@nexos.local';",
+          "const uid = pm.environment.get('current_uid') || '00000000-0000-4000-8000-000000000002';",
+          "const base = pm.environment.get('baseUrl') || 'http://localhost:3000';",
+          "",
+          "pm.sendRequest({",
+          "  url: `${base}/api/auth/dev-token?email=${encodeURIComponent(email)}&uid=${encodeURIComponent(uid)}`,",
+          "  method: 'GET'",
+          "}, (err, res) => {",
+          "  if (err) { console.error('Auto-token failed:', err); return; }",
+          "  const body = res.json();",
+          "  if (body.token) {",
+          "    pm.environment.set('access_token', body.token);",
+          "    pm.environment.set('token_exp', (Date.now() + 3500000).toString());",
+          "  }",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "description": "Probes de liveness y readiness. No requieren autenticación.",
+      "item": [
+        {
+          "name": "Liveness probe",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health/live",
+            "description": "Responde 200 si el proceso está vivo."
+          }
+        },
+        {
+          "name": "Readiness probe",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health/ready",
+            "description": "Verifica conectividad con Postgres, Redis, Supabase JWT, Sentry y R2."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "description": "Autenticación y gestión de sesión.",
+      "item": [
+        {
+          "name": "[DEV] Generar token",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/dev-token?email={{current_email}}&uid={{current_uid}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "dev-token"],
+              "query": [
+                { "key": "email", "value": "{{current_email}}", "description": "Email del usuario" },
+                { "key": "uid", "value": "{{current_uid}}", "description": "Supabase UID" }
+              ]
+            },
+            "description": "Genera un JWT HS256 firmado con SUPABASE_JWT_SECRET. Solo disponible en desarrollo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.environment.set('access_token', body.token);",
+                  "  pm.environment.set('token_exp', (Date.now() + 3500000).toString());",
+                  "  pm.environment.unset('skip_auto_token');",
+                  "  pm.test('Token generado', () => pm.expect(body.token).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sync usuario (JIT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{current_email}}\",\n  \"fullName\": \"Profesional Demo Nexos\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/auth/sync",
+            "description": "Sincroniza usuario de Supabase con PostgreSQL. Crea si no existe (rol CLIENT), retorna si ya existe. Body: email (debe coincidir con JWT) y fullName (min 3 chars)."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/logout",
+            "description": "Invalida el token actual en la blocklist de Redis."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.environment.unset('access_token');",
+                  "  pm.environment.unset('token_exp');",
+                  "  pm.environment.set('skip_auto_token', 'true');",
+                  "  pm.test('Sesión invalidada — skip_auto_token activado', () => {",
+                  "    pm.expect(pm.environment.get('access_token')).to.be.undefined;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "description": "Gestión de perfil, empresa y documentos KYC.",
+      "item": [
+        {
+          "name": "Mi perfil",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/users/me",
+            "description": "Retorna el perfil del usuario autenticado, incluyendo professionalProfile si existe."
+          }
+        },
+        {
+          "name": "Crear perfil profesional",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bio\": \"Electricista matriculado con 10 años de experiencia en Montevideo.\",\n  \"experienceYears\": 10,\n  \"latitude\": -34.9011,\n  \"longitude\": -56.1645,\n  \"categoryIds\": [\n    \"{{categoryId}}\"\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/users/professional-profile",
+            "description": "Convierte un CLIENT en INDEPENDENT_PRO. Requiere al menos 1 categoryId válido."
+          }
+        },
+        {
+          "name": "Crear empresa",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ACME Servicios Uruguay S.A.\",\n  \"rut\": \"214567890013\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/users/company",
+            "description": "Crea una empresa. Requiere rol COMPANY_ADMIN. RUT uruguayo de 12 dígitos con dígito verificador DGI."
+          }
+        },
+        {
+          "name": "Presign documento KYC",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentKind\": \"IDENTITY_CARD\",\n  \"fileExtension\": \"jpg\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/users/documents/presign",
+            "description": "Genera URL firmada para subir documento KYC. documentKind: IDENTITY_CARD | SELFIE."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "description": "CRUD de categorías de servicio. Listado público, escritura SUPER_ADMIN.",
+      "item": [
+        {
+          "name": "Listar categorías (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/categories",
+            "description": "Lista plana de categorías activas. Público, sin auth."
+          }
+        },
+        {
+          "name": "Árbol de categorías (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/categories/tree",
+            "description": "Árbol jerárquico de categorías. Cacheado, público."
+          }
+        },
+        {
+          "name": "Crear categoría (admin)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('current_email', pm.environment.get('admin_email'));",
+                  "pm.environment.set('current_uid', pm.environment.get('admin_uid'));",
+                  "pm.environment.unset('access_token');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Herrería\",\n  \"slug\": \"herreria\",\n  \"supportsUrgency\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/categories",
+            "description": "Crea categoría raíz. Requiere SUPER_ADMIN. Para subcategoría agregar parentId."
+          }
+        },
+        {
+          "name": "Actualizar categoría (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Herrería y soldadura\",\n  \"supportsUrgency\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/categories/{{categoryId}}",
+            "description": "Actualiza categoría. Requiere SUPER_ADMIN."
+          }
+        },
+        {
+          "name": "Eliminar categoría (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/categories/{{categoryId}}",
+            "description": "Soft-delete de categoría. Requiere SUPER_ADMIN."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "description": "Búsqueda geoespacial de profesionales con PostGIS + FTS + expansión IA + pg_trgm. El motor expande queries automáticamente (ej: 'electricista' → ['electricista', 'electricidad', ...]) y hace fallback fuzzy con word_similarity.",
+      "item": [
+        {
+          "name": "Buscar profesionales (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/search/professionals?latitude=-34.9011&longitude=-56.1645&radiusKm=10&q=electricista&page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "search", "professionals"],
+              "query": [
+                { "key": "latitude", "value": "-34.9011", "description": "Latitud WGS84 (requerido)" },
+                { "key": "longitude", "value": "-56.1645", "description": "Longitud WGS84 (requerido)" },
+                { "key": "radiusKm", "value": "10", "description": "Radio en km (default 5, max 100)" },
+                { "key": "q", "value": "electricista", "description": "Texto libre con expansión IA + FTS + trigram (opcional)" },
+                { "key": "categoryId", "value": "", "description": "Filtrar por categoría (opcional)", "disabled": true },
+                { "key": "page", "value": "1", "description": "Página base 1" },
+                { "key": "limit", "value": "10", "description": "Resultados por página (max 50)" }
+              ]
+            },
+            "description": "Busca profesionales por radio geoespacial. El parámetro q se expande con IA (sinónimos/variantes) y busca en nombre + bio + categorías. Fallback fuzzy con pg_trgm. Público, sin auth."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Portfolio",
+      "description": "CRUD de items de portfolio para profesionales (INDEPENDENT_PRO / COMPANY_ADMIN).",
+      "item": [
+        {
+          "name": "Items CRUD",
+          "item": [
+            {
+              "name": "Crear item DRAFT",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  const body = pm.response.json();",
+                      "  pm.environment.set('itemId', body.id);",
+                      "  pm.test('Item creado como DRAFT', () => {",
+                      "    pm.expect(body.status).to.eql('DRAFT');",
+                      "    pm.expect(body.id).to.be.a('string');",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Reforma baño completo\",\n  \"description\": \"Reforma integral de baño de 6m2 con cerámicos importados, grifería Grohe y mampara frameless. Plazo 15 días.\",\n  \"categoryId\": \"{{categoryId}}\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": "{{baseUrl}}/api/portfolio/items",
+                "description": "Crea un item en estado DRAFT. Requiere INDEPENDENT_PRO o COMPANY_ADMIN. jobId opcional para vincular con trabajo cerrado."
+              }
+            },
+            {
+              "name": "Listar mis items",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/portfolio/items/mine?page=1&pageSize=10",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "portfolio", "items", "mine"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "pageSize", "value": "10" }
+                  ]
+                },
+                "description": "Lista los items de portfolio del profesional autenticado."
+              }
+            },
+            {
+              "name": "Ver item (público)",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/portfolio/items/{{itemId}}",
+                "description": "Detalle público de un item PUBLISHED. 404 si no existe o no está publicado."
+              }
+            },
+            {
+              "name": "Editar item",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Reforma baño premium - Pocitos\",\n  \"description\": \"Reforma integral de baño con cerámicos italianos Marazzi y grifería Grohe Euphoria.\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": "{{baseUrl}}/api/portfolio/items/{{itemId}}",
+                "description": "Actualización parcial de item. Solo el dueño puede editar."
+              }
+            },
+            {
+              "name": "Soft-delete item",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": "{{baseUrl}}/api/portfolio/items/{{itemId}}",
+                "description": "Soft-delete del item. Solo el dueño puede eliminar."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Photos",
+          "item": [
+            {
+              "name": "Presign foto",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  const body = pm.response.json();",
+                      "  pm.environment.set('photoKey', body.key);",
+                      "  pm.environment.set('uploadUrl', body.uploadUrl);",
+                      "  pm.test('Presign OK', () => {",
+                      "    pm.expect(body.uploadUrl).to.include('r2.cloudflarestorage.com');",
+                      "    pm.expect(body.key).to.be.a('string');",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fileExtension\": \"jpg\",\n  \"caption\": \"Vista frontal del trabajo terminado\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": "{{baseUrl}}/api/portfolio/items/{{itemId}}/photos/presign",
+                "description": "Genera URL firmada (PUT) para subir foto a R2. fileExtension: jpg|jpeg|png|webp. La URL expira en 15 min."
+              }
+            },
+            {
+              "name": "Registrar foto",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  const body = pm.response.json();",
+                      "  pm.environment.set('photoId', body.id);",
+                      "  pm.test('Foto registrada', () => pm.expect(body.id).to.be.a('string'));",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fileKey\": \"{{photoKey}}\",\n  \"caption\": \"Vista frontal del trabajo terminado\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": "{{baseUrl}}/api/portfolio/items/{{itemId}}/photos",
+                "description": "Registra una foto ya subida a R2. fileKey debe ser la key devuelta por presign. displayOrder opcional."
+              }
+            },
+            {
+              "name": "Eliminar foto",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": "{{baseUrl}}/api/portfolio/items/{{itemId}}/photos/{{photoId}}",
+                "description": "Elimina foto del item. Solo el dueño puede eliminar. Reordena displayOrder automáticamente."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Publish & Verify",
+          "item": [
+            {
+              "name": "Publicar item",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": "{{baseUrl}}/api/portfolio/items/{{itemId}}/publish",
+                "description": "Publica el item. Verifica que TODAS las fotos existan en R2. Si AI moderation está activa, pasa a HIDDEN_PENDING_REVIEW."
+              }
+            },
+            {
+              "name": "Solicitar verificación",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": "{{baseUrl}}/api/portfolio/items/{{itemId}}/request-verification",
+                "description": "Solicita verificación del item al cliente del job vinculado. Requiere jobId en el item y job CLOSED."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Portfolio Consent",
+      "description": "Flujo de consentimiento de verificación. Endpoints públicos (token en URL).",
+      "item": [
+        {
+          "name": "Preview consentimiento (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/portfolio/consents/{{consentToken}}",
+            "description": "Preview del consentimiento. El cliente accede con el token recibido por email."
+          }
+        },
+        {
+          "name": "Aceptar verificación (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/portfolio/consents/{{consentToken}}/accept",
+            "description": "El cliente acepta la verificación del trabajo."
+          }
+        },
+        {
+          "name": "Rechazar verificación (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"INACCURATE\",\n  \"notes\": \"El trabajo mostrado no corresponde con lo realizado.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/portfolio/consents/{{consentToken}}/decline",
+            "description": "El cliente rechaza la verificación. reason: NOT_MINE | INAPPROPRIATE | INACCURATE | PRIVACY | OTHER. notes opcional (max 500)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Portfolio Moderation",
+      "description": "Moderación de items. Queue y moderate requieren SUPER_ADMIN. Report cualquier usuario autenticado.",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Cambiar a token admin para requests de moderación",
+              "const currentEmail = pm.environment.get('current_email');",
+              "const adminEmail = pm.environment.get('admin_email');",
+              "if (currentEmail !== adminEmail) {",
+              "  pm.environment.set('current_email', adminEmail);",
+              "  pm.environment.set('current_uid', pm.environment.get('admin_uid'));",
+              "  pm.environment.unset('access_token');",
+              "}"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "Cola de moderación (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/portfolio/moderation/queue?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "portfolio", "moderation", "queue"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
+            },
+            "description": "Lista items pendientes de moderación. Requiere SUPER_ADMIN."
+          }
+        },
+        {
+          "name": "Aprobar item (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"approve\",\n  \"reason\": \"Contenido verificado manualmente.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/portfolio/items/{{itemId}}/moderate",
+            "description": "Aprueba un item. Pasa a PUBLISHED. Requiere SUPER_ADMIN. action: approve | hide."
+          }
+        },
+        {
+          "name": "Reportar item",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Reportar se hace como usuario normal, no admin",
+                  "pm.environment.set('current_email', 'demo.client@nexos.local');",
+                  "pm.environment.set('current_uid', '00000000-0000-4000-8000-000000000003');",
+                  "pm.environment.unset('access_token');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/portfolio/items/{{itemId}}/report",
+            "description": "Reporta un item PUBLISHED. Cualquier usuario autenticado excepto el dueño. Pasa a HIDDEN_PENDING_REVIEW."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Portfolio Public",
+      "description": "Vidriera pública del portfolio por profesional.",
+      "item": [
+        {
+          "name": "Portfolio de profesional (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/professionals/{{professionalId}}/portfolio?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "professionals", "{{professionalId}}", "portfolio"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" },
+                { "key": "categoryId", "value": "", "description": "Filtrar por categoría", "disabled": true },
+                { "key": "verifiedOnly", "value": "true", "description": "Solo items verificados", "disabled": true }
+              ]
+            },
+            "description": "Lista pública del portfolio de un profesional. Solo items PUBLISHED. Filtros opcionales: categoryId, verifiedOnly, paginación."
+          }
+        }
+      ]
+    }
+  ]
+}

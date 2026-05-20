@@ -1,0 +1,128 @@
+# PREREQUISITOS:
+# 1. Servidor corriendo: npm run start:dev
+# 2. Usuario con rol INDEPENDENT_PRO en DB (seed demo o POST /users/professional-profile)
+# 3. Al menos 1 categoría en DB (seed o POST /categories)
+# 4. Redis y Postgres corriendo
+#
+# FLUJO: Crear item → Presign foto → PUT a R2 → Registrar foto → Publicar → Editar → Eliminar
+
+@baseUrl = http://localhost:3000
+
+### Obtener token profesional
+# @name login
+GET {{baseUrl}}/api/auth/dev-token?email=demo.pro@nexos.local&uid=00000000-0000-4000-8000-000000000002
+
+###
+
+@authToken = {{login.response.body.$.token}}
+
+# Categoría válida (usar GET /api/categories para obtener una)
+@categoryId = 740d5519-da6a-4066-bde0-7e9cb9f06bc2
+
+### 1. Crear item DRAFT
+# @name createItem
+POST {{baseUrl}}/api/portfolio/items
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "title": "Reforma baño completo",
+  "description": "Reforma integral de baño de 6m2 con cerámicos importados, grifería Grohe y mampara frameless. Plazo 15 días.",
+  "categoryId": "{{categoryId}}"
+}
+
+###
+
+@itemId = {{createItem.response.body.$.id}}
+
+### 2. Presign foto (obtener URL firmada para upload)
+# @name presign
+POST {{baseUrl}}/api/portfolio/items/{{itemId}}/photos/presign
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "fileExtension": "jpg",
+  "caption": "Vista frontal del baño reformado"
+}
+
+###
+
+@photoKey = {{presign.response.body.$.key}}
+@uploadUrl = {{presign.response.body.$.uploadUrl}}
+
+### 3. PUT imagen a R2 (ejecutar fuera de REST Client)
+# La URL firmada expira en 15 min. Usar curl desde terminal:
+#
+# curl -X PUT "{{uploadUrl}}" \
+#   -H "Content-Type: image/jpeg" \
+#   --data-binary @/path/to/photo.jpg
+#
+# Si da 403, verificar:
+#   - La URL no expiró (< 15 min desde presign)
+#   - El Content-Type coincide con la extensión (image/jpeg para .jpg)
+#   - Las credenciales R2 tienen permiso de escritura (Object Read & Write)
+
+###
+
+### 4. Registrar foto (confirmar que ya está en R2)
+# @name addPhoto
+POST {{baseUrl}}/api/portfolio/items/{{itemId}}/photos
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "fileKey": "{{photoKey}}",
+  "caption": "Vista frontal del baño reformado"
+}
+
+###
+
+@photoId = {{addPhoto.response.body.$.id}}
+
+### 5. Publicar item
+# Requiere que TODAS las fotos registradas estén realmente en R2.
+# Si PORTFOLIO_AI_ENABLED=true, el item NO queda como PUBLISHED directamente.
+# Pasa a HIDDEN_PENDING_REVIEW → BullMQ encola moderación AI.
+# Para que sea visible públicamente, debe ser aprobado (manual o AI).
+POST {{baseUrl}}/api/portfolio/items/{{itemId}}/publish
+Authorization: Bearer {{authToken}}
+
+###
+
+### 6a. Listar mis items (autenticado, dueño) — siempre funciona
+GET {{baseUrl}}/api/portfolio/items/mine?page=1&pageSize=10
+Authorization: Bearer {{authToken}}
+
+###
+
+### 6b. Ver item publicado (público)
+# Solo funciona si el item está en status PUBLISHED.
+# Si AI moderation está activa, primero aprobar con 06-portfolio-moderation.http
+GET {{baseUrl}}/api/portfolio/items/{{itemId}}
+
+###
+
+### 7. Editar item (parcial)
+PATCH {{baseUrl}}/api/portfolio/items/{{itemId}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "title": "Reforma baño premium - Pocitos",
+  "description": "Reforma integral de baño de 6m2 con cerámicos italianos Marazzi, grifería Grohe Euphoria y mampara Profiltek frameless. Plazo 12 días hábiles."
+}
+
+###
+
+### 8. Eliminar foto específica
+DELETE {{baseUrl}}/api/portfolio/items/{{itemId}}/photos/{{photoId}}
+Authorization: Bearer {{authToken}}
+
+###
+
+### 9. Soft-delete item
+DELETE {{baseUrl}}/api/portfolio/items/{{itemId}}
+Authorization: Bearer {{authToken}}
+
+###

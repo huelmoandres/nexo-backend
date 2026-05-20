@@ -234,6 +234,23 @@ describe('GlobalExceptionFilter', () => {
     );
   });
 
+  it('en producción oculta el mensaje de error interno', () => {
+    const prev = process.env['NODE_ENV'];
+    process.env['NODE_ENV'] = 'production';
+    try {
+      const filter = new GlobalExceptionFilter(makeAppConfig());
+      const { host, json } = makeHost();
+      filter.catch(new Error('secret stack'), host);
+      expect(json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          detail: 'Error interno del servidor.',
+        }),
+      );
+    } finally {
+      process.env['NODE_ENV'] = prev;
+    }
+  });
+
   it('reporta a Sentry cuando status >= 500', () => {
     const filter = new GlobalExceptionFilter(makeAppConfig('https://dsn.test'));
     const { host, status, json } = makeHost();

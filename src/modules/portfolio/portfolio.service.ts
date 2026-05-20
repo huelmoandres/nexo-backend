@@ -27,8 +27,11 @@ import { NotificationsService } from '@modules/notifications/notifications.servi
 import {
   PORTFOLIO_PHOTO_KEY_PATTERN,
   assertKeyBelongsToUser,
+  buildPortfolioPhotoKey,
 } from '@modules/storage/storage-paths';
 import type { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
+import type { PresignPortfolioPhotoDto } from './dto/presign-portfolio-photo.dto';
+import type { PresignPortfolioPhotoResponseDto } from './dto/presign-portfolio-photo.dto';
 import type { ConsentPreviewResponseDto } from './dto/consent-preview-response.dto';
 import type { CreatePortfolioItemDto } from './dto/create-portfolio-item.dto';
 import type { DeclineConsentDto } from './dto/decline-consent.dto';
@@ -130,6 +133,35 @@ export class PortfolioService {
     });
 
     return this.toResponseDto(item);
+  }
+
+  /**
+   * Genera una URL prefirmada para subir una foto de portfolio.
+   * El key es generado por el servidor con la convención canónica.
+   */
+  async presignPhoto(
+    supabaseUid: string,
+    itemId: string,
+    dto: PresignPortfolioPhotoDto,
+  ): Promise<PresignPortfolioPhotoResponseDto> {
+    const professionalProfileId =
+      await this.resolveProfessionalProfileId(supabaseUid);
+    await this.assertItemOwned(itemId, professionalProfileId);
+
+    const ext = dto.fileExtension ?? 'jpg';
+    const mimeMap: Record<string, string> = {
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      webp: 'image/webp',
+    };
+    const key = buildPortfolioPhotoKey(professionalProfileId, itemId, ext);
+    const { uploadUrl } = await this.storage.generatePresignedPutUrl({
+      key,
+      contentType: mimeMap[ext],
+    });
+
+    return { uploadUrl, key };
   }
 
   /**
@@ -545,8 +577,27 @@ export class PortfolioService {
   private async assertObjectExistsWithRetry(
     fileKey: string,
   ): Promise<'ok' | 'not-found'> {
+    const withTimeout = () =>
+      Promise.race([
+        this.storage.assertObjectExists(fileKey),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new ServiceUnavailableException(
+                  buildProblem(
+                    'PORTFOLIO_PHOTOS_STORAGE_UNAVAILABLE',
+                    'HEAD timeout',
+                  ),
+                ),
+              ),
+            this.config.photosHeadTimeoutMs,
+          ),
+        ),
+      ]);
+
     try {
-      await this.storage.assertObjectExists(fileKey);
+      await withTimeout();
       return 'ok';
     } catch (err) {
       if (err instanceof NotFoundException) {
@@ -554,7 +605,7 @@ export class PortfolioService {
       }
       if (err instanceof ServiceUnavailableException) {
         try {
-          await this.storage.assertObjectExists(fileKey);
+          await withTimeout();
           return 'ok';
         } catch (retryErr) {
           if (retryErr instanceof NotFoundException) return 'not-found';
@@ -860,6 +911,7 @@ export class PortfolioService {
       return parts[0];
     }
     const last = parts[parts.length - 1];
+    /* v8 ignore next -- apellido vacío imposible tras filter(Boolean) */
     const initial = last[0] ? `${last[0].toUpperCase()}.` : '';
     return `${parts[0]} ${initial}`.trim();
   }

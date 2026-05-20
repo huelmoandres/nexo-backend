@@ -17,6 +17,12 @@ export class ProfessionalProfileMeDto {
   experienceYears?: number | null;
 
   @ApiPropertyOptional({
+    example: '214567890013',
+    description: 'RUT uruguayo normalizado (12 dígitos), si fue declarado.',
+  })
+  rut?: string | null;
+
+  @ApiPropertyOptional({
     example: -34.9011,
     description: 'Latitud WGS84 si el perfil tiene ubicación PostGIS.',
   })

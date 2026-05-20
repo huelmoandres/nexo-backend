@@ -1,13 +1,17 @@
 import {
+  ConflictException,
   Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import { AuditAction, Role, User } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import Redis from 'ioredis';
+import * as jwt from 'jsonwebtoken';
 import { buildProblem } from '@common/errors/problem.factory';
 import { PrismaService } from '@prisma/prisma.service';
 import { authConfig } from '@config/auth.config';
@@ -33,6 +37,30 @@ export class AuthService {
   ) {}
 
   /**
+   * Genera un JWT de desarrollo firmado con SUPABASE_JWT_SECRET.
+   * Solo disponible cuando NODE_ENV !== 'production'.
+   */
+  generateDevToken(email: string, uid: string): { token: string } {
+    if (process.env['NODE_ENV'] === 'production') {
+      throw new NotFoundException();
+    }
+
+    const secret = this.config.supabaseJwtSecret;
+    const token = jwt.sign(
+      {
+        sub: uid,
+        email,
+        role: 'authenticated',
+        aud: 'authenticated',
+      },
+      secret,
+      { expiresIn: '1h' },
+    );
+
+    return { token };
+  }
+
+  /**
    * Sincroniza un usuario de Supabase con la base de datos local (JIT).
    * Si el usuario ya existe lo retorna; si no, lo crea junto al `AuditLog`.
    *
@@ -52,6 +80,18 @@ export class AuthService {
         buildProblem(
           'AUTH_INVALID_TOKEN',
           'No se encontró el identificador del usuario en el JWT.',
+        ),
+      );
+    }
+
+    if (
+      payload.email &&
+      dto.email.toLowerCase() !== payload.email.toLowerCase()
+    ) {
+      throw new ConflictException(
+        buildProblem(
+          'CONFLICT',
+          'El email proporcionado no coincide con el email del token JWT.',
         ),
       );
     }
@@ -115,9 +155,10 @@ export class AuthService {
     const ttl = exp - now;
     const ttlSeconds = ttl > 0 ? ttl : 1;
 
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
     try {
       await this.redisClient.set(
-        `${this.config.redisBlocklistPrefix}${rawToken}`,
+        `${this.config.redisBlocklistPrefix}${tokenHash}`,
         '1',
         'EX',
         ttlSeconds,

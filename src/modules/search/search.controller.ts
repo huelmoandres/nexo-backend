@@ -5,6 +5,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Public } from '@common/decorators/public.decorator';
 import { SearchQueryDto } from './dto/search-query.dto';
 import { SearchResponseDto } from './dto/search-response.dto';
 import { SearchResultDto } from './dto/search-result.dto';
@@ -14,6 +15,7 @@ import { SearchService } from './search.service';
  * Motor de búsqueda geoespacial de Nexos.
  * Ruta pública — no requiere autenticación para permitir búsquedas sin cuenta.
  */
+@Public()
 @ApiTags('search')
 @ApiExtraModels(SearchResponseDto, SearchResultDto)
 @Controller('search')

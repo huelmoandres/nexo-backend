@@ -1,18 +1,12 @@
-import { AiModerationStatus } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
-import { AlwaysApprovedModerationProvider } from '../content-moderation.provider';
+import {
+  AlwaysApprovedModerationProvider,
+  CONTENT_MODERATION_PROVIDER_TOKEN,
+} from '@common/contracts/content-moderation.provider';
 
-describe('AlwaysApprovedModerationProvider', () => {
-  it('siempre devuelve APPROVED con modelRef stub', async () => {
-    const provider = new AlwaysApprovedModerationProvider();
-
-    const result = await provider.moderate({
-      text: 'whatever',
-      photoFileKeys: ['users/p/portfolio/x.webp'],
-    });
-
-    expect(result.status).toBe(AiModerationStatus.OK);
-    expect(result.modelRef).toBe('stub:none:v0');
-    expect(result.reason).toBeUndefined();
+describe('portfolio re-export content-moderation.provider', () => {
+  it('re-exporta el stub y el token desde common/contracts', () => {
+    expect(typeof CONTENT_MODERATION_PROVIDER_TOKEN).toBe('symbol');
+    expect(AlwaysApprovedModerationProvider).toBeDefined();
   });
 });

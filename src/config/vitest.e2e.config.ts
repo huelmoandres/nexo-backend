@@ -1,6 +1,9 @@
+import path from 'node:path';
 import swc from 'unplugin-swc';
 import tsconfigPaths from 'vite-tsconfig-paths';
 import { defineConfig } from 'vitest/config';
+
+const projectRoot = path.resolve(__dirname, '../..');
 
 /**
  * Configuración de Vitest para tests de INTEGRACIÓN (e2e).
@@ -18,8 +21,14 @@ import { defineConfig } from 'vitest/config';
  * Variables de entorno: cargadas desde `.env.test` en la raíz del proyecto.
  */
 export default defineConfig({
+  root: projectRoot,
+  resolve: {
+    alias: {
+      vitest: path.join(projectRoot, 'node_modules/vitest/dist/index.js'),
+    },
+  },
   plugins: [
-    tsconfigPaths(),
+    tsconfigPaths({ root: projectRoot }),
     swc.vite({
       module: { type: 'es6' },
       jsc: {

@@ -21,12 +21,17 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
+import { Public } from '@common/decorators/public.decorator';
 import { ProblemDetail } from '@common/dto/problem-detail.dto';
 import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
 import { SupabaseAuthGuard } from '@modules/auth/guards/supabase-auth.guard';
 import { Roles } from '@modules/users/decorators/roles.decorator';
 import { RolesGuard } from '@modules/users/guards/roles.guard';
 import { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
+import {
+  PresignPortfolioPhotoDto,
+  PresignPortfolioPhotoResponseDto,
+} from './dto/presign-portfolio-photo.dto';
 import { CreatePortfolioItemDto } from './dto/create-portfolio-item.dto';
 import { ListMyPortfolioQueryDto } from './dto/list-my-portfolio-query.dto';
 import {
@@ -122,6 +127,7 @@ export class PortfolioController {
     return this.portfolioService.listMyItems(sub, query);
   }
 
+  @Public()
   @Get('items/:id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -181,6 +187,35 @@ export class PortfolioController {
     @Body() dto: UpdatePortfolioItemDto,
   ): Promise<PortfolioItemResponseDto> {
     return this.portfolioService.updateItem(sub, itemId, dto);
+  }
+
+  @Post('items/:id/photos/presign')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('supabase-jwt')
+  @ApiOperation({
+    summary: 'Obtener URL prefirmada para subir foto de portfolio',
+    description:
+      'El servidor genera el key canónico y devuelve la URL firmada para PUT.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'URL firmada y key generado',
+    type: PresignPortfolioPhotoResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'PORTFOLIO_ITEM_NOT_FOUND',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  async presignPhoto(
+    @CurrentUser('sub') sub: string,
+    @Param('id', ParseUUIDPipe) itemId: string,
+    @Body() dto: PresignPortfolioPhotoDto,
+  ): Promise<PresignPortfolioPhotoResponseDto> {
+    return this.portfolioService.presignPhoto(sub, itemId, dto);
   }
 
   @Post('items/:id/photos')

@@ -1,0 +1,1 @@
+export const SEARCH_REDIS_CLIENT = Symbol('SEARCH_REDIS_CLIENT');

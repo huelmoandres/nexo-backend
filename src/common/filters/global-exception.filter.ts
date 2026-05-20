@@ -127,8 +127,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       };
     }
 
-    const detail =
-      exception instanceof Error ? exception.message : 'Unexpected error';
+    const isProduction = process.env['NODE_ENV'] === 'production';
+    const detail = isProduction
+      ? 'Error interno del servidor.'
+      : exception instanceof Error
+        ? exception.message
+        : 'Unexpected error';
     return {
       type: problemDetailTypeFromScreamingCode(
         this.config.problemDetailTypeBaseUrl,

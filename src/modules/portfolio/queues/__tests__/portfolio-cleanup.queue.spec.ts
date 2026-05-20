@@ -1,6 +1,9 @@
 import { Logger } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LoggingPortfolioCleanupQueue } from '../portfolio-cleanup.queue';
+import {
+  BullPortfolioCleanupQueue,
+  LoggingPortfolioCleanupQueue,
+} from '../portfolio-cleanup.queue';
 
 describe('LoggingPortfolioCleanupQueue', () => {
   afterEach(() => {
@@ -24,5 +27,38 @@ describe('LoggingPortfolioCleanupQueue', () => {
       professionalId: 'prof-1',
       itemId: 'item-1',
     });
+  });
+});
+
+describe('BullPortfolioCleanupQueue', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('encola job cleanup-item en BullMQ', async () => {
+    const queue = {
+      add: vi.fn().mockResolvedValue({ id: 'job-1' }),
+    };
+    const logSpy = vi
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+    const svc = new BullPortfolioCleanupQueue(queue as never);
+
+    await svc.enqueue({ professionalId: 'prof-1', itemId: 'item-1' });
+
+    expect(queue.add).toHaveBeenCalledWith(
+      'cleanup-item',
+      { professionalId: 'prof-1', itemId: 'item-1' },
+      expect.objectContaining({
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+      }),
+    );
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        op: 'portfolio.cleanup.enqueued',
+        itemId: 'item-1',
+      }),
+    );
   });
 });

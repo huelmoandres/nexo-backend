@@ -25,15 +25,21 @@ describe('CategoriesService', () => {
     cacheTtlSeconds: 3600,
   });
 
+  const makeEventEmitter = () => ({
+    emit: vi.fn(),
+  });
+
   const makeService = (repoOverrides = {}, redisOverrides = {}) => {
     const repo = makeRepo(repoOverrides);
     const redis = { ...makeRedis(), ...redisOverrides };
+    const eventEmitter = makeEventEmitter();
     const service = new CategoriesService(
       repo as never,
       redis as never,
       makeCategoriesConfig(),
+      eventEmitter as never,
     );
-    return { service, repo, redis };
+    return { service, repo, redis, eventEmitter };
   };
 
   beforeEach(() => {
@@ -127,6 +133,18 @@ describe('CategoriesService', () => {
       expect(redis.del).toHaveBeenCalledWith('categories:tree');
     });
 
+    it('emite categories.changed al crear categoría', async () => {
+      const cat = categoryFactory.build();
+      const { service, eventEmitter } = makeService({
+        findBySlug: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue(cat),
+      });
+
+      await service.create({ name: cat.name, slug: cat.slug });
+
+      expect(eventEmitter.emit).toHaveBeenCalledWith('categories.changed');
+    });
+
     it('invalida caché después del commit DB (no antes)', async () => {
       const cat = categoryFactory.build();
       const callOrder: string[] = [];
@@ -149,6 +167,7 @@ describe('CategoriesService', () => {
         repo as never,
         redis as never,
         makeCategoriesConfig(),
+        makeEventEmitter() as never,
       );
 
       await service.create({ name: cat.name, slug: cat.slug });

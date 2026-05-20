@@ -1,0 +1,69 @@
+# PREREQUISITOS:
+# 1. Servidor corriendo: npm run start:dev
+# 2. Items en estado HIDDEN_PENDING_REVIEW (post-publish con AI moderation activa)
+#
+# NOTA: Si PORTFOLIO_AI_ENABLED=true, al publicar un item queda en
+# HIDDEN_PENDING_REVIEW hasta que la moderación AI o un admin lo apruebe.
+# Usar este archivo para aprobar manualmente durante desarrollo.
+
+@baseUrl = http://localhost:3000
+
+### Obtener token admin
+# @name loginAdmin
+GET {{baseUrl}}/api/auth/dev-token?email=admin@nexos.local&uid=00000000-0000-4000-8000-000000000001
+
+###
+
+@adminToken = {{loginAdmin.response.body.$.token}}
+
+### Obtener token usuario (para reportar)
+# @name loginUser
+GET {{baseUrl}}/api/auth/dev-token?email=demo.client@nexos.local&uid=00000000-0000-4000-8000-000000000003
+
+###
+
+@userToken = {{loginUser.response.body.$.token}}
+
+# Item a moderar/reportar
+@itemId = PEGAR_ITEM_ID
+
+### 1. Cola de moderación (SUPER_ADMIN)
+# Items con aiModerationStatus FLAGGED o HIDDEN_PENDING_REVIEW
+GET {{baseUrl}}/api/portfolio/moderation/queue
+Authorization: Bearer {{adminToken}}
+
+###
+
+### 2. Aprobar item (SUPER_ADMIN)
+# Usar después de publicar si AI moderation está activa y el item quedó en HIDDEN_PENDING_REVIEW.
+# Esto lo pasa a PUBLISHED y queda visible públicamente.
+PATCH {{baseUrl}}/api/portfolio/items/{{itemId}}/moderate
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "action": "approve",
+  "reason": "Contenido verificado manualmente, cumple políticas."
+}
+
+###
+
+### 3. Ocultar item (SUPER_ADMIN)
+PATCH {{baseUrl}}/api/portfolio/items/{{itemId}}/moderate
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "action": "hide",
+  "reason": "Contenido inapropiado: imágenes no relacionadas con el servicio."
+}
+
+###
+
+### 4. Reportar item (cualquier usuario autenticado)
+# No puede reportar su propio item. Solo items PUBLISHED.
+# Pasa el item a HIDDEN_PENDING_REVIEW automáticamente.
+POST {{baseUrl}}/api/portfolio/items/{{itemId}}/report
+Authorization: Bearer {{userToken}}
+
+###

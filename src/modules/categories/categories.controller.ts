@@ -20,6 +20,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
+import { Public } from '@common/decorators/public.decorator';
 import { SupabaseAuthGuard } from '@modules/auth/guards/supabase-auth.guard';
 import { ProblemDetail } from '@common/dto/problem-detail.dto';
 import { Roles } from '@modules/users/decorators/roles.decorator';
@@ -36,6 +37,7 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
+  @Public()
   @Get()
   @ApiOperation({
     summary: 'Lista plana de categorías activas',
@@ -51,6 +53,7 @@ export class CategoriesController {
     return this.categoriesService.findAll();
   }
 
+  @Public()
   @Get('tree')
   @ApiOperation({
     summary: 'Árbol jerárquico de categorías (cacheado)',

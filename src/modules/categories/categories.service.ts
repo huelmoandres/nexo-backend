@@ -7,6 +7,7 @@ import {
 import { ConfigType } from '@nestjs/config';
 import type { Category } from '@prisma/client';
 import type Redis from 'ioredis';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { buildProblem } from '@common/errors/problem.factory';
 import { categoriesConfig } from '@config/categories.config';
 import { REDIS_AUTH_CLIENT } from '@modules/auth/auth.constants';
@@ -15,6 +16,7 @@ import type { CategoryTreeNodeDto } from './dto/category-tree-node.dto';
 import type { CreateCategoryDto } from './dto/create-category.dto';
 import type { UpdateCategoryDto } from './dto/update-category.dto';
 import { CategoriesRepository } from './categories.repository';
+import { CATEGORIES_CHANGED_EVENT } from './categories.events';
 
 /**
  * Lógica de negocio para categorías.
@@ -34,6 +36,7 @@ export class CategoriesService {
     @Inject(REDIS_AUTH_CLIENT) private readonly redis: Redis,
     @Inject(categoriesConfig.KEY)
     private readonly config: ConfigType<typeof categoriesConfig>,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -161,6 +164,7 @@ export class CategoriesService {
 
   private async invalidateTreeCache(): Promise<void> {
     await this.redis.del(this.config.cacheKeyTree);
+    this.eventEmitter.emit(CATEGORIES_CHANGED_EVENT);
   }
 
   /**

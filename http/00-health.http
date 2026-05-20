@@ -1,0 +1,17 @@
+# PREREQUISITOS:
+# - Servidor corriendo: npm run start:dev
+# - No requiere autenticación
+
+@baseUrl = http://localhost:3000
+
+### Liveness probe
+# Responde siempre 200 si el proceso está vivo.
+GET {{baseUrl}}/health/live
+
+###
+
+### Readiness probe
+# Verifica conectividad con Postgres, Redis, Supabase, Sentry y R2.
+GET {{baseUrl}}/health/ready
+
+###

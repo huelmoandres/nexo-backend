@@ -6,6 +6,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
+import { Role } from '@prisma/client';
+import { AuthorizationService } from '@modules/authorization/authorization.service';
 import { buildProblem } from '@common/errors/problem.factory';
 import { usersConfig } from '@config/users.config';
 import type { IStorageService } from '@modules/storage/interfaces/storage.service.interface';
@@ -24,11 +26,20 @@ import {
   UsersRepository,
 } from '../users.repository';
 import type { CompanySummaryDto } from '../dto/company-summary.dto';
+import { RutRegistrationService } from './rut-registration.service';
+
+const BLOCKED_PRO_ONBOARDING_ROLES: Role[] = [
+  Role.COMPANY_ADMIN,
+  Role.COMPANY_EMPLOYEE,
+  Role.SUPER_ADMIN,
+];
 
 @Injectable()
 export class UsersProfileService {
   constructor(
     private readonly usersRepository: UsersRepository,
+    private readonly rutRegistration: RutRegistrationService,
+    private readonly authorizationService: AuthorizationService,
     @Inject(STORAGE_SERVICE_TOKEN)
     private readonly storage: IStorageService,
     @Inject(usersConfig.KEY)
@@ -72,6 +83,8 @@ export class UsersProfileService {
       );
     }
 
+    this.assertRoleAllowsProfessionalOnboarding(user.role);
+
     const categoryCount = await this.usersRepository.countCategoriesByIds(
       dto.categoryIds,
     );
@@ -83,6 +96,13 @@ export class UsersProfileService {
         ),
       );
     }
+
+    const rutNormalized = this.rutRegistration.resolveRut(dto.rut);
+    if (rutNormalized) {
+      await this.rutRegistration.assertRutAvailable(rutNormalized);
+    }
+
+    const promoteRoleToIndependentPro = user.role === Role.CLIENT;
 
     const profile =
       await this.usersRepository.createProfessionalProfileWithPostgis({
@@ -96,7 +116,13 @@ export class UsersProfileService {
         stateId: dto.stateId,
         cityId: dto.cityId,
         neighborhoodId: dto.neighborhoodId,
+        rut: rutNormalized,
+        promoteRoleToIndependentPro,
       });
+
+    if (promoteRoleToIndependentPro) {
+      this.authorizationService.invalidateRoleCache(supabaseUid);
+    }
 
     const coords = await this.usersRepository.getProfileCoordinates(profile.id);
     return {
@@ -173,6 +199,25 @@ export class UsersProfileService {
     return { id: input.id, name: input.name, rut: input.rut };
   }
 
+  private assertRoleAllowsProfessionalOnboarding(role: Role): void {
+    if (BLOCKED_PRO_ONBOARDING_ROLES.includes(role)) {
+      throw new ConflictException(
+        buildProblem(
+          'PROFESSIONAL_ONBOARDING_ROLE_CONFLICT',
+          'Tu rol actual no permite crear un perfil profesional independiente.',
+        ),
+      );
+    }
+    if (role !== Role.CLIENT && role !== Role.INDEPENDENT_PRO) {
+      throw new ConflictException(
+        buildProblem(
+          'PROFESSIONAL_ONBOARDING_ROLE_CONFLICT',
+          'Tu rol actual no permite crear un perfil profesional independiente.',
+        ),
+      );
+    }
+  }
+
   private mapProfessionalProfile(
     profile: ProfessionalProfileWithCategories,
     coords: { latitude: number; longitude: number } | null,
@@ -181,6 +226,7 @@ export class UsersProfileService {
       id: profile.id,
       bio: profile.bio,
       experienceYears: profile.experienceYears,
+      rut: profile.rut,
       latitude: coords?.latitude ?? null,
       longitude: coords?.longitude ?? null,
       categories: profile.categories.map((pc) => ({

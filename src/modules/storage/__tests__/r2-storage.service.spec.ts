@@ -561,6 +561,20 @@ describe('R2StorageService', () => {
       );
     });
 
+    it('lanza ServiceUnavailableException cuando el objeto supera 50MB', async () => {
+      const svc = buildService(buildConfig());
+      const bigChunk = Buffer.alloc(26 * 1024 * 1024);
+      function* syncGen() {
+        yield bigChunk;
+        yield bigChunk;
+      }
+      mocks.mockSend.mockResolvedValueOnce({ Body: syncGen() });
+
+      await expect(svc.downloadObject('huge.jpg')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
     it('lanza ServiceUnavailableException cuando no está configurado', async () => {
       const svc = buildService(buildConfig({ r2Endpoint: '' }));
       await expect(svc.downloadObject('key.jpg')).rejects.toThrow(

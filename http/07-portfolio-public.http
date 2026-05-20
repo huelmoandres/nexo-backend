@@ -1,0 +1,39 @@
+# PREREQUISITOS:
+# 1. Servidor corriendo: npm run start:dev
+# 2. Al menos un profesional con items publicados
+# 3. No requiere autenticación (endpoints públicos)
+
+@baseUrl = http://localhost:3000
+
+# ID del profesional (professionalProfile.id, NO el userId)
+@professionalId = 045ce03f-b009-4ee8-bfe8-e56ce491ccda
+
+# Categoría para filtrar (opcional)
+@categoryId = 740d5519-da6a-4066-bde0-7e9cb9f06bc2
+
+###
+
+### Portfolio público de un profesional (sin filtros)
+GET {{baseUrl}}/api/professionals/{{professionalId}}/portfolio
+
+###
+
+### Portfolio con paginación
+GET {{baseUrl}}/api/professionals/{{professionalId}}/portfolio?page=1&pageSize=5
+
+###
+
+### Portfolio filtrado por categoría
+GET {{baseUrl}}/api/professionals/{{professionalId}}/portfolio?categoryId={{categoryId}}
+
+###
+
+### Portfolio solo items verificados
+GET {{baseUrl}}/api/professionals/{{professionalId}}/portfolio?verifiedOnly=true
+
+###
+
+### Portfolio con todos los filtros combinados
+GET {{baseUrl}}/api/professionals/{{professionalId}}/portfolio?categoryId={{categoryId}}&verifiedOnly=true&page=1&pageSize=10
+
+###

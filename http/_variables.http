@@ -1,0 +1,24 @@
+### Variables compartidas para todos los archivos .http
+### Extensión: REST Client (humao.rest-client)
+
+@baseUrl = http://localhost:3000
+
+# --- Usuarios demo (sincronizados con seed) ---
+@proEmail = demo.pro@nexos.local
+@proUid = 00000000-0000-4000-8000-000000000002
+@adminEmail = admin@nexos.local
+@adminUid = 00000000-0000-4000-8000-000000000001
+@clientEmail = demo.client@nexos.local
+@clientUid = 00000000-0000-4000-8000-000000000003
+
+# --- Tokens automáticos ---
+# Cada archivo .http obtiene su token via GET /api/auth/dev-token (solo dev).
+# El primer request de cada archivo es "# @name login" y genera el token.
+# Los requests siguientes lo usan con {{login.response.body.$.token}}.
+#
+# Para generar tokens manualmente:
+#   bash http/generate-token.sh demo.pro@nexos.local 00000000-0000-4000-8000-000000000002
+
+# --- IDs dinámicos (se llenan durante la ejecución del flujo) ---
+# Copiar IDs de las respuestas a las variables @itemId, @photoId, etc.
+# dentro de cada archivo .http según se indica en los comentarios.

@@ -3,6 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { Role } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { userFactory } from '@test/factories';
 import { PresignDocumentKind } from '../dto/presign-document.dto';
@@ -13,13 +14,37 @@ describe('UsersProfileService', () => {
     roleCacheTtlMs: 30000,
     kycBucket: 'nexos-kyc',
   });
+
+  const makeRutRegistration = () => ({
+    resolveRut: vi.fn().mockReturnValue(undefined),
+    assertRutAvailable: vi.fn().mockResolvedValue(undefined),
+  });
+
+  const makeAuthz = () => ({
+    invalidateRoleCache: vi.fn(),
+  });
+
+  const createService = (
+    repo: Record<string, unknown>,
+    storage: Record<string, unknown> = { generatePresignedPutUrl: vi.fn() },
+    rutRegistration = makeRutRegistration(),
+    authorizationService = makeAuthz(),
+  ) =>
+    new UsersProfileService(
+      repo as never,
+      rutRegistration as never,
+      authorizationService as never,
+      storage as never,
+      makeUsersConfig(),
+    );
+
   const baseUser = {
     ...userFactory.build({
       id: 'u1',
       supabaseUid: 'sub-1',
       email: 'a@b.com',
       fullName: 'Test',
-      role: 'INDEPENDENT_PRO',
+      role: Role.INDEPENDENT_PRO,
     }),
     company: null,
     ownedCompany: null,
@@ -28,12 +53,7 @@ describe('UsersProfileService', () => {
 
   it('getMe lanza USER_NOT_FOUND si no existe usuario', async () => {
     const repo = { findBySupabaseUidForMe: vi.fn().mockResolvedValue(null) };
-    const storage = { generatePresignedPutUrl: vi.fn() };
-    const service = new UsersProfileService(
-      repo as never,
-      storage as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo);
 
     await expect(service.getMe('sub')).rejects.toBeInstanceOf(
       NotFoundException,
@@ -64,12 +84,7 @@ describe('UsersProfileService', () => {
         .fn()
         .mockResolvedValue({ latitude: -34.9, longitude: -56.1 }),
     };
-    const storage = { generatePresignedPutUrl: vi.fn() };
-    const service = new UsersProfileService(
-      repo as never,
-      storage as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo);
 
     const result = await service.getMe('sub');
     expect(result.company?.id).toBe('c1');
@@ -87,11 +102,7 @@ describe('UsersProfileService', () => {
       }),
       getProfileCoordinates: vi.fn(),
     };
-    const service = new UsersProfileService(
-      repo as never,
-      { generatePresignedPutUrl: vi.fn() } as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo);
 
     const result = await service.getMe('sub');
     expect(result.company?.id).toBe('ce');
@@ -108,11 +119,7 @@ describe('UsersProfileService', () => {
       }),
       getProfileCoordinates: vi.fn(),
     };
-    const service = new UsersProfileService(
-      repo as never,
-      { generatePresignedPutUrl: vi.fn() } as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo);
 
     const result = await service.getMe('sub');
     expect(result.company).toBeUndefined();
@@ -121,11 +128,7 @@ describe('UsersProfileService', () => {
 
   it('createProfessionalProfile lanza USER_NOT_FOUND', async () => {
     const repo = { findBySupabaseUidForMe: vi.fn().mockResolvedValue(null) };
-    const service = new UsersProfileService(
-      repo as never,
-      { generatePresignedPutUrl: vi.fn() } as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo);
 
     await expect(
       service.createProfessionalProfile('sub', {
@@ -142,11 +145,7 @@ describe('UsersProfileService', () => {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue(baseUser),
       hasProfessionalProfile: vi.fn().mockResolvedValue(true),
     };
-    const service = new UsersProfileService(
-      repo as never,
-      { generatePresignedPutUrl: vi.fn() } as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo);
 
     await expect(
       service.createProfessionalProfile('sub', {
@@ -158,17 +157,74 @@ describe('UsersProfileService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('createProfessionalProfile lanza PROFESSIONAL_ONBOARDING_ROLE_CONFLICT para COMPANY_ADMIN', async () => {
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue({
+        ...baseUser,
+        role: Role.COMPANY_ADMIN,
+      }),
+      hasProfessionalProfile: vi.fn().mockResolvedValue(false),
+    };
+    const service = createService(repo);
+
+    await expect(
+      service.createProfessionalProfile('sub', {
+        experienceYears: 2,
+        latitude: -34.9,
+        longitude: -56.1,
+        categoryIds: ['cat1'],
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('createProfessionalProfile promueve CLIENT e invalida cache de rol', async () => {
+    const clientUser = { ...baseUser, role: Role.CLIENT };
+    const createProfessionalProfileWithPostgis = vi.fn().mockResolvedValue({
+      id: 'p1',
+      bio: 'Bio',
+      experienceYears: 2,
+      rut: null,
+      categories: [{ category: { id: 'cat1', name: 'E', slug: 'e' } }],
+    });
+    const authorizationService = makeAuthz();
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue(clientUser),
+      hasProfessionalProfile: vi.fn().mockResolvedValue(false),
+      countCategoriesByIds: vi.fn().mockResolvedValue(1),
+      createProfessionalProfileWithPostgis,
+      getProfileCoordinates: vi
+        .fn()
+        .mockResolvedValue({ latitude: -34.9, longitude: -56.2 }),
+    };
+    const service = createService(
+      repo,
+      {},
+      makeRutRegistration(),
+      authorizationService,
+    );
+
+    await service.createProfessionalProfile('sub', {
+      experienceYears: 2,
+      latitude: -34.9,
+      longitude: -56.2,
+      categoryIds: ['cat1'],
+    });
+
+    expect(createProfessionalProfileWithPostgis).toHaveBeenCalledWith(
+      expect.objectContaining({ promoteRoleToIndependentPro: true }),
+    );
+    expect(authorizationService.invalidateRoleCache).toHaveBeenCalledWith(
+      'sub',
+    );
+  });
+
   it('createProfessionalProfile lanza INVALID_CATEGORY_IDS', async () => {
     const repo = {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue(baseUser),
       hasProfessionalProfile: vi.fn().mockResolvedValue(false),
       countCategoriesByIds: vi.fn().mockResolvedValue(0),
     };
-    const service = new UsersProfileService(
-      repo as never,
-      { generatePresignedPutUrl: vi.fn() } as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo);
 
     await expect(
       service.createProfessionalProfile('sub', {
@@ -195,11 +251,7 @@ describe('UsersProfileService', () => {
         .fn()
         .mockResolvedValue({ latitude: -34.9, longitude: -56.2 }),
     };
-    const service = new UsersProfileService(
-      repo as never,
-      { generatePresignedPutUrl: vi.fn() } as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo);
 
     const result = await service.createProfessionalProfile('sub', {
       bio: 'Bio',
@@ -225,11 +277,7 @@ describe('UsersProfileService', () => {
       }),
       getProfileCoordinates: vi.fn().mockResolvedValue(null),
     };
-    const service = new UsersProfileService(
-      repo as never,
-      { generatePresignedPutUrl: vi.fn() } as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo);
 
     const result = await service.createProfessionalProfile('sub', {
       bio: 'Bio',
@@ -244,11 +292,7 @@ describe('UsersProfileService', () => {
 
   it('presignDocument lanza USER_NOT_FOUND', async () => {
     const repo = { findBySupabaseUidForMe: vi.fn().mockResolvedValue(null) };
-    const service = new UsersProfileService(
-      repo as never,
-      { generatePresignedPutUrl: vi.fn() } as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo);
 
     await expect(
       service.presignDocument('sub', {
@@ -261,11 +305,7 @@ describe('UsersProfileService', () => {
     const repo = {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue(baseUser),
     };
-    const service = new UsersProfileService(
-      repo as never,
-      { generatePresignedPutUrl: vi.fn() } as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo);
 
     await expect(
       service.presignDocument('sub', {
@@ -286,11 +326,7 @@ describe('UsersProfileService', () => {
       }),
       updateProfessionalDocumentKey,
     };
-    const service = new UsersProfileService(
-      repo as never,
-      { generatePresignedPutUrl } as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo, { generatePresignedPutUrl });
 
     const result = await service.presignDocument('sub', {
       documentKind: PresignDocumentKind.IDENTITY_CARD,
@@ -317,11 +353,7 @@ describe('UsersProfileService', () => {
       }),
       updateProfessionalDocumentKey,
     };
-    const service = new UsersProfileService(
-      repo as never,
-      { generatePresignedPutUrl } as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo, { generatePresignedPutUrl });
 
     await service.presignDocument('sub', {
       documentKind: PresignDocumentKind.SELFIE,
@@ -346,11 +378,7 @@ describe('UsersProfileService', () => {
       }),
       updateProfessionalDocumentKey: vi.fn(),
     };
-    const service = new UsersProfileService(
-      repo as never,
-      { generatePresignedPutUrl } as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo, { generatePresignedPutUrl });
 
     await expect(
       service.presignDocument('sub', {
@@ -372,11 +400,7 @@ describe('UsersProfileService', () => {
       }),
       updateProfessionalDocumentKey: vi.fn(),
     };
-    const service = new UsersProfileService(
-      repo as never,
-      { generatePresignedPutUrl } as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo, { generatePresignedPutUrl });
 
     await service.presignDocument('sub', {
       documentKind: PresignDocumentKind.IDENTITY_CARD,
@@ -399,11 +423,10 @@ describe('UsersProfileService', () => {
       }),
       updateProfessionalDocumentKey,
     };
-    const service = new UsersProfileService(
-      repo as never,
-      { generatePresignedPutUrl } as never,
-      makeUsersConfig(),
-    );
+    const service = createService(repo, {
+      generatePresignedPutUrl,
+      updateProfessionalDocumentKey,
+    });
 
     const result = await service.presignDocument('sub', {
       documentKind: PresignDocumentKind.IDENTITY_CARD,

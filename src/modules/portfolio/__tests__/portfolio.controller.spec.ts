@@ -7,6 +7,7 @@ describe('PortfolioController', () => {
     const service = {
       createItem: vi.fn(),
       addPhoto: vi.fn(),
+      presignPhoto: vi.fn(),
       deletePhoto: vi.fn(),
       updateItem: vi.fn(),
       softDeleteItem: vi.fn(),
@@ -48,6 +49,21 @@ describe('PortfolioController', () => {
       const result = await controller.createItem('sub-1', dto);
 
       expect(service.createItem).toHaveBeenCalledWith('sub-1', dto);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('POST /items/:id/photos/presign (presignPhoto)', () => {
+    it('delega en service.presignPhoto', async () => {
+      const { controller, service } = makeController();
+      const expected = {
+        uploadUrl: 'https://r2/upload',
+        key: 'users/prof/portfolio/item-1/uuid.jpg',
+      };
+      service.presignPhoto.mockResolvedValue(expected);
+      const dto = { fileExtension: 'jpg' as const };
+      const result = await controller.presignPhoto('sub-1', 'item-1', dto);
+      expect(service.presignPhoto).toHaveBeenCalledWith('sub-1', 'item-1', dto);
       expect(result).toEqual(expected);
     });
   });

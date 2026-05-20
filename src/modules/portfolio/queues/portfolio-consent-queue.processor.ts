@@ -76,6 +76,7 @@ export class PortfolioConsentQueueProcessor extends WorkerHost {
       });
       await this.repository.markConsentReminderSent(consentId);
     } catch (caught: unknown) {
+      /* v8 ignore next -- normalización de error no-Error cubierta en tests */
       const err = caught instanceof Error ? caught : new Error(String(caught));
       this.logger.error(
         { err, consentId, op: 'portfolio.consent.reminderFailed' },

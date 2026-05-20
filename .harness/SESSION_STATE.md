@@ -6,8 +6,8 @@
 
 ## Estado Actual del Proyecto
 
-**Fase:** Implementación de dominios core + harness alineado al código
-**Fecha de última actualización:** 2026-05-13 (AiModule + worker portfolio-moderate + caché + locks + sharp + circuit breaker + policyVersion)
+**Fase:** Implementación de dominios core + auditoría integral aplicada
+**Fecha de última actualización:** 2026-05-20 (Search: FTS+categorías, expansión IA, pg_trgm; simplificación configs)
 
 ---
 
@@ -22,9 +22,11 @@
 | `diagnostics` | **Implementado** | Sin spec larga — ver `src/modules/diagnostics/` + `.harness/INDEX.md` |
 | `categories` | **Implementado** | (Swagger tag `categories`) |
 | `search` | **Implementado** | `.harness/specs/search-matching.md` |
-| `portfolio` | **Owner CRUD + consent + BullMQ + públicos + throttle + moderación admin + worker IA** | `.harness/specs/portfolio-module.md` — reminder/expiración consent; notificaciones in-app; `GET /api/professionals/:id/portfolio` y detalle público; cola `SUPER_ADMIN`, `PATCH …/moderate`, `POST …/report` autenticado; worker `portfolio-moderate` cableado con AiModule (flag `PORTFOLIO_AI_ENABLED`); **pendiente:** `portfolio-cleanup` físico (stub) |
-| `ai` | **Implementado** | `src/modules/ai/` — módulo IA compartido: PiiSanitizer, InferenceCache L1/L2, InferenceLock (Redlock), ImagePrepService (sharp), CategoryMatcher, OpenAiTextModeration, AwsRekognitionImageSafety, AiContentModerationService (circuit breaker opossum). Caché cross-módulo con policyVersion + hitsCount. |
-| Escrow, Urgency, Dispute, Reviews, Chat, Notifications | **Roadmap / parcial** | Specs y evals en harness; ver tabla legacy abajo |
+| `portfolio` | **Completo** | `.harness/specs/portfolio-module.md` — Owner CRUD + consent + BullMQ + públicos + presign + throttle + moderación admin + worker IA + cleanup worker real |
+| `ai` | **Implementado** | `src/modules/ai/` — módulo IA compartido + InferenceCacheGcService |
+| `authorization` | **Implementado** | `src/modules/authorization/` — AuthorizationService + RolesGuard compartidos |
+| `notifications` | **Implementado** | `src/modules/notifications/` — notificaciones transaccionales |
+| Escrow, Urgency, Dispute, Reviews, Chat | **Roadmap** | Specs y evals en harness; ver tabla legacy abajo |
 
 ### Roadmap (legacy harness)
 
@@ -87,6 +89,9 @@
 
 > Agregar observaciones de sesión aquí.
 
+- **2026-05-20 (Onboarding profesional):** `POST /users/professional-profile` promueve `CLIENT` → `INDEPENDENT_PRO` en transacción; `RutRegistrationService` centraliza DGI + unicidad global; `ProfessionalProfile.rut` opcional; `AuthorizationService.invalidateRoleCache`.
+- **2026-05-20 (Search expansion prompt dinámico):** System prompt de expansión ahora se construye **dinámicamente** desde la tabla `Category` de la BD (`buildSearchExpansionSystemPrompt(categories)`). `SearchQueryExpanderService` carga categorías al init via `CategoriesRepository`; `CategoriesService` invoca `reloadCategories()` tras create/update/delete. No requiere mantener catálogo estático en código. Fix: `parseExpansionTermsJson` sanitiza respuestas con fences markdown (` ```json `).
+- **2026-05-20 (Search inteligente + config cleanup):** Motor de búsqueda mejorado: FTS incluye nombres de categorías; expansión de query con OpenAI (`SearchQueryExpanderService`, cache Redis 7d, circuit breaker, timeout 2s); fallback fuzzy con `pg_trgm` (`word_similarity`). Migración `20260520030000_add_pg_trgm_extension`. Archivos nuevos: `search-query-expander.service.ts`, `search.constants.ts`. Simplificación de configs: `process.env` solo para secretos, feature flags, connection strings y tuning operativo; constantes fijas para prompts, CB thresholds, cache prefixes, límites de negocio. Fix seguridad: DSN Sentry hardcodeado eliminado de `app.config.ts`.
 - **2026-05-13 (AiModule + worker IA):** Nuevo `AiModule` en `src/modules/ai/` con: `PiiSanitizerService`, `InferenceCacheService` (Redis L1 + Postgres L2, `hitsCount`, `policyVersion`), `InferenceLockService` (Redlock, `finally` unlock, TTL > timeout, jitter en colisión, shutdown hook), `ImagePrepService` (sharp, `durationMs` + `outputBytes`), `CategoryMatcherService` (`parentId` + CATEGORY_MAX_DEPTH), `OpenAiTextModerationProvider`, `AwsRekognitionImageSafetyProvider`, `AiContentModerationService` (circuit breaker opossum, fail-closed). Worker `portfolio-moderate` operativo: descarga buffers R2, llama provider, escribe veredicto en BD con `policyVersion` en `PortfolioModerationLog`. `PortfolioModule` usa `AiContentModerationService` cuando `PORTFOLIO_AI_ENABLED=true`; stub cuando false. Nueva tabla `AiInferenceCache` en Prisma. `downloadObject` en `IStorageService`. `ai.config.ts` registrado en `AppModule`.
 - **2026-05-13:** Throttler global + límites en auth/consent; lecturas públicas; cola/moderación admin y reporte autenticado; `AuditAction` ampliado; catálogo `TOO_MANY_REQUESTS` (429 RFC 7807). Harness (`SESSION_STATE`, `portfolio-module.md`) alineado al código.
 

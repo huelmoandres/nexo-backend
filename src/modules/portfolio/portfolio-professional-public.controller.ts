@@ -14,6 +14,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Public } from '@common/decorators/public.decorator';
 import { ProblemDetail } from '@common/dto/problem-detail.dto';
 import { ListPublicPortfolioQueryDto } from './dto/list-public-portfolio-query.dto';
 import {
@@ -26,6 +27,7 @@ import { PortfolioService } from './portfolio.service';
 /**
  * Vidriera pública del portfolio por profesional (`GET /professionals/.../portfolio`).
  */
+@Public()
 @ApiTags('portfolio')
 @ApiExtraModels(
   PortfolioItemResponseDto,

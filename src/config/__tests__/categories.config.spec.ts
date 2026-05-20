@@ -3,7 +3,6 @@ import { categoriesConfig } from '../categories.config';
 
 describe('categoriesConfig', () => {
   it('usa defaults cuando no hay variables de entorno', () => {
-    delete process.env['CATEGORIES_CACHE_KEY_TREE'];
     delete process.env['CATEGORIES_CACHE_TTL_SECONDS'];
 
     const config = categoriesConfig();
@@ -12,16 +11,14 @@ describe('categoriesConfig', () => {
     expect(config.cacheTtlSeconds).toBe(3600);
   });
 
-  it('usa valores de entorno cuando existen', () => {
-    process.env['CATEGORIES_CACHE_KEY_TREE'] = 'custom:tree';
+  it('usa CATEGORIES_CACHE_TTL_SECONDS desde entorno', () => {
     process.env['CATEGORIES_CACHE_TTL_SECONDS'] = '7200';
 
     const config = categoriesConfig();
 
-    expect(config.cacheKeyTree).toBe('custom:tree');
+    expect(config.cacheKeyTree).toBe('categories:tree');
     expect(config.cacheTtlSeconds).toBe(7200);
 
-    delete process.env['CATEGORIES_CACHE_KEY_TREE'];
     delete process.env['CATEGORIES_CACHE_TTL_SECONDS'];
   });
 

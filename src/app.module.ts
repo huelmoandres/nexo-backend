@@ -2,7 +2,10 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigType } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
+import { SupabaseAuthGuard } from '@modules/auth/guards/supabase-auth.guard';
 import Redis from 'ioredis';
 import { GlobalExceptionFilter } from '@common/filters/global-exception.filter';
 import { AppLoggerModule } from '@common/logger/logger.module';
@@ -53,13 +56,15 @@ import { UsersModule } from '@modules/users/users.module';
         }),
       }),
     }),
-    ThrottlerModule.forRoot([
-      {
-        name: 'default',
-        ttl: 60_000,
-        limit: 100,
-      },
-    ]),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [authConfig.KEY],
+      useFactory: (auth: ConfigType<typeof authConfig>) => ({
+        throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
+        storage: new ThrottlerStorageRedisService(auth.redisUrl),
+      }),
+    }),
+    EventEmitterModule.forRoot(),
     AppLoggerModule,
     DiagnosticsModule,
     HealthModule,
@@ -73,6 +78,7 @@ import { UsersModule } from '@modules/users/users.module';
   ],
   providers: [
     GlobalExceptionFilter,
+    { provide: APP_GUARD, useClass: SupabaseAuthGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })

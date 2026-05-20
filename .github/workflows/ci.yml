@@ -14,40 +14,108 @@ permissions:
   contents: read
 
 jobs:
-  quality:
-    name: Quality gate
+  setup:
+    name: Install & Generate
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - uses: actions/cache/save@v4
+        with:
+          path: |
+            node_modules
+            node_modules/.prisma
+          key: deps-${{ hashFiles('package-lock.json') }}
 
-      - name: Install dependencies
-        run: npm ci
+  lint:
+    name: Lint & Format
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            node_modules/.prisma
+          key: deps-${{ hashFiles('package-lock.json') }}
+      - name: Prettier check
+        run: npx prettier --check "src/**/*.ts" "test/**/*.ts"
+      - name: ESLint (no fix)
+        run: npx eslint "{src,apps,libs,test}/**/*.ts" --max-warnings=0
 
-      - name: Generate Prisma Client
-        run: npx prisma generate
-
+  typecheck:
+    name: TypeScript
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            node_modules/.prisma
+          key: deps-${{ hashFiles('package-lock.json') }}
+      - run: npx tsc --noEmit
       - name: Architecture coherence check
         run: npm run architecture:check
         env:
           NODE_ENV: test
 
-      - name: Quality check
-        run: npm run quality:check
+  unit-tests:
+    name: Unit Tests + Coverage
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            node_modules/.prisma
+          key: deps-${{ hashFiles('package-lock.json') }}
+      - name: Run unit tests with coverage
+        run: npm run test:cov:strict
         env:
           NODE_ENV: test
-
-      - name: Upload coverage report
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: vitest-coverage
           path: coverage/
           if-no-files-found: warn
+
+  e2e-tests:
+    name: E2E Tests
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            node_modules/.prisma
+          key: deps-${{ hashFiles('package-lock.json') }}
+      - name: Run e2e tests
+        run: npm run test:e2e
+        env:
+          NODE_ENV: test
