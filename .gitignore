@@ -28,6 +28,9 @@ lerna-debug.log*
 .settings/
 *.sublime-workspace
 
+# Cursor (reglas en .cursorrules en la raíz)
+.cursor/
+
 # IDE - VSCode
 .vscode/*
 !.vscode/settings.json

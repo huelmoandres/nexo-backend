@@ -43,3 +43,37 @@ Doctrina completa: `/.harness/rules/docs-first.md`.
 - **Documentación:** Aplicar TSDoc en todas las funciones. No dejes código muerto o comentado.
 - **Finanzas:** Toda operación sobre `EscrowTransaction` dentro de `prisma.$transaction()`. Ver `/.harness/rules/money-rules.md`.
 - **API:** Sin `console.log`. Logging con Pino. Paginación obligatoria en listas. Ver `/.harness/rules/api-rules.md`.
+
+## 6. SINCRONIZACIÓN POSTMAN COLLECTION
+Cuando se modifica cualquier controller (`src/modules/**/*.controller.ts`) o DTO (`src/modules/**/dto/*.ts`), actualizar `postman/nexos-api.postman_collection.json` para reflejar los cambios.
+
+### Qué actualizar
+- **Nuevo endpoint:** agregar request en la carpeta correspondiente del JSON con method, url, headers, body de ejemplo y description.
+- **Endpoint eliminado:** eliminar el request del JSON.
+- **DTO modificado:** actualizar el `body.raw` del request correspondiente con los campos actualizados.
+- **Ruta renombrada:** actualizar el `url` del request.
+- **Auth/roles cambiados:** actualizar `auth` (noauth vs bearer) y `description`.
+
+### Estructura del JSON
+```
+postman/nexos-api.postman_collection.json       — Collection v2.1
+postman/nexos-local.postman_environment.json  — Environment dev
+```
+
+Las carpetas del JSON mapean a los módulos: Health, Auth, Users, Categories, Search, Portfolio (subcarpetas Items CRUD, Photos, Publish & Verify), Portfolio Consent, Portfolio Moderation, Portfolio Public.
+
+### Formato de cada request
+```json
+{
+  "name": "Nombre descriptivo",
+  "request": {
+    "method": "POST",
+    "header": [{ "key": "Content-Type", "value": "application/json" }],
+    "body": { "mode": "raw", "raw": "{...}", "options": { "raw": { "language": "json" } } },
+    "url": "{{baseUrl}}/api/...",
+    "description": "Qué hace, qué rol necesita, qué retorna."
+  }
+}
+```
+
+Requests públicos llevan `"auth": { "type": "noauth" }`. Los autenticados heredan Bearer de la colección.
