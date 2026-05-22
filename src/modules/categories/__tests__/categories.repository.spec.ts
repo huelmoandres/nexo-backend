@@ -85,6 +85,7 @@ describe('CategoriesRepository', () => {
       const input = {
         name: cat.name,
         slug: cat.slug,
+        type: cat.type,
         supportsUrgency: cat.supportsUrgency,
         parentId: null,
       };

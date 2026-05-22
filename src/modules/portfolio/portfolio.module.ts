@@ -9,6 +9,7 @@ import { AuthorizationModule } from '@modules/authorization/authorization.module
 import { authConfig } from '@config/auth.config';
 import { portfolioConfig } from '@config/portfolio.config';
 import { AiModule } from '@modules/ai/ai.module';
+import { EntitlementsModule } from '@modules/entitlements/entitlements.module';
 import { AiContentModerationService } from '@modules/ai/services/ai-content-moderation.service';
 import {
   PORTFOLIO_CLEANUP_QUEUE,
@@ -57,6 +58,7 @@ import { PortfolioBullInvariantService } from './services/portfolio-bull-invaria
     StorageModule,
     NotificationsModule,
     AiModule,
+    EntitlementsModule,
     ConfigModule,
     BullModule.registerQueue({ name: PORTFOLIO_CONSENT_REMINDER_QUEUE }),
     BullModule.registerQueue({ name: PORTFOLIO_CLEANUP_QUEUE }),

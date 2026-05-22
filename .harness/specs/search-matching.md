@@ -4,7 +4,7 @@
 
 ## 1. Contexto del Módulo
 
-Este módulo expone la búsqueda de profesionales disponibles para el cliente. Es el punto de entrada para las verticales de **Hogar y Oficios** (cotización) y **Servicios Profesionales** (booking). No aplica a Urgencias, que tiene su propio flujo de dispatch.
+Este módulo expone la búsqueda de **profesionales y empresas** disponibles para el cliente. El matching geográfico usa **`ServiceArea`** (multi-zona); las empresas exponen `bio`, `isAvailable`, `averageRating` y categorías vía `CompanyCategory`. Es el punto de entrada para **Hogar y Oficios** y **Servicios Profesionales**. No aplica a Urgencias (dispatch propio).
 
 La inteligencia del módulo combina:
 - **PostGIS** para filtro geoespacial (radio).
@@ -29,7 +29,7 @@ flowchart TD
     Query["q=electricista"]
     Expander["SearchQueryExpander\nOpenAI + Redis cache"]
     Repo["SearchRepository"]
-    Geo["ST_DWithin\nGiST index"]
+    Geo["ServiceArea\nST_DWithin por zona"]
     FTS["to_tsvector + tsquery OR\nnombre + bio + categorías"]
     Trgm["word_similarity\npg_trgm fallback"]
     Results["Resultados rankeados"]
@@ -73,40 +73,29 @@ Si FTS no matchea, `word_similarity(q_original, search_text) > threshold` actúa
 
 ## 4. Query SQL Base (implementación actual)
 
+**Geo (profesional o empresa):**
+
 ```sql
-SELECT
-  pp.id,
-  u.id AS "userId",
-  u."fullName",
-  pp.bio,
-  pp."experienceYears",
-  pp."averageRating",
-  pp."isAvailable",
-  ST_Distance(pp.location, ST_SetSRID(ST_MakePoint($lng, $lat), 4326)::geography) AS distance_m,
-  CASE WHEN to_tsvector(...) @@ (expanded_tsquery) THEN 0 ELSE 1 END AS relevance_rank
-FROM "ProfessionalProfile" pp
-JOIN "User" u ON u.id = pp."userId"
-WHERE
-  pp."deletedAt" IS NULL
-  AND u."deletedAt" IS NULL
-  AND pp."isAvailable" = true
-  AND ST_DWithin(pp.location, point, $radiusMeters)
-  AND (
-    to_tsvector(...) @@ (expanded_tsquery)
-    OR word_similarity($q_original, search_text) > $threshold
-  )
-ORDER BY relevance_rank ASC, distance_m ASC
-LIMIT $limit OFFSET $offset;
+EXISTS (
+  SELECT 1 FROM "ServiceArea" sa
+  WHERE sa."professionalProfileId" = pp.id  -- o sa."companyId" = co.id
+    AND ST_DWithin(sa.location, user_point, sa."radiusMeters")
+)
+AND (SELECT MIN(ST_Distance(sa.location, user_point)) FROM "ServiceArea" sa WHERE ...) <= $radiusMeters
 ```
 
-**Ranking:** FTS exacto primero (`relevance_rank = 0`), luego trigram (`relevance_rank = 1`), ambos ordenados por distancia ascendente.
+**Texto:** `to_tsvector('spanish', name || bio || categorías)` + `word_similarity($q::text, search_text)`.
+
+**Servicio:** `SearchService` ejecuta `findProfessionals` + `findCompanies` en paralelo, merge por `distanceMeters`, pagina con `slice(offset, offset+limit)`. `total = countPro + countCo`.
+
+**DTO respuesta (`SearchResultDto`):** `type`, `name`, `distanceMeters`; pro añade `userId`, `experienceYears`; empresa `logoUrl` (null v1).
 
 ---
 
 ## 5. Controladores y Endpoints
 
-### A. Endpoint: Buscar Profesionales
-- **Ruta:** `GET /api/search/professionals`
+### A. Endpoint: Buscar (profesionales + empresas)
+- **Ruta:** `GET /api/search/professionals` (nombre histórico; respuesta mixta)
 - **Protección:** **Público** (`@Public()`). No requiere autenticación.
 - **Query Params (`SearchQueryDto`):**
   - `latitude`: number, obligatorio.

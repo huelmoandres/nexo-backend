@@ -182,6 +182,15 @@
           }
         },
         {
+          "name": "Mis entitlements (plan)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/users/me/entitlements",
+            "description": "Entitlements v2 del sujeto activo (professionalProfile o empresa admin). Incluye serviceAreas, portfolio, search, urgency."
+          }
+        },
+        {
           "name": "Crear perfil profesional",
           "request": {
             "method": "POST",
@@ -190,11 +199,11 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"bio\": \"Electricista matriculado con 10 años de experiencia en Montevideo.\",\n  \"experienceYears\": 10,\n  \"latitude\": -34.9011,\n  \"longitude\": -56.1645,\n  \"categoryIds\": [\n    \"{{categoryId}}\"\n  ]\n}",
+              "raw": "{\n  \"bio\": \"Electricista matriculado con 10 años de experiencia en Montevideo.\",\n  \"experienceYears\": 10,\n  \"addressLine\": \"Av. Brasil 2880, Pocitos, Montevideo\",\n  \"categoryIds\": [\n    \"{{categoryId}}\"\n  ]\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": "{{baseUrl}}/api/users/professional-profile",
-            "description": "Convierte un CLIENT en INDEPENDENT_PRO. Requiere al menos 1 categoryId válido."
+            "description": "Convierte un CLIENT en INDEPENDENT_PRO. Requiere al menos 1 categoryId. Ubicación: addressLine (resuelve vía Google) o latitude+longitude."
           }
         },
         {
@@ -542,11 +551,92 @@
       ]
     },
     {
-      "name": "Search",
-      "description": "Búsqueda geoespacial de profesionales con PostGIS + FTS + expansión IA + pg_trgm. El motor expande queries automáticamente (ej: 'electricista' → ['electricista', 'electricidad', ...]) y hace fallback fuzzy con word_similarity.",
+      "name": "Geo",
+      "description": "Catálogo geográfico Uruguay (departamentos, ciudades, barrios) y resolución Google. Rutas públicas salvo donde se indique.",
       "item": [
         {
-          "name": "Buscar profesionales (público)",
+          "name": "Árbol geo Uruguay (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/geo/tree",
+            "description": "País → departamentos → ciudades → barrios. Cache Redis."
+          }
+        },
+        {
+          "name": "Departamentos (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/geo/states",
+            "description": "Lista de departamentos de Uruguay."
+          }
+        },
+        {
+          "name": "Ciudades por departamento (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/geo/states/{{stateId}}/cities",
+            "description": "Localidades de un departamento."
+          }
+        },
+        {
+          "name": "Barrios por ciudad (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/geo/cities/{{cityId}}/neighborhoods",
+            "description": "Barrios de una ciudad."
+          }
+        },
+        {
+          "name": "Buscar en catálogo (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/geo/search?q=montevideo&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "geo", "search"],
+              "query": [
+                { "key": "q", "value": "montevideo" },
+                { "key": "limit", "value": "20" }
+              ]
+            },
+            "description": "Búsqueda por nombre en departamentos, ciudades y barrios."
+          }
+        },
+        {
+          "name": "Resolver dirección o GPS (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"addressLine\": \"Av. Brasil 2880, Pocitos, Montevideo\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/geo/resolve",
+            "description": "Forward geocode (addressLine) o reverse (latitude+longitude). Siempre HTTP 200; resolved=false si Google no encuentra o no hay API key."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "description": "Búsqueda geoespacial (ServiceArea + PostGIS). q siempre aplica FTS español + pg_trgm; expansión IA solo si catálogo FREE tiene search.queryExpansionEnabled=true.",
+      "item": [
+        {
+          "name": "Buscar profesionales y empresas (público)",
           "request": {
             "auth": { "type": "noauth" },
             "method": "GET",
@@ -559,13 +649,13 @@
                 { "key": "latitude", "value": "-34.9011", "description": "Latitud WGS84 (requerido)" },
                 { "key": "longitude", "value": "-56.1645", "description": "Longitud WGS84 (requerido)" },
                 { "key": "radiusKm", "value": "10", "description": "Radio en km (default 5, max 100)" },
-                { "key": "q", "value": "electricista", "description": "Texto libre con expansión IA + FTS + trigram (opcional)" },
+                { "key": "q", "value": "electricista", "description": "Texto libre: FTS + trigram siempre; expansión IA según plan catálogo (opcional)" },
                 { "key": "categoryId", "value": "", "description": "Filtrar por categoría (opcional)", "disabled": true },
                 { "key": "page", "value": "1", "description": "Página base 1" },
                 { "key": "limit", "value": "10", "description": "Resultados por página (max 50)" }
               ]
             },
-            "description": "Busca profesionales por radio geoespacial. El parámetro q se expande con IA (sinónimos/variantes) y busca en nombre + bio + categorías. Fallback fuzzy con pg_trgm. Público, sin auth."
+            "description": "Busca por ServiceArea (radio). results[].type, name, distanceMeters. q → FTS/trigram en bio/nombre/categorías; expansión IA opcional (flag catálogo). Público."
           }
         }
       ]
@@ -889,6 +979,112 @@
             "header": [],
             "url": "{{baseUrl}}/api/portfolio/items/{{itemId}}/report",
             "description": "Reporta un item PUBLISHED. Cualquier usuario autenticado excepto el dueño. Pasa a HIDDEN_PENDING_REVIEW."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Service Areas",
+      "description": "Zonas de servicio (profesional y empresa). Requiere JWT.",
+      "item": [
+        {
+          "name": "Listar zonas profesional",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/professionals/me/service-areas"
+          }
+        },
+        {
+          "name": "Crear zona profesional",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Zona Pocitos\",\n  \"latitude\": -34.91,\n  \"longitude\": -56.15,\n  \"radiusMeters\": 8000\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/professionals/me/service-areas"
+          }
+        },
+        {
+          "name": "Listar zonas empresa",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/companies/{{companyId}}/service-areas",
+            "description": "COMPANY_ADMIN. Cambiar current_email a admin en prerequest de carpeta Admin Plans si hace falta."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Plans",
+      "description": "Gestión de PlanDefinition y asignación de planes. Requiere SUPER_ADMIN.",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.environment.set('current_email', pm.environment.get('admin_email') || 'admin@nexos.local');",
+              "pm.environment.set('current_uid', pm.environment.get('admin_uid') || '00000000-0000-4000-8000-000000000001');",
+              "pm.environment.unset('access_token');"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "Listar planes catálogo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/admin/plan-definitions",
+            "description": "Lista FREE, PRO y BUSINESS. SUPER_ADMIN. entitlements en schema v2."
+          }
+        },
+        {
+          "name": "Actualizar entitlements catálogo (v2)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entitlements\": {\n    \"schemaVersion\": 2,\n    \"serviceAreas\": { \"max\": 3, \"radiusMetersMax\": 25000 },\n    \"portfolio\": { \"itemsMax\": 30, \"photosPerItemMax\": 8 },\n    \"search\": { \"queryExpansionEnabled\": true },\n    \"urgency\": { \"broadcastDelayMs\": 10000, \"broadcastTier\": 2 }\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/admin/plan-definitions/a0000000-0000-4000-8000-000000000002",
+            "description": "PATCH entitlements del plan PRO (id seed). SUPER_ADMIN."
+          }
+        },
+        {
+          "name": "Asignar plan PRO a profesional",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subscriptionPlan\": \"PRO\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/admin/professionals/{{professionalProfileId}}/plan",
+            "description": "Asigna plan de catálogo. Variable professionalProfileId en environment."
+          }
+        },
+        {
+          "name": "Crear plan CUSTOM empresa",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entitlements\": {\n    \"schemaVersion\": 2,\n    \"serviceAreas\": { \"max\": 5, \"radiusMetersMax\": 40000 },\n    \"portfolio\": { \"itemsMax\": 50, \"photosPerItemMax\": 10 },\n    \"search\": { \"queryExpansionEnabled\": true },\n    \"urgency\": { \"broadcastDelayMs\": 5000, \"broadcastTier\": 2 }\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/admin/companies/{{companyId}}/custom-plan",
+            "description": "Crea fila PlanDefinition CUSTOM y enlaza Company."
           }
         }
       ]

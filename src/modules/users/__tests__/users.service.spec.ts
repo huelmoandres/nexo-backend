@@ -3,6 +3,27 @@ import { UsersService } from '../users.service';
 import { PresignDocumentKind } from '../dto/presign-document.dto';
 
 describe('UsersService', () => {
+  it('delegates getMyEntitlements to profile service', async () => {
+    const usersProfileService = {
+      getMe: vi.fn(),
+      getMyEntitlements: vi.fn().mockResolvedValue({
+        subjectType: 'professional',
+        subjectId: 'pp-1',
+        entitlements: {},
+      }),
+      createProfessionalProfile: vi.fn(),
+      presignDocument: vi.fn(),
+    };
+    const usersCompanyService = { createCompany: vi.fn() };
+    const service = new UsersService(
+      usersCompanyService as never,
+      usersProfileService as never,
+    );
+
+    await service.getMyEntitlements('sub-1');
+    expect(usersProfileService.getMyEntitlements).toHaveBeenCalledWith('sub-1');
+  });
+
   it('delegates getMe to profile service', async () => {
     const usersProfileService = {
       getMe: vi.fn().mockResolvedValue({ id: 'u1' }),

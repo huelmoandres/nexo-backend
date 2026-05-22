@@ -28,6 +28,7 @@
 - [Módulo de Disputas](specs/dispute-module.md): Flujo de mediación y evidencias.
 - [Módulo de Urgencias](specs/urgency-module.md): PostGIS, Weighted Broadcast y First-come first-served.
 - [Búsqueda y Matching](specs/search-matching.md): PostGIS, Score de Relevancia y filtros geoespaciales.
+- [Planes y Entitlements](specs/plans-entitlements.md): PlanDefinition, límites multi-zona y admin SUPER_ADMIN.
 - [Reseñas y Reputación](specs/reviews-reputation.md): Calificación multidimensional y Prueba Social.
 - [Chat y Mensajería](specs/chat-module.md): MongoDB, ciclo de vida y moderación preventiva de IA.
 - [Portfolio del Profesional](specs/portfolio-module.md): Vidriera pública con vínculo opcional a Job verificado, moderación IA híbrida y consentimiento del cliente.
@@ -50,6 +51,7 @@
 - [Escrow Module Eval](evals/escrow-module-eval.md): Value Object Money, ACID, idempotencia y Audit Log.
 - [Dispute Module Eval](evals/dispute-module-eval.md): Evidencia Proactiva, Segunda Oportunidad y acceso SUPER_ADMIN.
 - [Search & Reviews Eval](evals/search-reviews-eval.md): Score de Relevancia, reseña multidimensional y Soft Delete.
+- [Planes y Entitlements Eval](evals/plans-entitlements-eval.md): Catálogo, CUSTOM, límites de zonas y APIs admin.
 - [Portfolio Module Eval](evals/portfolio-module-eval.md): Inmutabilidad post-verificación, fail-closed IA, ownership de paths y privacidad PII.
 - [Global Tech Eval](evals/global-tech-eval.md): Path Aliases, Config Centralizada, RFC 7807, TypeScript Strict y límites de código.
 

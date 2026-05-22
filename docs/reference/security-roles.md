@@ -10,6 +10,10 @@ El sistema utiliza un Control de Acceso Basado en Roles. Los roles son inmutable
 - **COMPANY_EMPLOYEE**: Acceso operativo a trabajos asignados y chat. NO puede gestionar finanzas.
 - **SUPER_ADMIN**: Acceso total al panel de moderación y disputas.
 
+## 1.1 Planes vs roles
+
+Los planes (`FREE`, `PRO`, `BUSINESS`, `CUSTOM`) **no** sustituyen al RBAC. Viven en `ProfessionalProfile` o `Company` (`subscriptionPlan` + `planDefinitionId`) y limitan producto (zonas de servicio, radio, prioridad en urgencias). La gestión del catálogo y asignaciones CUSTOM es solo `SUPER_ADMIN` bajo `/api/admin/*`. Ver `.harness/specs/plans-entitlements.md`.
+
 ## 2. Validación de Identidad (KYC)
 Ningún profesional puede transaccionar sin haber pasado los siguientes estados:
 1. **UNVERIFIED**: Solo lectura.

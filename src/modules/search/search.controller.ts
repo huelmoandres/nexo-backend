@@ -13,7 +13,7 @@ import { SearchService } from './search.service';
 
 /**
  * Motor de búsqueda geoespacial de Nexos.
- * Ruta pública — no requiere autenticación para permitir búsquedas sin cuenta.
+ * Ruta pública — no requiere autenticación.
  */
 @Public()
 @ApiTags('search')
@@ -24,19 +24,18 @@ export class SearchController {
 
   @Get('professionals')
   @ApiOperation({
-    summary: 'Buscar profesionales por radio geoespacial',
-    description: `Combina **ST_DWithin** (PostGIS) con **Full Text Search en español** para encontrar
-profesionales disponibles cerca de un punto geográfico.
+    summary: 'Buscar profesionales y empresas por radio geoespacial',
+    description: `Combina **ServiceArea** (PostGIS) con FTS en español. Devuelve resultados
+polimórficos (\`type: professional | company\`) ordenados por distancia.
 
 - Radio default: 5 km. Máximo: 100 km.
-- Solo devuelve profesionales con \`isAvailable: true\`.
-- Los resultados se ordenan por distancia ascendente.
-- \`q\` activa FTS con stemming en español sobre nombre y bio.
-- \`categoryId\` filtra por categoría específica.`,
+- Solo sujetos con \`isAvailable: true\` y al menos una zona que cubra el punto.
+- \`q\` activa expansión IA + FTS/trigram sobre nombre, bio y categorías.
+- \`categoryId\` filtra por categoría (pro o empresa).`,
   })
   @ApiResponse({
     status: 200,
-    description: 'Resultados de la búsqueda con distancia calculada',
+    description: 'Resultados mezclados (profesional y empresa) con distancia',
     type: SearchResponseDto,
   })
   @ApiResponse({

@@ -185,7 +185,20 @@ Estos slugs son la **fuente de verdad**. Cualquier otro nombre de error para el 
 | `CONSENT_TOKEN_EXPIRED` | 410 | `expiresAt` vencido y el consent seguía `PENDING`. |
 | `CONSENT_ALREADY_RESOLVED` | 410 | Consent no está `PENDING` (aceptado, declinado o expirado por job). |
 
-## 2.6 Slugs genéricos (filtro global y excepciones sin catálogo)
+## 2.6 Slugs canónicos — Planes y zonas de servicio
+
+| `code` | HTTP | Cuándo usar |
+|--------|------|-------------|
+| `SERVICE_AREA_LIMIT_REACHED` | 403 | Crear zona cuando `serviceAreasMax` del plan ya se alcanzó. |
+| `PLAN_FEATURE_UNAVAILABLE` | 400 | Radio u otra feature fuera del entitlement del plan. |
+| `PLAN_ENTITLEMENTS_REQUIRED` | 400 | Asignar `CUSTOM` sin objeto `entitlements`. |
+| `PLAN_ENTITLEMENTS_INVALID` | 400 | Shape de `entitlements` inválido. |
+| `PLAN_DEFINITION_REQUIRED` | 400 | Sujeto sin `planDefinitionId` (alta interna). |
+| `COMPANY_ACCESS_DENIED` | 403 | Usuario no es admin de la empresa. |
+| `SERVICE_AREA_NOT_FOUND` | 404 | Zona inexistente o sin ownership. |
+| `SERVICE_AREA_PRIMARY_REQUIRED` | 409 | No se puede borrar la única zona principal. |
+
+## 2.7 Slugs genéricos (filtro global y excepciones sin catálogo)
 
 | `code` | HTTP | Cuándo usar |
 |--------|------|-------------|

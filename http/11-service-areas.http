@@ -1,0 +1,77 @@
+# Zonas de servicio (ServiceArea)
+# PREREQUISITOS: migraciones aplicadas, perfil profesional o empresa con admin
+
+@baseUrl = http://localhost:3000
+
+### Token profesional
+# @name loginPro
+GET {{baseUrl}}/api/auth/dev-token?email={{proEmail}}&uid={{proUid}}
+
+###
+
+@proToken = {{loginPro.response.body.$.token}}
+
+### Listar zonas del profesional autenticado
+GET {{baseUrl}}/api/professionals/me/service-areas
+Authorization: Bearer {{proToken}}
+
+###
+
+### Crear zona (valida límite del plan)
+POST {{baseUrl}}/api/professionals/me/service-areas
+Authorization: Bearer {{proToken}}
+Content-Type: application/json
+
+{
+  "label": "Zona Pocitos",
+  "latitude": -34.91,
+  "longitude": -56.15,
+  "radiusMeters": 8000
+}
+
+###
+
+### Actualizar zona
+# @serviceAreaId = pegar id de respuesta anterior
+PATCH {{baseUrl}}/api/professionals/me/service-areas/{{serviceAreaId}}
+Authorization: Bearer {{proToken}}
+Content-Type: application/json
+
+{
+  "label": "Zona Pocitos actualizada",
+  "radiusMeters": 6000
+}
+
+###
+
+### Token admin empresa
+# @name loginAdmin
+GET {{baseUrl}}/api/auth/dev-token?email={{adminEmail}}&uid={{adminUid}}
+
+###
+
+@adminToken = {{loginAdmin.response.body.$.token}}
+
+### Listar zonas de empresa (COMPANY_ADMIN)
+GET {{baseUrl}}/api/companies/{{companyId}}/service-areas
+Authorization: Bearer {{adminToken}}
+
+###
+
+### Crear zona de empresa
+POST {{baseUrl}}/api/companies/{{companyId}}/service-areas
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "label": "Cobertura nacional",
+  "latitude": -34.9,
+  "longitude": -56.16,
+  "radiusMeters": 25000
+}
+
+###
+
+### Eliminar zona profesional
+DELETE {{baseUrl}}/api/professionals/me/service-areas/{{serviceAreaId}}
+Authorization: Bearer {{proToken}}

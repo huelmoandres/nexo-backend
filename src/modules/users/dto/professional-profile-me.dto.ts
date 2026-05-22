@@ -34,6 +34,30 @@ export class ProfessionalProfileMeDto {
   })
   longitude?: number | null;
 
+  @ApiPropertyOptional({
+    example: 'Av. Brasil 2880, Pocitos, Montevideo',
+    description: 'Dirección declarada por el profesional.',
+  })
+  addressLine?: string | null;
+
+  @ApiPropertyOptional({
+    example: '631f0ec9-6a82-430e-a88c-277f3a5db5a1',
+    description: 'Departamento administrativo.',
+  })
+  stateId?: string | null;
+
+  @ApiPropertyOptional({
+    example: 'e3f8cb22-fda0-4d51-89e4-5592f7b49931',
+    description: 'Ciudad/localidad administrativa.',
+  })
+  cityId?: string | null;
+
+  @ApiPropertyOptional({
+    example: 'fcc5f31a-8d94-4504-a2e0-b1fbd8d3fa9c',
+    description: 'Barrio administrativo.',
+  })
+  neighborhoodId?: string | null;
+
   @ApiProperty({ type: [CategorySummaryDto] })
   categories!: CategorySummaryDto[];
 }

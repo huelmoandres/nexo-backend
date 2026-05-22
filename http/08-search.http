@@ -1,14 +1,14 @@
 # PREREQUISITOS:
 # 1. Servidor corriendo: npm run start:dev
-# 2. Profesionales con perfil (latitude/longitude) en DB
+# 2. Profesionales/empresas con al menos una ServiceArea (PostGIS) en DB
 # 3. No requiere autenticación (endpoint público)
 #
-# MOTOR DE BÚSQUEDA:
-# - PostGIS ST_DWithin (filtro geoespacial)
-# - FTS con stemming español sobre nombre + bio + categorías
-# - Expansión de query con IA (OpenAI gpt-4o-mini): "electricista" → ["electricista", "electricidad", ...]
-# - Fallback fuzzy con pg_trgm (word_similarity) para variantes no cubiertas por stemming
-# - Resultados rankeados: FTS exacto primero, luego trigram, ambos por distancia
+# MOTOR DE BÚSQUEDA (profesionales + empresas):
+# - ServiceArea: ST_DWithin por zona; distancia al centro de la zona más cercana
+# - Resultados polimórficos: type=professional | company, campo name (no fullName)
+# - FTS español sobre nombre + bio + categorías
+# - Expansión IA (OpenAI gpt-4o-mini) + fallback pg_trgm (word_similarity)
+# - Orden global por distanceMeters tras merge pro+empresa
 
 @baseUrl = http://localhost:3000
 

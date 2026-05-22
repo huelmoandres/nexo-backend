@@ -13,8 +13,11 @@ import { appConfig } from '@config/app.config';
 import { aiConfig } from '@config/ai.config';
 import { authConfig } from '@config/auth.config';
 import { categoriesConfig } from '@config/categories.config';
+import { geoConfig } from '@config/geo.config';
+import { googleMapsConfig } from '@config/google-maps.config';
 import { diagnosticsConfig } from '@config/diagnostics.config';
 import { searchConfig } from '@config/search.config';
+import { plansConfig } from '@config/plans.config';
 import { portfolioConfig } from '@config/portfolio.config';
 import { storageConfig } from '@config/storage.config';
 import { dgiConfig } from '@config/dgi.config';
@@ -22,12 +25,15 @@ import { usersConfig } from '@config/users.config';
 import { validateEnv } from '@config/env.validation';
 import { AuthModule } from '@modules/auth/auth.module';
 import { CategoriesModule } from '@modules/categories/categories.module';
+import { GeoModule } from '@modules/geo/geo.module';
 import { DiagnosticsModule } from '@modules/diagnostics/diagnostics.module';
 import { SearchModule } from '@modules/search/search.module';
+import { EntitlementsModule } from '@modules/entitlements/entitlements.module';
 import { HealthModule } from '@modules/health/health.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { PortfolioModule } from '@modules/portfolio/portfolio.module';
 import { StorageModule } from '@modules/storage/storage.module';
+import { ServiceAreasModule } from '@modules/service-areas/service-areas.module';
 import { UsersModule } from '@modules/users/users.module';
 
 @Module({
@@ -39,9 +45,12 @@ import { UsersModule } from '@modules/users/users.module';
         authConfig,
         appConfig,
         categoriesConfig,
+        geoConfig,
+        googleMapsConfig,
         diagnosticsConfig,
         portfolioConfig,
         searchConfig,
+        plansConfig,
         storageConfig,
         usersConfig,
         dgiConfig,
@@ -74,7 +83,10 @@ import { UsersModule } from '@modules/users/users.module';
     AuthModule,
     UsersModule,
     CategoriesModule,
+    GeoModule,
     SearchModule,
+    EntitlementsModule,
+    ServiceAreasModule,
     NotificationsModule,
     PortfolioModule,
   ],

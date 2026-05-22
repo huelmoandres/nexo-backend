@@ -31,6 +31,7 @@ import { PresignDocumentDto } from './dto/presign-document.dto';
 import { PresignDocumentResponseDto } from './dto/presign-document-response.dto';
 import { ProfessionalProfileCreatedResponseDto } from './dto/professional-profile-created-response.dto';
 import { UserResponseDto } from './dto/user-response.dto';
+import { UserEntitlementsResponseDto } from './dto/user-entitlements-response.dto';
 import { UsersService } from './users.service';
 
 /**
@@ -49,6 +50,18 @@ import { UsersService } from './users.service';
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Get('me/entitlements')
+  @UseGuards(SupabaseAuthGuard)
+  @ApiOperation({
+    summary: 'Entitlements del plan del sujeto activo (profesional o empresa)',
+  })
+  @ApiResponse({ status: 200, type: UserEntitlementsResponseDto })
+  getMyEntitlements(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<UserEntitlementsResponseDto> {
+    return this.usersService.getMyEntitlements(user.sub);
+  }
 
   @Get('me')
   @UseGuards(SupabaseAuthGuard)

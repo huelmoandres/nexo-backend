@@ -4,6 +4,19 @@ import { UsersController } from '../users.controller';
 import { PresignDocumentKind } from '../dto/presign-document.dto';
 
 describe('UsersController', () => {
+  it('getMyEntitlements delega en UsersService', async () => {
+    const usersService = {
+      getMyEntitlements: vi.fn().mockResolvedValue({
+        subjectType: 'professional',
+        subjectId: 'pp-1',
+        entitlements: {},
+      }),
+    };
+    const controller = new UsersController(usersService as never);
+    await controller.getMyEntitlements({ sub: 's1' });
+    expect(usersService.getMyEntitlements).toHaveBeenCalledWith('s1');
+  });
+
   it('getMe delega en UsersService', async () => {
     const usersService = {
       getMe: vi.fn().mockResolvedValue({

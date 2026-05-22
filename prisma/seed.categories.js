@@ -1,81 +1,57 @@
 /**
- * Catálogo `Category`: upsert por `slug` (idempotente).
- * Orden: padres antes que hijos para resolver `parentId`.
- * Tabla: `Category`.
- *
- * Alineado con el módulo de categorías (slug único, jerarquía opcional, `supportsUrgency`).
+ * Catálogo de oficios (TRADE) y servicios (SERVICE): upsert por `slug` (idempotente).
+ * Fuente: prisma/data/categories.json (generar con `node scripts/build-categories-json.mjs`).
  */
-const categoriesInOrder = [
-  {
-    name: 'Electricidad',
-    slug: 'electricidad',
-    parentSlug: null,
-    supportsUrgency: false,
-  },
-  {
-    name: 'Electricidad de urgencia',
-    slug: 'electricidad-urgencias',
-    parentSlug: 'electricidad',
-    supportsUrgency: true,
-  },
-  {
-    name: 'Plomería',
-    slug: 'plomeria',
-    parentSlug: null,
-    supportsUrgency: false,
-  },
-  {
-    name: 'Gasista',
-    slug: 'gasista',
-    parentSlug: null,
-    supportsUrgency: false,
-  },
-  {
-    name: 'Pintura',
-    slug: 'pintura',
-    parentSlug: null,
-    supportsUrgency: false,
-  },
-  {
-    name: 'Jardinería',
-    slug: 'jardineria',
-    parentSlug: null,
-    supportsUrgency: false,
-  },
-];
+const { readFileSync } = require('node:fs');
+const { join } = require('node:path');
+
+function loadCatalog() {
+  const path = join(__dirname, 'data', 'categories.json');
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
 
 /**
  * @param {import('@prisma/client').PrismaClient} prisma
  */
 async function runSeedCategories(prisma) {
-  for (const row of categoriesInOrder) {
-    let parentId = null;
-    if (row.parentSlug) {
-      const parent = await prisma.category.findUnique({
-        where: { slug: row.parentSlug },
-        select: { id: true },
-      });
-      if (!parent) {
-        throw new Error(
-          `Categories seed: falta categoría padre con slug "${row.parentSlug}" antes de "${row.slug}"`,
-        );
-      }
-      parentId = parent.id;
-    }
-    await prisma.category.upsert({
-      where: { slug: row.slug },
+  const catalog = loadCatalog();
+
+  for (const trade of catalog) {
+    const parent = await prisma.category.upsert({
+      where: { slug: trade.slug },
       create: {
-        name: row.name,
-        slug: row.slug,
-        parentId,
-        supportsUrgency: row.supportsUrgency,
+        name: trade.name,
+        slug: trade.slug,
+        type: 'TRADE',
+        parentId: null,
+        supportsUrgency: trade.supportsUrgency ?? false,
       },
       update: {
-        name: row.name,
-        parentId,
-        supportsUrgency: row.supportsUrgency,
+        name: trade.name,
+        type: 'TRADE',
+        parentId: null,
+        supportsUrgency: trade.supportsUrgency ?? false,
       },
     });
+
+    for (const service of trade.children ?? []) {
+      await prisma.category.upsert({
+        where: { slug: service.slug },
+        create: {
+          name: service.name,
+          slug: service.slug,
+          type: 'SERVICE',
+          parentId: parent.id,
+          supportsUrgency: service.supportsUrgency ?? false,
+        },
+        update: {
+          name: service.name,
+          type: 'SERVICE',
+          parentId: parent.id,
+          supportsUrgency: service.supportsUrgency ?? false,
+        },
+      });
+    }
   }
 }
 
@@ -84,7 +60,11 @@ async function main() {
   const prisma = createSeedPrisma();
   try {
     await runSeedCategories(prisma);
-    console.info('Categories seed applied successfully.');
+    const trades = await prisma.category.count({ where: { type: 'TRADE' } });
+    const services = await prisma.category.count({ where: { type: 'SERVICE' } });
+    console.info(
+      `Categories seed applied: ${trades} trades, ${services} services.`,
+    );
   } finally {
     await prisma.$disconnect();
   }
@@ -97,4 +77,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { runSeedCategories, categoriesInOrder };
+module.exports = { runSeedCategories, loadCatalog };

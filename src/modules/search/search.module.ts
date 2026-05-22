@@ -4,6 +4,7 @@ import type { ConfigType } from '@nestjs/config';
 import Redis from 'ioredis';
 import { authConfig } from '@config/auth.config';
 import { CategoriesRepository } from '@modules/categories/categories.repository';
+import { EntitlementsModule } from '@modules/entitlements/entitlements.module';
 import { SearchController } from './search.controller';
 import { SearchRepository } from './search.repository';
 import { SearchService } from './search.service';
@@ -11,7 +12,7 @@ import { SearchQueryExpanderService } from './search-query-expander.service';
 import { SEARCH_REDIS_CLIENT } from './search.constants';
 
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, EntitlementsModule],
   controllers: [SearchController],
   providers: [
     SearchService,

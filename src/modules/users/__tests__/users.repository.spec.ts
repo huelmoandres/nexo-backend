@@ -90,7 +90,7 @@ describe('UsersRepository', () => {
     expect(userUpdate).not.toHaveBeenCalled();
   });
 
-  it('createProfessionalProfileWithPostgis ejecuta UPDATE PostGIS', async () => {
+  it('createProfessionalProfileWithPostgis crea ServiceArea principal', async () => {
     const profileRow = professionalProfileFactory.build({
       id: 'p1',
       userId: 'u1',
@@ -135,10 +135,15 @@ describe('UsersRepository', () => {
       data: { role: 'INDEPENDENT_PRO' },
     });
     expect(tx.$executeRawUnsafe).toHaveBeenCalledWith(
-      expect.stringContaining('ST_MakePoint'),
+      expect.stringContaining('INSERT INTO "ServiceArea"'),
       -56.16,
       -34.9,
       'p1',
+      null,
+      null,
+      null,
+      null,
+      null,
     );
     expect(tx.professionalIdentity.create).toHaveBeenCalledWith({
       data: { professionalProfileId: 'p1' },
@@ -207,13 +212,16 @@ describe('UsersRepository', () => {
     expect(await repo.getProfileCoordinates('p1')).toBeNull();
   });
 
-  it('getProfileCoordinates devuelve lat/lng', async () => {
-    const prisma = {
-      $queryRawUnsafe: vi.fn().mockResolvedValue([{ lat: -34.9, lng: -56.1 }]),
-    } as unknown as PrismaService;
+  it('getProfileCoordinates devuelve lat/lng desde ServiceArea', async () => {
+    const queryRaw = vi.fn().mockResolvedValue([{ lat: -34.9, lng: -56.1 }]);
+    const prisma = { $queryRawUnsafe: queryRaw } as unknown as PrismaService;
     const repo = new UsersRepository(prisma);
     const c = await repo.getProfileCoordinates('p1');
     expect(c).toEqual({ latitude: -34.9, longitude: -56.1 });
+    expect(queryRaw).toHaveBeenCalledWith(
+      expect.stringContaining('"ServiceArea"'),
+      'p1',
+    );
   });
 
   it('updateProfessionalDocumentKey', async () => {

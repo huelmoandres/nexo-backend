@@ -1,32 +1,38 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import { searchConfig } from '@config/search.config';
+import { CATALOG_PLAN_IDS } from '@common/types/plan-entitlements.schema';
+import { EntitlementsService } from '@modules/entitlements/entitlements.service';
 import type { SearchQueryDto } from './dto/search-query.dto';
 import type { SearchResponseDto } from './dto/search-response.dto';
+import type { SearchResultDto } from './dto/search-result.dto';
 import { SearchRepository } from './search.repository';
 import { SearchQueryExpanderService } from './search-query-expander.service';
 
 const KM_TO_METERS = 1000;
 
 /**
- * Lógica de negocio para búsqueda geoespacial de profesionales.
- *
- * Decisiones de diseño:
- * - isAvailable = true está fijo en el repositorio; no se expone como parámetro
- *   para evitar que el frontend muestre profesionales no disponibles.
- * - El radio, la página y el límite tienen defaults configurables en searchConfig.
- * - KM_TO_METERS es una constante matemática pura, no un parámetro de negocio.
- * - Cuando se pasa `q`, se expande con IA (sinónimos/variantes) antes de buscar.
- *   La expansión está cacheada en Redis y nunca bloquea la búsqueda.
+ * Búsqueda geoespacial de profesionales y empresas (multi-zona vía ServiceArea).
  */
 @Injectable()
-export class SearchService {
+export class SearchService implements OnModuleInit {
+  private platformQueryExpansionEnabled = false;
+
   constructor(
     private readonly searchRepository: SearchRepository,
     private readonly queryExpander: SearchQueryExpanderService,
+    private readonly entitlements: EntitlementsService,
     @Inject(searchConfig.KEY)
     private readonly config: ConfigType<typeof searchConfig>,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const free = await this.entitlements.resolveByPlanDefinitionId(
+      CATALOG_PLAN_IDS.FREE,
+    );
+    this.platformQueryExpansionEnabled =
+      this.entitlements.isSearchQueryExpansionEnabled(free);
+  }
 
   async searchProfessionals(dto: SearchQueryDto): Promise<SearchResponseDto> {
     const radiusKm = dto.radiusKm ?? this.config.defaultRadiusKm;
@@ -37,27 +43,65 @@ export class SearchService {
     const q = dto.q?.trim() || undefined;
     let expandedTerms: string[] | undefined;
     if (q) {
-      expandedTerms = await this.queryExpander.expand(q);
+      if (
+        this.config.expansion.enabled &&
+        this.platformQueryExpansionEnabled
+      ) {
+        expandedTerms = await this.queryExpander.expand(q);
+      } else {
+        // FTS/trigram siempre con el término original; expansión IA es opt-in por catálogo.
+        expandedTerms = [q];
+      }
     }
 
-    const filters = {
+    const baseFilters = {
       latitude: dto.latitude,
       longitude: dto.longitude,
       radiusMeters: radiusKm * KM_TO_METERS,
       categoryId: dto.categoryId,
       q,
       expandedTerms,
-      limit,
-      offset,
       ftsDictionary: this.config.ftsDictionary,
       trgmThreshold: this.config.trgmThreshold,
     };
 
-    const [results, total] = await Promise.all([
-      this.searchRepository.findProfessionals(filters),
-      this.searchRepository.countProfessionals(filters),
+    const fetchSize = limit + offset;
+
+    const [professionals, companies, totalPro, totalCo] = await Promise.all([
+      this.searchRepository.findProfessionals({
+        ...baseFilters,
+        limit: fetchSize,
+        offset: 0,
+      }),
+      this.searchRepository.findCompanies({
+        ...baseFilters,
+        limit: fetchSize,
+        offset: 0,
+      }),
+      this.searchRepository.countProfessionals({
+        ...baseFilters,
+        limit: 0,
+        offset: 0,
+      }),
+      this.searchRepository.countCompanies({
+        ...baseFilters,
+        limit: 0,
+        offset: 0,
+      }),
     ]);
 
-    return { results, total, page, limit };
+    const merged = this.mergeByDistance([...professionals, ...companies]);
+    const results = merged.slice(offset, offset + limit);
+
+    return {
+      results,
+      total: totalPro + totalCo,
+      page,
+      limit,
+    };
+  }
+
+  private mergeByDistance(items: SearchResultDto[]): SearchResultDto[] {
+    return [...items].sort((a, b) => a.distanceMeters - b.distanceMeters);
   }
 }

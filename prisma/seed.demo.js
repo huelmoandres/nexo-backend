@@ -127,10 +127,21 @@ async function ensureDemoProfessional(prisma, geoIds, categoryIds) {
     });
 
     await tx.$executeRawUnsafe(
-      `UPDATE "ProfessionalProfile" SET location = ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography WHERE id = $3`,
+      `INSERT INTO "ServiceArea" (
+        "id", "professionalProfileId", "label", "location", "radiusMeters", "isPrimary",
+        "countryId", "stateId", "cityId", "neighborhoodId", "createdAt", "updatedAt"
+      ) VALUES (
+        gen_random_uuid(), $3, 'Principal',
+        ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography,
+        5000, true, $4, $5, $6, $7, NOW(), NOW()
+      )`,
       DEMO.pro.longitude,
       DEMO.pro.latitude,
       profile.id,
+      geoIds.countryId,
+      geoIds.stateId,
+      geoIds.cityId,
+      geoIds.neighborhoodId,
     );
 
     await tx.professionalIdentity.create({

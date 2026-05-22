@@ -24,6 +24,7 @@ import { STORAGE_SERVICE_TOKEN } from '@modules/storage/storage.constants';
 import { buildProblem } from '@common/errors/problem.factory';
 import { portfolioConfig } from '@config/portfolio.config';
 import { NotificationsService } from '@modules/notifications/notifications.service';
+import { EntitlementsService } from '@modules/entitlements/entitlements.service';
 import {
   PORTFOLIO_PHOTO_KEY_PATTERN,
   assertKeyBelongsToUser,
@@ -95,6 +96,7 @@ export class PortfolioService {
     @InjectQueue(PORTFOLIO_MODERATE_QUEUE)
     private readonly moderateQueue: Queue,
     private readonly notifications: NotificationsService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   /**
@@ -123,6 +125,20 @@ export class PortfolioService {
         dto.categoryId,
       );
     }
+
+    const planEntitlements =
+      await this.entitlements.resolveForProfessional(professionalProfileId);
+    await this.entitlements.assert(
+      'portfolio.item.create',
+      'professional',
+      professionalProfileId,
+      {
+        effectiveMax: Math.min(
+          this.config.maxItemsPerProfessional,
+          planEntitlements.portfolio.itemsMax,
+        ),
+      },
+    );
 
     const item = await this.repository.createItem({
       professionalId: professionalProfileId,
@@ -209,14 +225,21 @@ export class PortfolioService {
     }
 
     const currentCount = await this.repository.countPhotosByItemId(itemId);
-    if (currentCount >= this.config.maxPhotosPerItem) {
-      throw new ConflictException(
-        buildProblem(
-          'PORTFOLIO_PHOTOS_LIMIT_REACHED',
-          `Máximo ${this.config.maxPhotosPerItem} fotos por item.`,
-        ),
-      );
-    }
+    const planEntitlements =
+      await this.entitlements.resolveForProfessional(professionalProfileId);
+    const photosLimit = Math.min(
+      this.config.maxPhotosPerItem,
+      planEntitlements.portfolio.photosPerItemMax,
+    );
+    await this.entitlements.assert(
+      'portfolio.photo.add',
+      'professional',
+      professionalProfileId,
+      {
+        currentPhotoCount: currentCount,
+        effectiveMax: photosLimit,
+      },
+    );
 
     const photo = await this.repository.addPhotoWithReorder({
       portfolioItemId: itemId,

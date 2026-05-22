@@ -6,6 +6,7 @@ import type { CompanyCreatedResponseDto } from './dto/company-created-response.d
 import type { PresignDocumentResponseDto } from './dto/presign-document-response.dto';
 import type { ProfessionalProfileCreatedResponseDto } from './dto/professional-profile-created-response.dto';
 import type { UserResponseDto } from './dto/user-response.dto';
+import type { UserEntitlementsResponseDto } from './dto/user-entitlements-response.dto';
 import { UsersCompanyService } from './services/users-company.service';
 import { UsersProfileService } from './services/users-profile.service';
 import type { RequestMeta } from './users.types';
@@ -26,6 +27,12 @@ export class UsersService {
    */
   async getMe(supabaseUid: string): Promise<UserResponseDto> {
     return this.usersProfileService.getMe(supabaseUid);
+  }
+
+  async getMyEntitlements(
+    supabaseUid: string,
+  ): Promise<UserEntitlementsResponseDto> {
+    return this.usersProfileService.getMyEntitlements(supabaseUid);
   }
 
   /**

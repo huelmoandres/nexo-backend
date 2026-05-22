@@ -63,6 +63,21 @@ describe('PortfolioService', () => {
     markExists: ReturnType<typeof vi.fn>;
   };
   type ModerationMock = { moderate: ReturnType<typeof vi.fn> };
+  type EntitlementsMock = {
+    resolveForProfessional: ReturnType<typeof vi.fn>;
+    assert: ReturnType<typeof vi.fn>;
+  };
+
+  const defaultEntitlementsMock = (): EntitlementsMock => ({
+    resolveForProfessional: vi.fn().mockResolvedValue({
+      schemaVersion: 2,
+      serviceAreas: { max: 1, radiusMetersMax: 10_000 },
+      portfolio: { itemsMax: 50, photosPerItemMax: 10 },
+      search: { queryExpansionEnabled: false },
+      urgency: { broadcastDelayMs: 20_000, broadcastTier: 3 },
+    }),
+    assert: vi.fn().mockResolvedValue(undefined),
+  });
 
   const makeService = (
     overrides: Partial<RepoMocks> = {},
@@ -80,6 +95,7 @@ describe('PortfolioService', () => {
         consentTtlDays: number;
         reminderDelayDays: number;
       }>;
+      entitlements?: EntitlementsMock;
     } = {},
   ) => {
     const repo: RepoMocks = {
@@ -165,6 +181,7 @@ describe('PortfolioService', () => {
       notifyProfessionalConsentDeclined: vi.fn().mockResolvedValue(undefined),
       ...deps.notifications,
     };
+    const entitlements = deps.entitlements ?? defaultEntitlementsMock();
     return {
       service: new PortfolioService(
         repo as never,
@@ -176,6 +193,7 @@ describe('PortfolioService', () => {
         consentReminderQueue as never,
         moderateQueue as never,
         notifications as never,
+        entitlements as never,
       ),
       repo,
       cleanupQueue,
@@ -550,20 +568,38 @@ describe('PortfolioService', () => {
       }
     });
 
-    it('rechaza si excede el límite de fotos (PORTFOLIO_PHOTOS_LIMIT_REACHED)', async () => {
-      const { service } = baseRepoState({
-        countPhotosByItemId: vi.fn().mockResolvedValue(10),
-      });
+    it('rechaza si excede el límite de fotos del plan (PLAN_FEATURE_UNAVAILABLE)', async () => {
+      const entitlements = defaultEntitlementsMock();
+      entitlements.assert.mockRejectedValue(
+        new ForbiddenException({
+          code: 'PLAN_FEATURE_UNAVAILABLE',
+          detail: 'Máximo 10 fotos por ítem según tu plan.',
+        }),
+      );
+      const { service } = makeService(
+        {
+          findProfessionalBySupabaseUid: vi.fn().mockResolvedValue({
+            userId: 'user-1',
+            professionalProfileId: 'prof-1',
+          }),
+          findItemForOwner: vi
+            .fn()
+            .mockResolvedValue({ id: 'item-1', professionalId: 'prof-1' }),
+          countPhotosByItemId: vi.fn().mockResolvedValue(10),
+          findPhotoByFileKey: vi.fn().mockResolvedValue(null),
+        },
+        { entitlements },
+      );
 
       try {
         await service.addPhoto('sub-1', 'item-1', { fileKey: validFileKey });
         expect.fail('debió lanzar');
       } catch (err) {
-        expect(err).toBeInstanceOf(ConflictException);
-        const body = (err as ConflictException).getResponse() as {
+        expect(err).toBeInstanceOf(ForbiddenException);
+        const body = (err as ForbiddenException).getResponse() as {
           code: string;
         };
-        expect(body.code).toBe('PORTFOLIO_PHOTOS_LIMIT_REACHED');
+        expect(body.code).toBe('PLAN_FEATURE_UNAVAILABLE');
       }
     });
   });

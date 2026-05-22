@@ -26,7 +26,10 @@ import {
   UsersRepository,
 } from '../users.repository';
 import type { CompanySummaryDto } from '../dto/company-summary.dto';
+import { GeoResolveService } from '@modules/geo/geo-resolve.service';
 import { RutRegistrationService } from './rut-registration.service';
+import { EntitlementsService } from '@modules/entitlements/entitlements.service';
+import type { UserEntitlementsResponseDto } from '../dto/user-entitlements-response.dto';
 
 const BLOCKED_PRO_ONBOARDING_ROLES: Role[] = [
   Role.COMPANY_ADMIN,
@@ -39,7 +42,9 @@ export class UsersProfileService {
   constructor(
     private readonly usersRepository: UsersRepository,
     private readonly rutRegistration: RutRegistrationService,
+    private readonly geoResolveService: GeoResolveService,
     private readonly authorizationService: AuthorizationService,
+    private readonly entitlements: EntitlementsService,
     @Inject(STORAGE_SERVICE_TOKEN)
     private readonly storage: IStorageService,
     @Inject(usersConfig.KEY)
@@ -57,6 +62,47 @@ export class UsersProfileService {
       );
     }
     return this.mapUserToResponse(user);
+  }
+
+  async getMyEntitlements(supabaseUid: string): Promise<UserEntitlementsResponseDto> {
+    const user = await this.usersRepository.findBySupabaseUidForMe(supabaseUid);
+    if (!user) {
+      throw new NotFoundException(
+        buildProblem(
+          'USER_NOT_FOUND',
+          'No existe un usuario sincronizado para este token.',
+        ),
+      );
+    }
+
+    if (user.professionalProfile) {
+      const entitlements = await this.entitlements.resolveForProfessional(
+        user.professionalProfile.id,
+      );
+      return {
+        subjectType: 'professional',
+        subjectId: user.professionalProfile.id,
+        entitlements,
+      };
+    }
+
+    if (user.ownedCompany) {
+      const entitlements = await this.entitlements.resolveForCompany(
+        user.ownedCompany.id,
+      );
+      return {
+        subjectType: 'company',
+        subjectId: user.ownedCompany.id,
+        entitlements,
+      };
+    }
+
+    throw new BadRequestException(
+      buildProblem(
+        'VALIDATION_ERROR',
+        'No tenés un perfil profesional ni empresa asociada para resolver entitlements.',
+      ),
+    );
   }
 
   async createProfessionalProfile(
@@ -104,18 +150,21 @@ export class UsersProfileService {
 
     const promoteRoleToIndependentPro = user.role === Role.CLIENT;
 
+    const geoInput = await this.resolveGeoForOnboarding(dto);
+
     const profile =
       await this.usersRepository.createProfessionalProfileWithPostgis({
         userId: user.id,
         bio: dto.bio,
         experienceYears: dto.experienceYears,
-        latitude: dto.latitude,
-        longitude: dto.longitude,
+        latitude: geoInput.latitude,
+        longitude: geoInput.longitude,
+        addressLine: geoInput.addressLine,
         categoryIds: dto.categoryIds,
-        countryId: dto.countryId,
-        stateId: dto.stateId,
-        cityId: dto.cityId,
-        neighborhoodId: dto.neighborhoodId,
+        countryId: geoInput.countryId,
+        stateId: geoInput.stateId,
+        cityId: geoInput.cityId,
+        neighborhoodId: geoInput.neighborhoodId,
         rut: rutNormalized,
         promoteRoleToIndependentPro,
       });
@@ -218,6 +267,71 @@ export class UsersProfileService {
     }
   }
 
+  private async resolveGeoForOnboarding(dto: CreateProfessionalProfileDto): Promise<{
+    latitude: number;
+    longitude: number;
+    addressLine?: string;
+    countryId?: string;
+    stateId?: string;
+    cityId?: string;
+    neighborhoodId?: string;
+  }> {
+    const addressLine = dto.addressLine?.trim();
+    const hasCoords =
+      dto.latitude !== undefined && dto.longitude !== undefined;
+
+    if (!addressLine && !hasCoords) {
+      throw new BadRequestException(
+        buildProblem(
+          'PROFESSIONAL_LOCATION_REQUIRED',
+          'Indica addressLine o latitude y longitude.',
+        ),
+      );
+    }
+
+    let countryId = dto.countryId;
+    let stateId = dto.stateId;
+    let cityId = dto.cityId;
+    let neighborhoodId = dto.neighborhoodId;
+    let latitude = dto.latitude;
+    let longitude = dto.longitude;
+
+    const resolved = await this.geoResolveService.resolve({
+      addressLine,
+      latitude: dto.latitude,
+      longitude: dto.longitude,
+      preferCoordinates: true,
+    });
+    if (resolved.geo) {
+      countryId = countryId ?? resolved.geo.countryId;
+      stateId = stateId ?? resolved.geo.stateId;
+      cityId = cityId ?? resolved.geo.cityId ?? undefined;
+      neighborhoodId =
+        neighborhoodId ?? resolved.geo.neighborhoodId ?? undefined;
+    }
+    latitude = latitude ?? resolved.latitude ?? undefined;
+    longitude = longitude ?? resolved.longitude ?? undefined;
+
+    if (latitude === undefined || longitude === undefined) {
+      throw new BadRequestException(
+        buildProblem(
+          'PROFESSIONAL_LOCATION_UNRESOLVED',
+          'No se pudo determinar la ubicación. Envia coordenadas o una dirección válida.',
+        ),
+      );
+    }
+
+    return {
+      latitude,
+      longitude,
+      addressLine: addressLine || undefined,
+      countryId,
+      stateId,
+      cityId,
+      neighborhoodId,
+    };
+  }
+
   private mapProfessionalProfile(
     profile: ProfessionalProfileWithCategories,
     coords: { latitude: number; longitude: number } | null,
@@ -229,6 +343,10 @@ export class UsersProfileService {
       rut: profile.rut,
       latitude: coords?.latitude ?? null,
       longitude: coords?.longitude ?? null,
+      addressLine: profile.addressLine,
+      stateId: profile.stateId,
+      cityId: profile.cityId,
+      neighborhoodId: profile.neighborhoodId,
       categories: profile.categories.map((pc) => ({
         id: pc.category.id,
         name: pc.category.name,

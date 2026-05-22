@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from '@modules/auth/auth.module';
+import { GeoModule } from '@modules/geo/geo.module';
 import { AuthorizationModule } from '@modules/authorization/authorization.module';
+import { EntitlementsModule } from '@modules/entitlements/entitlements.module';
 import { StorageModule } from '@modules/storage/storage.module';
 import { dgiConfig } from '@config/dgi.config';
 import { AdminVerificationController } from './admin-verification.controller';
@@ -23,7 +25,9 @@ import { DGI_VERIFY_QUEUE } from './users-dgi.constants';
 @Module({
   imports: [
     AuthModule,
+    GeoModule,
     AuthorizationModule,
+    EntitlementsModule,
     StorageModule,
     ConfigModule.forFeature(dgiConfig),
     BullModule.registerQueue({ name: DGI_VERIFY_QUEUE }),
@@ -48,5 +52,6 @@ import { DGI_VERIFY_QUEUE } from './users-dgi.constants';
     },
     RolesGuard,
   ],
+  exports: [UsersRepository],
 })
 export class UsersModule {}

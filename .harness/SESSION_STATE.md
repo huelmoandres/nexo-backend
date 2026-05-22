@@ -7,7 +7,7 @@
 ## Estado Actual del Proyecto
 
 **Fase:** Implementación de dominios core + auditoría integral aplicada
-**Fecha de última actualización:** 2026-05-20 (Search: FTS+categorías, expansión IA, pg_trgm; simplificación configs)
+**Fecha de última actualización:** 2026-05-22 (Entitlements v2: JSON por dominio, registry, caché, portfolio/search enforcement)
 
 ---
 
@@ -21,10 +21,12 @@
 | `health` | **Implementado** | Liveness/readiness; readiness usa Diagnostics |
 | `diagnostics` | **Implementado** | Sin spec larga — ver `src/modules/diagnostics/` + `.harness/INDEX.md` |
 | `categories` | **Implementado** | (Swagger tag `categories`) |
-| `search` | **Implementado** | `.harness/specs/search-matching.md` |
+| `search` | **Implementado (fase 4)** | `.harness/specs/search-matching.md` — ServiceArea geo + empresas en resultados |
 | `portfolio` | **Completo** | `.harness/specs/portfolio-module.md` — Owner CRUD + consent + BullMQ + públicos + presign + throttle + moderación admin + worker IA + cleanup worker real |
 | `ai` | **Implementado** | `src/modules/ai/` — módulo IA compartido + InferenceCacheGcService |
 | `authorization` | **Implementado** | `src/modules/authorization/` — AuthorizationService + RolesGuard compartidos |
+| `entitlements` | **Implementado (v2)** | `.harness/specs/plans-entitlements.md` — schema v2, resolver+caché, capabilities, portfolio/search, `GET /users/me/entitlements` |
+| `service-areas` | **Implementado (fase 3)** | CRUD `/api/professionals/me/service-areas` y `/api/companies/:id/service-areas` |
 | `notifications` | **Implementado** | `src/modules/notifications/` — notificaciones transaccionales |
 | Escrow, Urgency, Dispute, Reviews, Chat | **Roadmap** | Specs y evals en harness; ver tabla legacy abajo |
 

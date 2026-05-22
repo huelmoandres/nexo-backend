@@ -30,6 +30,8 @@
     "db:studio": "prisma studio --config prisma/prisma.config.ts",
     "db:seed": "node prisma/seed.js",
     "db:seed:geo": "node prisma/seed.geo.js",
+    "geo:build": "node scripts/build-uruguay-geo.mjs",
+    "categories:build": "node scripts/build-categories-json.mjs",
     "db:seed:categories": "node prisma/seed.categories.js",
     "db:seed:demo": "node prisma/seed.demo.js",
     "db:seed:all": "npm run db:seed && npm run db:seed:geo && npm run db:seed:categories && npm run db:seed:demo",

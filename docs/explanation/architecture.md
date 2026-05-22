@@ -129,7 +129,7 @@ Responsable de enviar alertas escalonadas a profesionales cuando se despacha una
 Job padre: dispatch-urgency { urgencyId }
     │
     ├── Job hijo (delay: 0ms)     → Alerta a profesionales BUSINESS (plan Business + rating >= 4.8)
-    ├── Job hijo (delay: 10.000ms) → Alerta a profesionales MEDIUM
+    ├── Job hijo (delay: 10.000ms) → Alerta a profesionales PRO
     └── Job hijo (delay: 20.000ms) → Alerta al resto (FREE)
 ```
 

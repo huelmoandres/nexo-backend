@@ -108,6 +108,21 @@ export const ERRORS = {
     title: 'Slug duplicado',
     slug: 'category-slug-duplicate',
   },
+  CATEGORY_SERVICE_REQUIRES_PARENT: {
+    status: 400,
+    title: 'El servicio requiere un oficio padre',
+    slug: 'category-service-requires-parent',
+  },
+  CATEGORY_TYPE_INVALID_PARENT: {
+    status: 400,
+    title: 'El padre debe ser un oficio (TRADE)',
+    slug: 'category-type-invalid-parent',
+  },
+  CATEGORY_TRADE_CANNOT_HAVE_PARENT: {
+    status: 400,
+    title: 'Un oficio no puede tener categoría padre',
+    slug: 'category-trade-cannot-have-parent',
+  },
   KYC_INVALID_FILE_EXTENSION: {
     status: 400,
     title: 'Extensión de archivo inválida',
@@ -333,9 +348,69 @@ export const ERRORS = {
     title: 'El ítem no está en cola de moderación',
     slug: 'portfolio-not-in-moderation-queue',
   },
+  GEO_RESOLVE_INPUT_REQUIRED: {
+    status: 400,
+    title: 'Entrada de geolocalización requerida',
+    slug: 'geo-resolve-input-required',
+  },
+  GEO_COUNTRY_NOT_FOUND: {
+    status: 404,
+    title: 'País de catálogo geo no encontrado',
+    slug: 'geo-country-not-found',
+  },
+  PROFESSIONAL_LOCATION_REQUIRED: {
+    status: 400,
+    title: 'Ubicación del profesional requerida',
+    slug: 'professional-location-required',
+  },
+  PROFESSIONAL_LOCATION_UNRESOLVED: {
+    status: 400,
+    title: 'No se pudo resolver la ubicación',
+    slug: 'professional-location-unresolved',
+  },
   TOO_MANY_REQUESTS: {
     status: 429,
     title: 'Demasiadas solicitudes',
     slug: 'too-many-requests',
+  },
+  SERVICE_AREA_LIMIT_REACHED: {
+    status: 403,
+    title: 'Límite de zonas de servicio',
+    slug: 'service-area-limit-reached',
+  },
+  SERVICE_AREA_NOT_FOUND: {
+    status: 404,
+    title: 'Zona de servicio no encontrada',
+    slug: 'service-area-not-found',
+  },
+  SERVICE_AREA_PRIMARY_REQUIRED: {
+    status: 409,
+    title: 'Zona principal requerida',
+    slug: 'service-area-primary-required',
+  },
+  PLAN_ENTITLEMENTS_REQUIRED: {
+    status: 400,
+    title: 'Parámetros de plan requeridos',
+    slug: 'plan-entitlements-required',
+  },
+  PLAN_ENTITLEMENTS_INVALID: {
+    status: 400,
+    title: 'Parámetros de plan inválidos',
+    slug: 'plan-entitlements-invalid',
+  },
+  PLAN_DEFINITION_REQUIRED: {
+    status: 400,
+    title: 'Definición de plan requerida',
+    slug: 'plan-definition-required',
+  },
+  PLAN_FEATURE_UNAVAILABLE: {
+    status: 403,
+    title: 'Función no disponible en tu plan',
+    slug: 'plan-feature-unavailable',
+  },
+  COMPANY_ACCESS_DENIED: {
+    status: 403,
+    title: 'Acceso a empresa denegado',
+    slug: 'company-access-denied',
   },
 } as const;

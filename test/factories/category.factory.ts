@@ -1,6 +1,6 @@
 import { faker } from '@faker-js/faker';
 import { Factory } from 'fishery';
-import type { Category, Prisma } from '@prisma/client';
+import { CategoryType, type Category, type Prisma } from '@prisma/client';
 
 /**
  * Factory para entidades Category de Prisma.
@@ -26,6 +26,7 @@ export const categoryFactory = Factory.define<
     id: faker.string.uuid(),
     name,
     slug,
+    type: CategoryType.TRADE,
     supportsUrgency: false,
     parentId: null,
     createdAt: new Date(),
@@ -45,6 +46,9 @@ export const urgentCategoryFactory = categoryFactory.params({
   supportsUrgency: true,
 });
 
-/** Categoría hija — requiere pasar parentId explícitamente */
-export const childCategoryFactory = (parentId: string) =>
-  categoryFactory.build({ parentId });
+/** Servicio (hijo de un oficio) */
+export const serviceCategoryFactory = (parentId: string) =>
+  categoryFactory.build({ parentId, type: CategoryType.SERVICE });
+
+/** @deprecated usar serviceCategoryFactory */
+export const childCategoryFactory = serviceCategoryFactory;

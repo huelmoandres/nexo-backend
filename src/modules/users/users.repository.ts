@@ -3,6 +3,7 @@ import {
   AuditAction,
   DgiVerificationStatus,
   Role,
+  SubscriptionPlan,
   TrustStatus,
   VerificationDocumentStatus,
   VerificationDocumentType,
@@ -10,6 +11,7 @@ import {
   type Company,
   type Prisma,
 } from '@prisma/client';
+import { CATALOG_PLAN_IDS } from '@common/types/plan-entitlements.schema';
 import { PrismaService } from '@prisma/prisma.service';
 
 const professionalProfileIncludeMe = {
@@ -153,6 +155,8 @@ export class UsersRepository {
           name: input.name,
           rut: input.rut,
           adminId: input.userId,
+          subscriptionPlan: SubscriptionPlan.FREE,
+          planDefinitionId: CATALOG_PLAN_IDS.FREE,
         },
       });
 
@@ -185,10 +189,9 @@ export class UsersRepository {
   }
 
   /**
-   * Crea perfil, asocia categorías y asigna `location` con PostGIS (WGS84).
+   * Crea perfil, asocia categorías y zona principal (`ServiceArea`) con PostGIS (WGS84).
    * Orden en SQL: longitud, latitud (ST_MakePoint).
-   * Además inicializa agregados nuevos (`ProfessionalIdentity`, `TrustProfile`)
-   * para mantener dual-write encapsulado dentro del repositorio.
+   * Además inicializa agregados nuevos (`ProfessionalIdentity`, `TrustProfile`).
    *
    * @param input.userId - Propietario del perfil.
    * @param input.bio - Descripción opcional del profesional.
@@ -200,6 +203,7 @@ export class UsersRepository {
    * @param input.stateId - Departamento/state administrativo (opcional).
    * @param input.cityId - Ciudad administrativa (opcional).
    * @param input.neighborhoodId - Barrio administrativo (opcional).
+   * @param input.addressLine - Dirección libre declarada por el profesional.
    * @returns Perfil creado con sus categorías incluidas.
    */
   async createProfessionalProfileWithPostgis(input: {
@@ -208,6 +212,7 @@ export class UsersRepository {
     experienceYears: number;
     latitude: number;
     longitude: number;
+    addressLine?: string;
     categoryIds: string[];
     countryId?: string;
     stateId?: string;
@@ -223,10 +228,13 @@ export class UsersRepository {
           bio: input.bio,
           experienceYears: input.experienceYears,
           rut: input.rut,
+          addressLine: input.addressLine,
           countryId: input.countryId,
           stateId: input.stateId,
           cityId: input.cityId,
           neighborhoodId: input.neighborhoodId,
+          subscriptionPlan: SubscriptionPlan.FREE,
+          planDefinitionId: CATALOG_PLAN_IDS.FREE,
           categories: {
             create: input.categoryIds.map((categoryId) => ({
               category: { connect: { id: categoryId } },
@@ -237,10 +245,22 @@ export class UsersRepository {
       });
 
       await tx.$executeRawUnsafe(
-        `UPDATE "ProfessionalProfile" SET location = ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography WHERE id = $3`,
+        `INSERT INTO "ServiceArea" (
+          "id", "professionalProfileId", "label", "location", "radiusMeters", "isPrimary",
+          "addressLine", "countryId", "stateId", "cityId", "neighborhoodId", "createdAt", "updatedAt"
+        ) VALUES (
+          gen_random_uuid(), $3::text, 'Principal',
+          ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography,
+          5000, true, $4, $5, $6, $7, $8, NOW(), NOW()
+        )`,
         input.longitude,
         input.latitude,
         profile.id,
+        input.addressLine ?? null,
+        input.countryId ?? null,
+        input.stateId ?? null,
+        input.cityId ?? null,
+        input.neighborhoodId ?? null,
       );
 
       await tx.professionalIdentity.create({
@@ -270,7 +290,7 @@ export class UsersRepository {
 
   /**
    * @param profileId - ID del `ProfessionalProfile` (tipo texto en Postgres).
-   * @returns Lat/lng desde `geography` o `null` si no hay punto.
+   * @returns Lat/lng de la zona principal (`ServiceArea.isPrimary`) o la más antigua.
    */
   async getProfileCoordinates(
     profileId: string,
@@ -278,8 +298,11 @@ export class UsersRepository {
     const rows = await this.prisma.$queryRawUnsafe<
       Array<{ lat: number; lng: number }>
     >(
-      `SELECT ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng
-       FROM "ProfessionalProfile" WHERE id = $1 AND location IS NOT NULL`,
+      `SELECT ST_Y(sa.location::geometry) AS lat, ST_X(sa.location::geometry) AS lng
+       FROM "ServiceArea" sa
+       WHERE sa."professionalProfileId" = $1
+       ORDER BY sa."isPrimary" DESC, sa."createdAt" ASC
+       LIMIT 1`,
       profileId,
     );
     const row = rows[0];

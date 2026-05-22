@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CategoryType } from '@prisma/client';
 
 export class CategoryResponseDto {
   @ApiProperty({ example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
@@ -9,6 +10,9 @@ export class CategoryResponseDto {
 
   @ApiProperty({ example: 'electricidad' })
   slug!: string;
+
+  @ApiProperty({ enum: CategoryType, example: CategoryType.TRADE })
+  type!: CategoryType;
 
   @ApiProperty({ example: false })
   supportsUrgency!: boolean;

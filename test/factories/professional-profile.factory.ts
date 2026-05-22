@@ -30,6 +30,7 @@ export const professionalProfileFactory =
     addressLine: null,
     kycStatus: 'UNVERIFIED',
     subscriptionPlan: 'FREE',
+    planDefinitionId: 'a0000000-0000-4000-8000-000000000001',
     isAvailable: false,
     averageRating: 0,
     bio: null,

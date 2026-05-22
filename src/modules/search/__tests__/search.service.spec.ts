@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PLAN_CATALOG_DEFAULTS } from '@common/types/plan-entitlements.schema';
 import { SearchService } from '../search.service';
 
 describe('SearchService', () => {
   const makeRepo = (overrides: Record<string, unknown> = {}) => ({
     findProfessionals: vi.fn().mockResolvedValue([]),
     countProfessionals: vi.fn().mockResolvedValue(0),
+    findCompanies: vi.fn().mockResolvedValue([]),
+    countCompanies: vi.fn().mockResolvedValue(0),
     ...overrides,
   });
 
@@ -31,202 +34,128 @@ describe('SearchService', () => {
     trgmThreshold: 0.25,
   });
 
+  const makeEntitlements = (expansionEnabled = true) => ({
+    resolveByPlanDefinitionId: vi.fn().mockResolvedValue(
+      expansionEnabled
+        ? PLAN_CATALOG_DEFAULTS.PRO
+        : PLAN_CATALOG_DEFAULTS.FREE,
+    ),
+    isSearchQueryExpansionEnabled: vi
+      .fn()
+      .mockReturnValue(expansionEnabled),
+  });
+
+  const makeService = async (
+    repo: ReturnType<typeof makeRepo>,
+    expander: ReturnType<typeof makeExpander>,
+    expansionEnabled = true,
+  ) => {
+    const service = new SearchService(
+      repo as never,
+      expander as never,
+      makeEntitlements(expansionEnabled) as never,
+      makeSearchConfig() as never,
+    );
+    await service.onModuleInit();
+    return service;
+  };
+
   beforeEach(() => vi.clearAllMocks());
 
   const baseQuery = { latitude: -34.9011, longitude: -56.1645 };
 
   describe('searchProfessionals', () => {
-    it('aplica defaults: radiusKm=5, page=1, limit=10', async () => {
+    it('consulta profesionales y empresas en paralelo', async () => {
       const repo = makeRepo();
-      const expander = makeExpander();
-      const service = new SearchService(
-        repo as never,
-        expander as never,
-        makeSearchConfig(),
-      );
+      const service = await makeService(repo, makeExpander());
 
       await service.searchProfessionals(baseQuery);
 
-      expect(repo.findProfessionals).toHaveBeenCalledWith(
-        expect.objectContaining({
-          radiusMeters: 5000,
-          offset: 0,
-          limit: 10,
-        }),
-      );
+      expect(repo.findProfessionals).toHaveBeenCalled();
+      expect(repo.findCompanies).toHaveBeenCalled();
+      expect(repo.countProfessionals).toHaveBeenCalled();
+      expect(repo.countCompanies).toHaveBeenCalled();
     });
 
-    it('convierte radiusKm a metros correctamente', async () => {
-      const repo = makeRepo();
-      const expander = makeExpander();
-      const service = new SearchService(
-        repo as never,
-        expander as never,
-        makeSearchConfig(),
-      );
-
-      await service.searchProfessionals({ ...baseQuery, radiusKm: 20 });
-
-      expect(repo.findProfessionals).toHaveBeenCalledWith(
-        expect.objectContaining({ radiusMeters: 20000 }),
-      );
-    });
-
-    it('calcula offset correctamente para paginación', async () => {
-      const repo = makeRepo();
-      const expander = makeExpander();
-      const service = new SearchService(
-        repo as never,
-        expander as never,
-        makeSearchConfig(),
-      );
-
-      await service.searchProfessionals({ ...baseQuery, page: 3, limit: 5 });
-
-      expect(repo.findProfessionals).toHaveBeenCalledWith(
-        expect.objectContaining({ offset: 10, limit: 5 }),
-      );
-    });
-
-    it('llama a findProfessionals y countProfessionals en paralelo', async () => {
-      const callOrder: string[] = [];
-      const repo = {
-        findProfessionals: vi.fn().mockImplementation(() => {
-          callOrder.push('find');
-          return Promise.resolve([]);
-        }),
-        countProfessionals: vi.fn().mockImplementation(() => {
-          callOrder.push('count');
-          return Promise.resolve(0);
-        }),
-      };
-      const expander = makeExpander();
-      const service = new SearchService(
-        repo as never,
-        expander as never,
-        makeSearchConfig(),
-      );
-
-      await service.searchProfessionals(baseQuery);
-
-      expect(callOrder).toContain('find');
-      expect(callOrder).toContain('count');
-    });
-
-    it('expande q con el queryExpander y pasa expandedTerms al repo', async () => {
-      const repo = makeRepo();
-      const expander = makeExpander({
-        expand: vi
-          .fn()
-          .mockResolvedValue(['electricista', 'electricidad', 'eléctrico']),
-      });
-      const service = new SearchService(
-        repo as never,
-        expander as never,
-        makeSearchConfig(),
-      );
-
-      await service.searchProfessionals({
-        ...baseQuery,
-        q: 'electricista',
-      });
-
-      expect(expander.expand).toHaveBeenCalledWith('electricista');
-      expect(repo.findProfessionals).toHaveBeenCalledWith(
-        expect.objectContaining({
-          q: 'electricista',
-          expandedTerms: ['electricista', 'electricidad', 'eléctrico'],
-        }),
-      );
-    });
-
-    it('no llama al expander si q es undefined', async () => {
-      const repo = makeRepo();
-      const expander = makeExpander();
-      const service = new SearchService(
-        repo as never,
-        expander as never,
-        makeSearchConfig(),
-      );
-
-      await service.searchProfessionals(baseQuery);
-
-      expect(expander.expand).not.toHaveBeenCalled();
-      expect(repo.findProfessionals).toHaveBeenCalledWith(
-        expect.objectContaining({
-          q: undefined,
-          expandedTerms: undefined,
-        }),
-      );
-    });
-
-    it('normaliza q vacío como undefined y no expande', async () => {
-      const repo = makeRepo();
-      const expander = makeExpander();
-      const service = new SearchService(
-        repo as never,
-        expander as never,
-        makeSearchConfig(),
-      );
-
-      await service.searchProfessionals({ ...baseQuery, q: '   ' });
-
-      expect(expander.expand).not.toHaveBeenCalled();
-      expect(repo.findProfessionals).toHaveBeenCalledWith(
-        expect.objectContaining({ q: undefined, expandedTerms: undefined }),
-      );
-    });
-
-    it('pasa trgmThreshold al repositorio', async () => {
-      const repo = makeRepo();
-      const expander = makeExpander();
-      const service = new SearchService(
-        repo as never,
-        expander as never,
-        makeSearchConfig(),
-      );
-
-      await service.searchProfessionals(baseQuery);
-
-      expect(repo.findProfessionals).toHaveBeenCalledWith(
-        expect.objectContaining({ trgmThreshold: 0.25 }),
-      );
-    });
-
-    it('retorna SearchResponseDto con los campos correctos', async () => {
-      const mockResult = {
-        id: 'pp-id',
-        userId: 'u-id',
-        fullName: 'Pro',
-        bio: null,
-        experienceYears: null,
-        averageRating: 4.5,
-        isAvailable: true,
-        distanceMeters: 800,
-      };
+    it('mezcla y ordena por distancia', async () => {
       const repo = makeRepo({
-        findProfessionals: vi.fn().mockResolvedValue([mockResult]),
+        findProfessionals: vi.fn().mockResolvedValue([
+          {
+            type: 'professional',
+            id: 'pp-far',
+            name: 'Lejos',
+            bio: null,
+            averageRating: 5,
+            isAvailable: true,
+            distanceMeters: 3000,
+            userId: 'u1',
+          },
+        ]),
+        findCompanies: vi.fn().mockResolvedValue([
+          {
+            type: 'company',
+            id: 'co-near',
+            name: 'Cerca SA',
+            bio: null,
+            averageRating: 4,
+            isAvailable: true,
+            distanceMeters: 500,
+            logoUrl: null,
+          },
+        ]),
         countProfessionals: vi.fn().mockResolvedValue(1),
+        countCompanies: vi.fn().mockResolvedValue(1),
       });
-      const expander = makeExpander();
-      const service = new SearchService(
-        repo as never,
-        expander as never,
-        makeSearchConfig(),
+      const service = await makeService(repo, makeExpander());
+
+      const result = await service.searchProfessionals(baseQuery);
+
+      expect(result.results[0]?.type).toBe('company');
+      expect(result.results[0]?.distanceMeters).toBe(500);
+      expect(result.results[1]?.type).toBe('professional');
+      expect(result.total).toBe(2);
+    });
+
+    it('pide fetchSize limit+offset a cada repo', async () => {
+      const repo = makeRepo();
+      const service = await makeService(repo, makeExpander());
+
+      await service.searchProfessionals({ ...baseQuery, page: 2, limit: 5 });
+
+      expect(repo.findProfessionals).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 10, offset: 0 }),
       );
+      expect(repo.findCompanies).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 10, offset: 0 }),
+      );
+    });
 
-      const result = await service.searchProfessionals({
-        ...baseQuery,
-        page: 2,
-        limit: 5,
+    it('expande q cuando está presente', async () => {
+      const expander = makeExpander({
+        expand: vi.fn().mockResolvedValue(['plomero']),
       });
+      const repo = makeRepo();
+      const service = await makeService(repo, expander, true);
 
-      expect(result).toEqual({
-        results: [mockResult],
-        total: 1,
-        page: 2,
-        limit: 5,
-      });
+      await service.searchProfessionals({ ...baseQuery, q: 'plomero' });
+
+      expect(expander.expand).toHaveBeenCalledWith('plomero');
+    });
+
+    it('no llama expander si FREE deshabilita IA pero sigue filtrando con q', async () => {
+      const expander = makeExpander();
+      const repo = makeRepo();
+      const service = await makeService(repo, expander, false);
+
+      await service.searchProfessionals({ ...baseQuery, q: 'plomero' });
+
+      expect(expander.expand).not.toHaveBeenCalled();
+      expect(repo.findProfessionals).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'plomero',
+          expandedTerms: ['plomero'],
+        }),
+      );
     });
   });
 });

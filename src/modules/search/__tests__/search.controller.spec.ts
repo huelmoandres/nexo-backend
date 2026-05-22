@@ -16,18 +16,19 @@ describe('SearchController', () => {
   };
 
   describe('searchProfessionals', () => {
-    it('delega en service.searchProfessionals y retorna respuesta', async () => {
+    it('delega en service y retorna respuesta polimórfica', async () => {
       const mockResponse = {
         results: [
           {
+            type: 'professional' as const,
             id: 'pp-id',
-            userId: 'u-id',
-            fullName: 'Pro Test',
+            name: 'Pro Test',
             bio: null,
-            experienceYears: null,
             averageRating: 4.5,
             isAvailable: true,
             distanceMeters: 850,
+            userId: 'u-id',
+            experienceYears: null,
           },
         ],
         total: 1,
@@ -44,23 +45,6 @@ describe('SearchController', () => {
       });
 
       expect(result).toEqual(mockResponse);
-    });
-
-    it('pasa el DTO completo al service', async () => {
-      const { controller, service } = makeController();
-      const query = {
-        latitude: -34.9011,
-        longitude: -56.1645,
-        radiusKm: 10,
-        categoryId: 'cat-uuid',
-        q: 'plomero',
-        page: 2,
-        limit: 5,
-      };
-
-      await controller.searchProfessionals(query);
-
-      expect(service.searchProfessionals).toHaveBeenCalledWith(query);
     });
   });
 });

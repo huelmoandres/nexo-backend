@@ -1,0 +1,74 @@
+# PREREQUISITOS:
+# - Servidor: npm run start:dev
+# - Migraciones aplicadas (PlanDefinition seed)
+# - Usuario SUPER_ADMIN sincronizado (seed admin)
+
+@baseUrl = http://localhost:3000
+
+### Token SUPER_ADMIN
+# @name login
+GET {{baseUrl}}/api/auth/dev-token?email=admin@nexos.local&uid=00000000-0000-4000-8000-000000000001
+
+###
+
+@adminToken = {{login.response.body.$.token}}
+
+### Listar planes de catálogo
+GET {{baseUrl}}/api/admin/plan-definitions
+Authorization: Bearer {{adminToken}}
+
+###
+
+### Editar entitlements del plan FREE (catálogo)
+# @planFreeId = a0000000-0000-4000-8000-000000000001
+PATCH {{baseUrl}}/api/admin/plan-definitions/a0000000-0000-4000-8000-000000000001
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "entitlements": {
+    "serviceAreasMax": 1,
+    "serviceAreaRadiusMetersMax": 10000,
+    "urgencyBroadcastDelayMs": 20000,
+    "urgencyBroadcastTier": 3
+  }
+}
+
+###
+
+### Asignar plan PRO a un profesional
+# Reemplazar @professionalProfileId con un UUID real
+PATCH {{baseUrl}}/api/admin/professionals/{{professionalProfileId}}/plan
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "subscriptionPlan": "PRO"
+}
+
+###
+
+### Crear plan CUSTOM para profesional
+POST {{baseUrl}}/api/admin/professionals/{{professionalProfileId}}/custom-plan
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "entitlements": {
+    "serviceAreasMax": null,
+    "serviceAreaRadiusMetersMax": 80000,
+    "urgencyBroadcastDelayMs": 0,
+    "urgencyBroadcastTier": 1
+  }
+}
+
+###
+
+### Asignar plan BUSINESS a empresa
+PATCH {{baseUrl}}/api/admin/companies/{{companyId}}/plan
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "subscriptionPlan": "BUSINESS"
+}

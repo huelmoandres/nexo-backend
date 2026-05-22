@@ -1,0 +1,1708 @@
+[
+  {
+    "name": "Electricidad",
+    "slug": "electricidad",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Electricidad residencial",
+        "slug": "electricidad-residencial",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Electricidad comercial e industrial",
+        "slug": "electricidad-comercial",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Electricidad de urgencia",
+        "slug": "electricidad-urgencias",
+        "supportsUrgency": true
+      },
+      {
+        "name": "Domótica y automatización",
+        "slug": "domotica",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Iluminación y luminarias",
+        "slug": "iluminacion",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Tableros y protecciones eléctricas",
+        "slug": "tableros-electricos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Porteros eléctricos y videoporteros",
+        "slug": "porteros-electricos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Instalación de generadores",
+        "slug": "instalacion-generadores",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Medición y eficiencia de consumo",
+        "slug": "medicion-consumo",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Plomería",
+    "slug": "plomeria",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Plomería residencial",
+        "slug": "plomeria-residencial",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Plomería comercial",
+        "slug": "plomeria-comercial",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Destapaciones y desagotes",
+        "slug": "destapaciones",
+        "supportsUrgency": true
+      },
+      {
+        "name": "Instalación de calefones y termos",
+        "slug": "calefones-termos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Reparación de cañerías",
+        "slug": "reparacion-canerias",
+        "supportsUrgency": true
+      },
+      {
+        "name": "Detección de fugas",
+        "slug": "deteccion-fugas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Pozo negro y desagote",
+        "slug": "pozo-negro-desagote",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Bombas y presurización",
+        "slug": "bombas-presurizacion",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Termofusión y cañerías PE",
+        "slug": "termofusion",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Gas",
+    "slug": "gasista",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Instalaciones de gas",
+        "slug": "instalaciones-gas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Reparación de calefones a gas",
+        "slug": "calefones-gas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Estufas y calefacción a gas",
+        "slug": "estufas-gas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Emergencias de gas",
+        "slug": "emergencias-gas",
+        "supportsUrgency": true
+      },
+      {
+        "name": "Gasista matriculado",
+        "slug": "gasista-matriculado",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Pintura",
+    "slug": "pintura",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Pintura interior",
+        "slug": "pintura-interior",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Pintura exterior",
+        "slug": "pintura-exterior",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Pintura decorativa y texturizada",
+        "slug": "pintura-decorativa",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Empapelado y revestimientos murales",
+        "slug": "empapelado",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Pintura de fachadas",
+        "slug": "pintura-fachadas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Pintura epóxica y especial",
+        "slug": "pintura-epoxica",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Albañilería y construcción",
+    "slug": "albanileria",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Albañilería general",
+        "slug": "albanileria-general",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Reformas y ampliaciones",
+        "slug": "reformas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Construcción en seco / durlock",
+        "slug": "construccion-seco",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Mampostería y ladrillos",
+        "slug": "mamposteria",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Demolición y escombros",
+        "slug": "demolicion",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Medianeras y muros",
+        "slug": "medianeras",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Veredas y contrapisos",
+        "slug": "veredas-contrapisos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Parrilleros y barbacoas",
+        "slug": "parrillero-barbacoa",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Chimeneas y hogares",
+        "slug": "chimeneas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Escaleras de hormigón",
+        "slug": "escaleras-hormigon",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Herrería y metalúrgica",
+    "slug": "herreria",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Herrería artística",
+        "slug": "herreria-artistica",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Portones y puertas metálicas",
+        "slug": "portones",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Portones automáticos",
+        "slug": "portones-automaticos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Rejas y protecciones",
+        "slug": "rejas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Soldadura",
+        "slug": "soldadura",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Estructuras metálicas",
+        "slug": "estructuras-metalicas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Barandas y escaleras metálicas",
+        "slug": "barandas-metalicas",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Carpintería",
+    "slug": "carpinteria",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Carpintería de obra",
+        "slug": "carpinteria-obra",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Muebles a medida",
+        "slug": "muebles-medida",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Placards y vestidores",
+        "slug": "placards",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Restauración de muebles",
+        "slug": "restauracion-muebles",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Aberturas de madera",
+        "slug": "aberturas-madera",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Decks y pérgolas",
+        "slug": "decks-pergolas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cocinas a medida",
+        "slug": "cocinas-medida",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Cerrajería",
+    "slug": "cerrajeria",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Cerrajería de urgencia",
+        "slug": "cerrajeria-urgencias",
+        "supportsUrgency": true
+      },
+      {
+        "name": "Cerrajería automotriz",
+        "slug": "cerrajeria-automotriz",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cerraduras de seguridad",
+        "slug": "cerraduras-seguridad",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Copia de llaves",
+        "slug": "copia-llaves",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cajas fuertes",
+        "slug": "cajas-fuertes",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Jardinería y paisajismo",
+    "slug": "jardineria",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Jardinería general",
+        "slug": "jardineria-general",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Paisajismo y diseño",
+        "slug": "paisajismo",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Poda y tala de árboles",
+        "slug": "poda-arboles",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Sistemas de riego",
+        "slug": "riego",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Parquización y césped",
+        "slug": "parquizacion",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Desmalezado y limpieza de terrenos",
+        "slug": "desmalezado",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Vivero y plantas",
+        "slug": "vivero-plantas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Control de hierbas y malezas",
+        "slug": "control-hierbas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Huerta urbana y huertos",
+        "slug": "huerta-urbana",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Limpieza",
+    "slug": "limpieza",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Limpieza doméstica",
+        "slug": "limpieza-domestica",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Limpieza de oficinas y comercios",
+        "slug": "limpieza-oficinas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Limpieza post-obra",
+        "slug": "limpieza-post-obra",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Limpieza de tanques de agua",
+        "slug": "limpieza-tanques",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Limpieza de vidrios en altura",
+        "slug": "limpieza-vidrios",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Limpieza de alfombras y tapizados",
+        "slug": "limpieza-alfombras",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Hidrolavado y limpieza de fachadas",
+        "slug": "hidrolavado",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Limpieza fin de alquiler",
+        "slug": "limpieza-fin-alquiler",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Desinfección del hogar",
+        "slug": "desinfeccion-hogar",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Mudanzas y fletes",
+    "slug": "mudanzas",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Mudanzas residenciales",
+        "slug": "mudanzas-residenciales",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Mudanzas comerciales",
+        "slug": "mudanzas-comerciales",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Fletes y transporte",
+        "slug": "fletes",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Embalaje y empaque",
+        "slug": "embalaje",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Izaje de muebles",
+        "slug": "izaje",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Guardamuebles",
+        "slug": "guardamuebles",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Embalaje de objetos frágiles",
+        "slug": "embalaje-fragiles",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Desmontaje de muebles",
+        "slug": "desmontaje-muebles",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Climatización y refrigeración",
+    "slug": "climatizacion",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Instalación de aire acondicionado",
+        "slug": "instalacion-ac",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Reparación de aire acondicionado",
+        "slug": "reparacion-ac",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Calefacción",
+        "slug": "calefaccion",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Ventilación y extractores",
+        "slug": "ventilacion",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Refrigeración comercial",
+        "slug": "refrigeracion-comercial",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Service y mantenimiento de splits",
+        "slug": "service-splits",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Limpieza de ductos",
+        "slug": "limpieza-ductos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Calderas y calefacción central",
+        "slug": "calderas",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Pisos y revestimientos",
+    "slug": "pisos",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Colocación de pisos",
+        "slug": "colocacion-pisos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Pulido y plastificado de pisos",
+        "slug": "pulido-pisos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cerámicos y azulejos",
+        "slug": "ceramicos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Porcelanato",
+        "slug": "porcelanato",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Microcemento",
+        "slug": "microcemento",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Pisos flotantes y laminados",
+        "slug": "pisos-flotantes",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Pisos de madera",
+        "slug": "pisos-madera",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Techado",
+    "slug": "techado",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Techos y chapas",
+        "slug": "techos-chapas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Canaletas y bajadas",
+        "slug": "canaletas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Membranas asfálticas",
+        "slug": "membranas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Reparación de goteras",
+        "slug": "goteras",
+        "supportsUrgency": true
+      },
+      {
+        "name": "Techos de teja",
+        "slug": "techos-teja",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cielorrasos",
+        "slug": "cielorrasos",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Vidriería",
+    "slug": "vidrieria",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Cristales y vidrios",
+        "slug": "cristales-vidrios",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Mamparas de baño",
+        "slug": "mamparas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Espejos",
+        "slug": "espejos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Vidrios de seguridad / blindex",
+        "slug": "blindex",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cerramientos de aluminio",
+        "slug": "cerramientos-aluminio",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Aberturas",
+    "slug": "aberturas",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Ventanas de aluminio",
+        "slug": "ventanas-aluminio",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Ventanas de PVC",
+        "slug": "ventanas-pvc",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Puertas",
+        "slug": "puertas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cortinas de enrollar",
+        "slug": "cortinas-enrollar",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Mosquiteros",
+        "slug": "mosquiteros",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Fumigación y control de plagas",
+    "slug": "fumigacion",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Fumigación residencial",
+        "slug": "fumigacion-residencial",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Fumigación comercial",
+        "slug": "fumigacion-comercial",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Desratización",
+        "slug": "desratizacion",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Desinfección y sanitización",
+        "slug": "desinfeccion",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Control de termitas",
+        "slug": "control-termitas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Control de cucarachas y hormigas",
+        "slug": "control-cucarachas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Control de avispas y avisperos",
+        "slug": "control-avispas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Control de pulgas y garrapatas",
+        "slug": "control-pulgas",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Reparación de electrodomésticos",
+    "slug": "electrodomesticos",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Lavarropas y secarropas",
+        "slug": "lavarropas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Heladeras y freezers",
+        "slug": "heladeras",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cocinas y hornos",
+        "slug": "cocinas-hornos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Microondas",
+        "slug": "microondas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Lavavajillas",
+        "slug": "lavavajillas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Calefones eléctricos",
+        "slug": "calefones-electricos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Hornos empotrados",
+        "slug": "hornos-empotrados",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Campanas extractoras",
+        "slug": "campanas-extractoras",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Seguridad electrónica",
+    "slug": "seguridad",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Cámaras de seguridad / CCTV",
+        "slug": "camaras-cctv",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Alarmas",
+        "slug": "alarmas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cercas eléctricas",
+        "slug": "cercas-electricas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Control de acceso",
+        "slug": "control-acceso",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cercos perimetrales",
+        "slug": "cercos-perimetrales",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Monitoreo remoto",
+        "slug": "monitoreo-remoto",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Mantenimiento de CCTV",
+        "slug": "mantenimiento-cctv",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Piscinas",
+    "slug": "piscinas",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Construcción de piscinas",
+        "slug": "construccion-piscinas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Mantenimiento de piscinas",
+        "slug": "mantenimiento-piscinas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Reparación de piscinas",
+        "slug": "reparacion-piscinas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Climatización de piscinas",
+        "slug": "climatizacion-piscinas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Accesorios y equipamiento",
+        "slug": "equipamiento-piscinas",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Tapicería y textiles",
+    "slug": "tapiceria",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Tapizado de muebles",
+        "slug": "tapizado-muebles",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cortinas y persianas",
+        "slug": "cortinas-persianas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Toldos y cerramientos textiles",
+        "slug": "toldos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Fundas y almohadones a medida",
+        "slug": "fundas-medida",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Marmolería y piedras",
+    "slug": "marmoleria",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Mesadas de mármol y granito",
+        "slug": "mesadas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Pisos de mármol",
+        "slug": "pisos-marmol",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Restauración de mármol",
+        "slug": "restauracion-marmol",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Mesadas de cuarzo",
+        "slug": "mesadas-cuarzo",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Sanitaria",
+    "slug": "sanitaria",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Baños completos",
+        "slug": "banos-completos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Grifería e inodoros",
+        "slug": "griferia",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cisternas y depósitos",
+        "slug": "cisternas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Loza sanitaria",
+        "slug": "loza-sanitaria",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Yesería",
+    "slug": "yeseria",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Cielorrasos de yeso",
+        "slug": "cielorrasos-yeso",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Molduras y cornisas",
+        "slug": "molduras",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Reparaciones de yeso",
+        "slug": "reparaciones-yeso",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Rosetas y apliques",
+        "slug": "rosetas",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Impermeabilización",
+    "slug": "impermeabilizacion",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Impermeabilización de techos",
+        "slug": "impermeabilizacion-techos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Tratamiento de humedad en muros",
+        "slug": "humedad-muros",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Impermeabilización de subsuelos",
+        "slug": "impermeabilizacion-subsuelos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Aislación térmica",
+        "slug": "aislacion-termica",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Redes y telecomunicaciones",
+    "slug": "redes-telecom",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Cableado estructurado",
+        "slug": "cableado-estructurado",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Fibra óptica",
+        "slug": "fibra-optica",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Redes Wi-Fi",
+        "slug": "redes-wifi",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Instalación de TV y antenas",
+        "slug": "tv-antenas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Telefonía y VoIP",
+        "slug": "telefonia",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Energía solar y sustentable",
+    "slug": "energia-solar",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Paneles solares fotovoltaicos",
+        "slug": "paneles-solares",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Termotanques solares",
+        "slug": "termotanques-solares",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Eficiencia energética",
+        "slug": "eficiencia-energetica",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Decoración e interiorismo",
+    "slug": "decoracion",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Diseño de interiores",
+        "slug": "diseno-interiores",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Papel mural y vinilos",
+        "slug": "papel-mural",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Revestimientos decorativos",
+        "slug": "revestimientos-decorativos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Iluminación decorativa",
+        "slug": "iluminacion-decorativa",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Techista y canalero",
+    "slug": "techista",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Reparación de techos",
+        "slug": "reparacion-techos",
+        "supportsUrgency": true
+      },
+      {
+        "name": "Instalación de canaletas",
+        "slug": "instalacion-canaletas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Zinguería",
+        "slug": "zingueria",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Tecnología y servicios digitales",
+    "slug": "tecnologia-digital",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Diseño gráfico y branding",
+        "slug": "diseno-grafico",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Diseño web y UX/UI",
+        "slug": "diseno-web-ux",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Desarrollo web y aplicaciones",
+        "slug": "desarrollo-web-apps",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Soporte técnico y mantenimiento informático",
+        "slug": "soporte-tecnico",
+        "supportsUrgency": true
+      },
+      {
+        "name": "Marketing digital y redes sociales",
+        "slug": "marketing-digital",
+        "supportsUrgency": false
+      },
+      {
+        "name": "SEO y contenido digital",
+        "slug": "seo-contenido",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Edición de video y motion graphics",
+        "slug": "edicion-video",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Fotografía comercial y producto",
+        "slug": "fotografia-digital",
+        "supportsUrgency": false
+      },
+      {
+        "name": "E-commerce y tiendas online",
+        "slug": "ecommerce-tiendas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Consultoría IT y ciberseguridad",
+        "slug": "consultoria-it",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Automatización y integraciones",
+        "slug": "automatizacion-software",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Capacitación y asesoría digital",
+        "slug": "capacitacion-digital",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Gestión de redes sociales",
+        "slug": "redes-sociales-gestion",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Mantenimiento de PC empresas",
+        "slug": "mantenimiento-pc-empresas",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Automotriz y taller",
+    "slug": "automotriz",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Mecánica general",
+        "slug": "mecanica-general",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Mecánica diesel",
+        "slug": "mecanica-diesel",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Chapa y pintura automotriz",
+        "slug": "chapa-pintura-automotriz",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Gomería y vulcanización",
+        "slug": "gomeria-vulcanizacion",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Alineación y balanceo",
+        "slug": "alineacion-balanceo",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Frenos y suspensión",
+        "slug": "frenos-suspension",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Electricidad automotriz",
+        "slug": "electricidad-automotriz",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Aire acondicionado automotriz",
+        "slug": "aire-acondicionado-auto",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Diagnóstico computarizado",
+        "slug": "diagnostico-computarizado",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Lubricentro y service de aceite",
+        "slug": "lubricentro-service",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Detailing y lavado profesional",
+        "slug": "detailing-lavado-auto",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Polarizado y láminas de seguridad",
+        "slug": "polarizado-laminas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Tapizado automotriz",
+        "slug": "tapizado-automotriz",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cristales y parabrisas",
+        "slug": "cristales-parabrisas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Escape y silenciadores",
+        "slug": "escape-silenciadores",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Transmisión y embrague",
+        "slug": "transmision-embrague",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Auxilio mecánico y grúa",
+        "slug": "auxilio-grua",
+        "supportsUrgency": true
+      },
+      {
+        "name": "Instalación de accesorios",
+        "slug": "instalacion-accesorios-auto",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Motocicletas y cuatriciclos",
+    "slug": "motocicletas",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Mecánica de motos",
+        "slug": "mecanica-motos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Electricidad de motos",
+        "slug": "electricidad-motos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Chapa y pintura de motos",
+        "slug": "chapa-motos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Gomería de motos",
+        "slug": "gomeria-motos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Service de motos",
+        "slug": "service-motos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Auxilio de motos",
+        "slug": "auxilio-motos",
+        "supportsUrgency": true
+      }
+    ]
+  },
+  {
+    "name": "Belleza y bienestar a domicilio",
+    "slug": "belleza-bienestar",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Peluquería a domicilio",
+        "slug": "peluqueria-domicilio",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Barbería a domicilio",
+        "slug": "barberia-domicilio",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Manicura y pedicura",
+        "slug": "manicure-pedicure",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Maquillaje profesional",
+        "slug": "maquillaje-profesional",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Masajes de relajación",
+        "slug": "masajes-relajacion",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Depilación",
+        "slug": "depilacion",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Estética facial",
+        "slug": "estetica-facial",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Peinado para eventos",
+        "slug": "peinado-eventos",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Mascotas",
+    "slug": "mascotas",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Peluquería canina",
+        "slug": "peluqueria-canina",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Paseo de perros",
+        "slug": "paseo-perros",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Adiestramiento canino",
+        "slug": "adiestramiento-canino",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cuidado de mascotas a domicilio",
+        "slug": "cuidado-mascotas-domicilio",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Pensión canina",
+        "slug": "pension-canina",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Veterinario a domicilio (consultas y vacunas)",
+        "slug": "veterinario-domicilio",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Transporte de mascotas",
+        "slug": "transporte-mascotas",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Eventos y celebraciones",
+    "slug": "eventos",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Organización de eventos",
+        "slug": "organizacion-eventos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "DJ y sonido",
+        "slug": "dj-sonido",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Animación infantil",
+        "slug": "animacion-infantil",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Decoración de eventos",
+        "slug": "decoracion-eventos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Alquiler de mobiliario para eventos",
+        "slug": "alquiler-mobiliario-eventos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Iluminación de eventos",
+        "slug": "iluminacion-eventos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Florería para eventos",
+        "slug": "floreria-eventos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Coordinación de bodas",
+        "slug": "coordinacion-bodas",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Catering y comidas",
+    "slug": "catering-comidas",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Catering para eventos",
+        "slug": "catering-eventos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Chef a domicilio",
+        "slug": "chef-domicilio",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Pastelería para eventos",
+        "slug": "pasteleria-eventos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Coffee break empresas",
+        "slug": "coffee-break-empresas",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Asado y parrillero para eventos",
+        "slug": "asado-parrillero-eventos",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Fotografía y video de eventos",
+    "slug": "fotografia-video-eventos",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Fotógrafo de eventos",
+        "slug": "fotografo-eventos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Video de eventos",
+        "slug": "video-eventos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Drone aéreo para eventos",
+        "slug": "drone-aereo-eventos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Foto social y retratos",
+        "slug": "foto-social-retratos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Streaming de eventos",
+        "slug": "streaming-eventos",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Cuidado de personas",
+    "slug": "cuidado-personas",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Niñera y babysitter",
+        "slug": "ninera-babysitter",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Cuidado de adultos mayores",
+        "slug": "cuidado-adultos-mayores",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Acompañamiento a domicilio",
+        "slug": "acompanamiento-domicilio",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Enfermería a domicilio (cuidados básicos)",
+        "slug": "enfermeria-domicilio-basica",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Lavandería y textiles",
+    "slug": "lavanderia-textiles",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Lavado de ropa a domicilio",
+        "slug": "lavado-ropa-domicilio",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Planchado a domicilio",
+        "slug": "planchado-domicilio",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Tintorería a domicilio",
+        "slug": "tintoreria-domicilio",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Limpieza de colchones y sillones",
+        "slug": "limpieza-colchones-sillones",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Retiro de desechos",
+    "slug": "retiro-desechos",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Retiro de escombros",
+        "slug": "retiro-escombros",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Vaciado de bauleras",
+        "slug": "vaciado-bauleras",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Retiro de chatarra",
+        "slug": "retiro-chatarra",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Retiro de muebles viejos",
+        "slug": "retiro-muebles-viejos",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Rural y agro",
+    "slug": "rural-agro",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Alambrados y cercos",
+        "slug": "alambrados-cercos",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Riego agrícola",
+        "slug": "riego-agricola",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Mantenimiento de maquinaria agrícola",
+        "slug": "mantenimiento-maquinaria-agricola",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Pozos de agua rural",
+        "slug": "pozos-agua-rural",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Fumigación de campo",
+        "slug": "fumigacion-campo",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Siega y pasturas",
+        "slug": "siega-pasturas",
+        "supportsUrgency": false
+      }
+    ]
+  },
+  {
+    "name": "Servicio general / Todero",
+    "slug": "servicio-general",
+    "type": "TRADE",
+    "supportsUrgency": false,
+    "children": [
+      {
+        "name": "Mantenimiento general del hogar",
+        "slug": "mantenimiento-hogar",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Armado de muebles",
+        "slug": "armado-muebles",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Montaje e instalaciones menores",
+        "slug": "montaje-instalaciones",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Reparaciones menores",
+        "slug": "reparaciones-menores",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Colgado de cuadros y estantes",
+        "slug": "colgado-cuadros",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Instalación de TV y soportes",
+        "slug": "instalacion-tv-soportes",
+        "supportsUrgency": false
+      },
+      {
+        "name": "Pequeños trabajos urgentes",
+        "slug": "pequenos-trabajos-urgentes",
+        "supportsUrgency": true
+      }
+    ]
+  }
+]

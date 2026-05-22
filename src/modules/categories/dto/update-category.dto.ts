@@ -1,6 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { CategoryType } from '@prisma/client';
 import {
   IsBoolean,
+  IsEnum,
   IsOptional,
   IsString,
   IsUUID,
@@ -39,9 +41,14 @@ export class UpdateCategoryDto {
   @IsBoolean()
   supportsUrgency?: boolean;
 
+  @ApiPropertyOptional({ enum: CategoryType })
+  @IsOptional()
+  @IsEnum(CategoryType)
+  type?: CategoryType;
+
   @ApiPropertyOptional({
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-    description: 'Nueva categoría padre. Pasar null para promover a raíz.',
+    description: 'Oficio padre (solo para SERVICE). null solo válido al cambiar a TRADE.',
     nullable: true,
   })
   @IsOptional()

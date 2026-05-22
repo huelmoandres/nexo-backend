@@ -10,6 +10,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import { IsRutUruguay } from '../validators/is-rut-uruguay.decorator';
 
@@ -34,20 +35,38 @@ export class CreateProfessionalProfileDto {
   @Max(80)
   experienceYears!: number;
 
-  @ApiProperty({ example: -34.9011, description: 'Latitud WGS84 (EPSG:4326).' })
+  @ApiPropertyOptional({
+    example: 'Av. Brasil 2880, Pocitos, Montevideo',
+    description:
+      'Dirección libre; se resuelve vía Google a departamento/ciudad/barrio y coordenadas.',
+    maxLength: 500,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  addressLine?: string;
+
+  @ApiPropertyOptional({
+    example: -34.9011,
+    description:
+      'Latitud WGS84. Obligatoria si no se envía addressLine; opcional si hay dirección.',
+  })
+  @ValidateIf((o: CreateProfessionalProfileDto) => !o.addressLine?.trim())
   @IsNumber()
   @Min(-90)
   @Max(90)
-  latitude!: number;
+  latitude?: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: -56.1645,
-    description: 'Longitud WGS84 (EPSG:4326).',
+    description:
+      'Longitud WGS84. Obligatoria si no se envía addressLine; opcional si hay dirección.',
   })
+  @ValidateIf((o: CreateProfessionalProfileDto) => !o.addressLine?.trim())
   @IsNumber()
   @Min(-180)
   @Max(180)
-  longitude!: number;
+  longitude?: number;
 
   @ApiPropertyOptional({
     example: '214567890013',

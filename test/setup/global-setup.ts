@@ -65,8 +65,8 @@ export async function setup(): Promise<void> {
     stdio: 'pipe',
   });
 
-  // Instalar extensión PostGIS (necesaria para las queries geoespaciales).
-  console.log('[Testcontainers] Habilitando extensión PostGIS...');
+  // Extensiones SQL no modeladas en Prisma (db push no ejecuta migration.sql).
+  console.log('[Testcontainers] Habilitando extensiones PostGIS y pg_trgm...');
   await postgresContainer.exec([
     'psql',
     '-U',
@@ -74,7 +74,7 @@ export async function setup(): Promise<void> {
     '-d',
     'nexos_test',
     '-c',
-    'CREATE EXTENSION IF NOT EXISTS postgis;',
+    'CREATE EXTENSION IF NOT EXISTS postgis; CREATE EXTENSION IF NOT EXISTS pg_trgm;',
   ]);
 
   console.log('[Testcontainers] Containers listos.');

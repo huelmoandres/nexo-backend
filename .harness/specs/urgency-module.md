@@ -24,7 +24,7 @@ Cuando llega una urgencia, el sistema no alerta a todos los profesionales simult
 | Oleada | Delay | Condición del Profesional |
 |---|---|---|
 | 1 | Segundo **0** | Plan `BUSINESS` + rating >= 4.8 + estado KYC `VERIFIED` |
-| 2 | Segundo **10** | Plan `MEDIUM` + estado KYC `VERIFIED` |
+| 2 | Segundo **10** | Plan `PRO` + estado KYC `VERIFIED` |
 | 3 | Segundo **20** | Resto (plan `FREE` + `VERIFIED`) |
 
 **Lógica del Job en BullMQ:**
@@ -41,13 +41,17 @@ La búsqueda de profesionales cercanos debe usar el operador `ST_DWithin` sobre 
 
 ```sql
 -- Profesionales del tier BUSINESS dentro de 7km del cliente
-SELECT u.id, u."expoPushToken", ST_Distance(pp.location, ST_MakePoint(:lng, :lat)::geography) AS distance
+SELECT u.id, u."expoPushToken", MIN(ST_Distance(sa.location, ST_MakePoint(:lng, :lat)::geography)) AS distance
 FROM "ProfessionalProfile" pp
 JOIN "User" u ON u.id = pp."userId"
 WHERE pp."subscriptionPlan" = 'BUSINESS'
   AND pp."kycStatus" = 'VERIFIED'
   AND pp."isAvailable" = true
-  AND ST_DWithin(pp.location, ST_MakePoint(:lng, :lat)::geography, :radiusMeters)
+  AND EXISTS (
+    SELECT 1 FROM "ServiceArea" sa
+    WHERE sa."professionalProfileId" = pp.id
+      AND ST_DWithin(sa.location, ST_MakePoint(:lng, :lat)::geography, sa."radiusMeters")
+  )
 ORDER BY distance ASC;
 ```
 

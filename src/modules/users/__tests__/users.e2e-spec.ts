@@ -80,8 +80,9 @@ describe('UsersController (e2e)', () => {
     const coordRows = await prisma.$queryRawUnsafe<
       Array<{ lat: number; lng: number }>
     >(
-      `SELECT ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng
-       FROM "ProfessionalProfile" WHERE id = $1`,
+      `SELECT ST_Y(sa.location::geometry) AS lat, ST_X(sa.location::geometry) AS lng
+       FROM "ServiceArea" sa
+       WHERE sa."professionalProfileId" = $1 AND sa."isPrimary" = true`,
       profileId,
     );
     expect(coordRows[0]?.lat).toBeCloseTo(lat, 5);

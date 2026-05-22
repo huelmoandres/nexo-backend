@@ -8,7 +8,7 @@ import { AppModule } from '../../../app.module';
 import { createE2eApp } from '@test/setup/e2e-app.factory';
 
 /**
- * Helper para crear un usuario + ProfessionalProfile con coordenadas PostGIS.
+ * Helper para crear un usuario + ProfessionalProfile con ServiceArea (PostGIS).
  *
  * Coordenadas de referencia: Pocitos, Montevideo (-34.9011, -56.1645).
  * - "dentro del radio 5km": diferencia de ~50m (mismas coordenadas aprox.).
@@ -41,6 +41,7 @@ async function createProfessionalAtCoords(
       bio: opts.bio ?? null,
       experienceYears: 3,
       isAvailable: opts.isAvailable ?? true,
+      planDefinitionId: 'a0000000-0000-4000-8000-000000000001',
       ...(opts.categoryId
         ? {
             categories: {
@@ -51,17 +52,64 @@ async function createProfessionalAtCoords(
     },
   });
 
-  // Asignar ubicación geoespacial via SQL raw (igual que en producción)
   await prisma.$executeRawUnsafe(
-    `UPDATE "ProfessionalProfile"
-     SET location = ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography
-     WHERE id = $3`,
+    `INSERT INTO "ServiceArea" ("id", "professionalProfileId", "label", "location", "radiusMeters", "isPrimary", "createdAt", "updatedAt")
+     VALUES (gen_random_uuid(), $3, 'Principal', ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography, 50000, true, NOW(), NOW())`,
     opts.longitude,
     opts.latitude,
     profile.id,
   );
 
   return { userId: user.id, profileId: profile.id };
+}
+
+async function createCompanyAtCoords(
+  prisma: PrismaService,
+  opts: {
+    latitude: number;
+    longitude: number;
+    isAvailable?: boolean;
+    bio?: string;
+    categoryId?: string;
+  },
+): Promise<{ companyId: string }> {
+  const adminUid = randomUUID();
+  const admin = await prisma.user.create({
+    data: {
+      supabaseUid: adminUid,
+      email: `admin-${adminUid.slice(0, 8)}@nexos.com`,
+      fullName: 'Admin Co',
+      role: Role.COMPANY_ADMIN,
+    },
+  });
+
+  const company = await prisma.company.create({
+    data: {
+      name: `Empresa ${adminUid.slice(0, 6)}`,
+      rut: `21${adminUid.replace(/\D/g, '').slice(0, 10).padEnd(10, '0')}`,
+      adminId: admin.id,
+      bio: opts.bio ?? 'Servicios integrales',
+      isAvailable: opts.isAvailable ?? true,
+      planDefinitionId: 'a0000000-0000-4000-8000-000000000001',
+      ...(opts.categoryId
+        ? {
+            categories: {
+              create: [{ category: { connect: { id: opts.categoryId } } }],
+            },
+          }
+        : {}),
+    },
+  });
+
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "ServiceArea" ("id", "companyId", "label", "location", "radiusMeters", "isPrimary", "createdAt", "updatedAt")
+     VALUES (gen_random_uuid(), $3, 'Cobertura', ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography, 50000, true, NOW(), NOW())`,
+    opts.longitude,
+    opts.latitude,
+    company.id,
+  );
+
+  return { companyId: company.id };
 }
 
 describe('SearchController (e2e)', () => {
@@ -115,7 +163,7 @@ describe('SearchController (e2e)', () => {
       expect(res.status).toBe(200);
 
       type SearchResponse = {
-        results: Array<{ id: string }>;
+        results: Array<{ id: string; type: string }>;
         total: number;
         page: number;
         limit: number;
@@ -301,6 +349,27 @@ describe('SearchController (e2e)', () => {
         .query({ latitude: -34.9011, longitude: -200 });
 
       expect(res.status).toBe(400);
+    });
+
+    it('incluye empresa disponible con ServiceArea en el radio', async () => {
+      const company = await createCompanyAtCoords(prisma, {
+        latitude: CENTER_LAT,
+        longitude: CENTER_LNG,
+        isAvailable: true,
+        bio: 'Electricidad industrial',
+      });
+
+      const res = await request(httpServer())
+        .get('/api/search/professionals')
+        .query({ latitude: CENTER_LAT, longitude: CENTER_LNG, radiusKm: 5 });
+
+      expect(res.status).toBe(200);
+      const body = res.body as {
+        results: Array<{ id: string; type: string; name: string }>;
+      };
+      const companyHit = body.results.find((r) => r.id === company.companyId);
+      expect(companyHit?.type).toBe('company');
+      expect(companyHit?.name).toBeDefined();
     });
   });
 });

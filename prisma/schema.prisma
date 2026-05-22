@@ -100,8 +100,9 @@ enum DgiVerificationStatus {
 
 enum SubscriptionPlan {
   FREE
-  MEDIUM
+  PRO
   BUSINESS
+  CUSTOM
 }
 
 enum JobStatus {
@@ -243,8 +244,22 @@ enum ModerationTransitionType {
 // BLOQUE A — GEOGRAFÍA JERÁRQUICA
 // Country → State (Departamento) → City (Localidad/Barrio)
 // Propósito: filtros de UI, SEO de perfiles y escalabilidad regional.
-// El matching de cercanía sigue siendo responsabilidad de PostGIS (location).
+// El matching de cercanía usa PostGIS en ServiceArea (y futuros puntos de trabajo).
 // =============================================================================
+
+/// Oficio (raíz) o servicio (hijo de un oficio).
+enum CategoryType {
+  TRADE
+  SERVICE
+}
+
+enum GeoEntitySource {
+  IDE
+  GEONAMES
+  GOOGLE
+  MANUAL
+  SEED
+}
 
 model Country {
   id      String  @id @default(uuid())
@@ -261,6 +276,11 @@ model State {
   name      String  // Ej: "Montevideo", "Canelones", "Maldonado"
   slug      String
   countryId String
+  iso3166_2 String? // Ej: "UY-MO"
+  latitude  Decimal? @db.Decimal(10, 7)
+  longitude Decimal? @db.Decimal(10, 7)
+  source    GeoEntitySource @default(SEED)
+  externalId String?
   country   Country @relation(fields: [countryId], references: [id])
   cities    City[]
   professionalProfiles ProfessionalProfile[]
@@ -268,6 +288,7 @@ model State {
 
   @@unique([countryId, name])
   @@unique([countryId, slug])
+  @@index([countryId])
 }
 
 model City {
@@ -275,6 +296,10 @@ model City {
   name     String                // Ej: "Pocitos", "Ciudad de la Costa"
   slug     String
   stateId  String
+  latitude  Decimal? @db.Decimal(10, 7)
+  longitude Decimal? @db.Decimal(10, 7)
+  source    GeoEntitySource @default(SEED)
+  externalId String?
   state    State                 @relation(fields: [stateId], references: [id])
   neighborhoods Neighborhood[]
   profiles ProfessionalProfile[]
@@ -282,6 +307,7 @@ model City {
 
   @@unique([stateId, name])
   @@unique([stateId, slug])
+  @@index([stateId])
 }
 
 model Neighborhood {
@@ -289,12 +315,17 @@ model Neighborhood {
   name    String
   slug    String
   cityId  String
+  latitude  Decimal? @db.Decimal(10, 7)
+  longitude Decimal? @db.Decimal(10, 7)
+  source    GeoEntitySource @default(SEED)
+  externalId String?
   city    City   @relation(fields: [cityId], references: [id])
   profiles ProfessionalProfile[]
   companyBillingAddresses Company[] @relation("CompanyBillingNeighborhood")
 
   @@unique([cityId, name])
   @@unique([cityId, slug])
+  @@index([cityId])
 }
 
 // =============================================================================
@@ -372,10 +403,72 @@ model Company {
   dgiVerifiedAt           DateTime?             @db.Timestamptz
   dgiVerificationDocKey   String?
 
+  subscriptionPlan   SubscriptionPlan @default(FREE)
+  planDefinitionId   String
+  planDefinition     PlanDefinition     @relation("CompanyPlan", fields: [planDefinitionId], references: [id])
+  customPlanDefinition PlanDefinition?  @relation("CustomPlanCompany")
+  serviceAreas         ServiceArea[]
+
+  /// Vidriera / búsqueda (fase empresa buscable).
+  bio           String?
+  isAvailable   Boolean @default(false)
+  averageRating Float   @default(0)
+
+  categories CompanyCategory[]
+
   /// Soft Delete
   deletedAt DateTime? @db.Timestamptz
   createdAt DateTime  @default(now()) @db.Timestamptz
   updatedAt DateTime  @updatedAt @db.Timestamptz
+
+  @@index([planDefinitionId])
+}
+
+/// Zona de cobertura (punto + radio) de un profesional o empresa.
+model ServiceArea {
+  id String @id @default(uuid())
+
+  professionalProfileId String?
+  professionalProfile ProfessionalProfile? @relation(fields: [professionalProfileId], references: [id], onDelete: Cascade)
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  label        String  @db.VarChar(100)
+  addressLine  String?
+  countryId        String?
+  stateId          String?
+  cityId           String?
+  neighborhoodId   String?
+  location     Unsupported("geography(Point, 4326)")
+  radiusMeters Int     @default(5000)
+  isPrimary    Boolean @default(false)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([professionalProfileId])
+  @@index([companyId])
+  @@index([location], type: Gist)
+}
+
+/// Catálogo de planes (FREE/PRO/BUSINESS) y planes CUSTOM 1:1 con pro o empresa.
+model PlanDefinition {
+  id           String           @id @default(uuid())
+  code         SubscriptionPlan
+  entitlements Json
+  version      Int              @default(1)
+  isActive     Boolean          @default(true)
+
+  professionalProfileId String? @unique
+  professionalProfile   ProfessionalProfile? @relation("CustomPlanProfessional", fields: [professionalProfileId], references: [id])
+  companyId             String? @unique
+  company               Company?             @relation("CustomPlanCompany", fields: [companyId], references: [id])
+
+  professionalProfiles ProfessionalProfile[] @relation("ProfilePlan")
+  companies            Company[]             @relation("CompanyPlan")
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
 }
 
 model ProfessionalProfile {
@@ -394,14 +487,15 @@ model ProfessionalProfile {
   neighborhood Neighborhood? @relation(fields: [neighborhoodId], references: [id])
   addressLine String?
 
-  /// Coordenadas GPS para matching geoespacial con PostGIS (ST_DWithin, ST_Distance).
-  /// Índice GiST declarado abajo. Toda query sobre este campo usa prisma.$queryRaw.
-  location Unsupported("geography(Point, 4326)")?
+  /// Geo de cobertura: usar relación `serviceAreas` (ServiceArea). La columna `location` fue eliminada en fase 5.
 
   /// RUT uruguayo opcional (monotributo / unipersonal). Validación DGI en aplicación.
   rut              String?          @unique
   kycStatus        KycStatus        @default(UNVERIFIED)
   subscriptionPlan SubscriptionPlan @default(FREE)
+  planDefinitionId String
+  planDefinition   PlanDefinition   @relation("ProfilePlan", fields: [planDefinitionId], references: [id])
+  customPlanDefinition PlanDefinition? @relation("CustomPlanProfessional")
   isAvailable      Boolean          @default(false)
   /// Rating promedio recalculado por ReviewService al validar cada reseña.
   averageRating    Float            @default(0)
@@ -425,6 +519,7 @@ model ProfessionalProfile {
   trustProfiles   TrustProfile[]
   certifications  ProfessionalCertification[]
   portfolioItems  PortfolioItem[]
+  serviceAreas    ServiceArea[]
 
   dgiVerificationStatus DgiVerificationStatus @default(UNVERIFIED)
   dgiVerificationMethod String?
@@ -437,7 +532,7 @@ model ProfessionalProfile {
   createdAt DateTime  @default(now()) @db.Timestamptz
   updatedAt DateTime  @updatedAt @db.Timestamptz
 
-  @@index([location], type: Gist) // Índice GiST obligatorio para PostGIS
+  @@index([planDefinitionId])
   @@index([countryId])
   @@index([stateId])
   @@index([cityId])
@@ -548,16 +643,18 @@ model ProfessionalCertification {
 }
 
 model Category {
-  id              String  @id @default(uuid())
+  id              String       @id @default(uuid())
   name            String
-  slug            String  @unique // Ej: "electricidad-urgencias"
-  supportsUrgency Boolean @default(false)
-  /// Auto-relación para jerarquía. Ej: "Electricidad" → "Electricidad de Urgencia"
+  slug            String       @unique // Ej: "electricidad-urgencias"
+  type            CategoryType @default(TRADE)
+  supportsUrgency Boolean      @default(false)
+  /// Auto-relación: TRADE (oficio) → SERVICE (servicio)
   parentId        String?
   parent          Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
   children        Category[] @relation("CategoryHierarchy")
 
   professionals   ProfessionalCategory[]
+  companies       CompanyCategory[]
   jobs            Job[]
   urgencies       Urgency[]
   portfolioItems  PortfolioItem[]
@@ -565,6 +662,16 @@ model Category {
   createdAt DateTime  @default(now()) @db.Timestamptz
   updatedAt DateTime  @updatedAt @db.Timestamptz
   deletedAt DateTime? @db.Timestamptz
+}
+
+/// Tabla intermedia N-N entre Company y Category.
+model CompanyCategory {
+  companyId  String
+  categoryId String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  @@id([companyId, categoryId])
 }
 
 /// Tabla intermedia N-N entre ProfessionalProfile y Category.

@@ -1,6 +1,11 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
+import { CategoryType } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { categoryFactory } from '@test/factories';
+import { categoryFactory, serviceCategoryFactory } from '@test/factories';
 import { CategoriesService } from '../categories.service';
 
 describe('CategoriesService', () => {
@@ -67,6 +72,7 @@ describe('CategoriesService', () => {
           id: '1',
           name: 'Root',
           slug: 'root',
+          type: CategoryType.TRADE,
           supportsUrgency: false,
           children: [],
         },
@@ -84,7 +90,7 @@ describe('CategoriesService', () => {
 
     it('construye árbol en memoria y persiste en Redis si no hay caché', async () => {
       const parent = categoryFactory.build({ parentId: null });
-      const child = categoryFactory.build({ parentId: parent.id });
+      const child = serviceCategoryFactory(parent.id);
       const { service, redis } = makeService({
         findAll: vi.fn().mockResolvedValue([parent, child]),
       });
@@ -186,33 +192,92 @@ describe('CategoriesService', () => {
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
-    it('lanza CATEGORY_NOT_FOUND si parentId no existe', async () => {
+    it('lanza CATEGORY_SERVICE_REQUIRES_PARENT si SERVICE sin padre', async () => {
+      const { service } = makeService({
+        findBySlug: vi.fn().mockResolvedValue(null),
+      });
+
+      await expect(
+        service.create({
+          name: 'Sub',
+          slug: 'sub',
+          type: CategoryType.SERVICE,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('lanza CATEGORY_TRADE_CANNOT_HAVE_PARENT si TRADE con parentId', async () => {
+      const { service } = makeService({
+        findBySlug: vi.fn().mockResolvedValue(null),
+      });
+
+      await expect(
+        service.create({
+          name: 'Oficio',
+          slug: 'oficio',
+          type: CategoryType.TRADE,
+          parentId: 'some-id',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('lanza CATEGORY_NOT_FOUND si parentId de SERVICE no existe', async () => {
       const { service } = makeService({
         findBySlug: vi.fn().mockResolvedValue(null),
         findById: vi.fn().mockResolvedValue(null),
       });
 
       await expect(
-        service.create({ name: 'Sub', slug: 'sub', parentId: 'missing-id' }),
+        service.create({
+          name: 'Sub',
+          slug: 'sub',
+          type: CategoryType.SERVICE,
+          parentId: 'missing-id',
+        }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('crea categoría con parentId válido', async () => {
-      const parent = categoryFactory.build();
-      const child = categoryFactory.build({ parentId: parent.id });
+    it('lanza CATEGORY_TYPE_INVALID_PARENT si padre no es TRADE', async () => {
+      const parentService = serviceCategoryFactory('grand-id');
+      const { service } = makeService({
+        findBySlug: vi.fn().mockResolvedValue(null),
+        findById: vi.fn().mockResolvedValue(parentService),
+      });
+
+      await expect(
+        service.create({
+          name: 'Sub',
+          slug: 'sub',
+          type: CategoryType.SERVICE,
+          parentId: parentService.id,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('crea SERVICE con parentId TRADE válido', async () => {
+      const parent = categoryFactory.build({ type: CategoryType.TRADE });
+      const child = serviceCategoryFactory(parent.id);
+      const createFn = vi.fn().mockResolvedValue(child);
       const { service } = makeService({
         findBySlug: vi.fn().mockResolvedValue(null),
         findById: vi.fn().mockResolvedValue(parent),
-        create: vi.fn().mockResolvedValue(child),
+        create: createFn,
       });
 
       const result = await service.create({
         name: child.name,
         slug: child.slug,
+        type: CategoryType.SERVICE,
         parentId: parent.id,
       });
 
       expect(result.parentId).toBe(parent.id);
+      expect(createFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: CategoryType.SERVICE,
+          parentId: parent.id,
+        }),
+      );
     });
 
     it('usa supportsUrgency=false como default si no se provee', async () => {
@@ -226,7 +291,10 @@ describe('CategoriesService', () => {
       await service.create({ name: cat.name, slug: cat.slug });
 
       expect(createFn).toHaveBeenCalledWith(
-        expect.objectContaining({ supportsUrgency: false }),
+        expect.objectContaining({
+          supportsUrgency: false,
+          type: CategoryType.TRADE,
+        }),
       );
     });
   });
@@ -284,12 +352,12 @@ describe('CategoriesService', () => {
     });
 
     it('lanza CATEGORY_NOT_FOUND si parentId nuevo no existe', async () => {
-      const cat = categoryFactory.build();
+      const cat = serviceCategoryFactory('parent-uuid');
       const { service } = makeService({
         findById: vi
           .fn()
-          .mockResolvedValueOnce(cat) // assertCategoryExists(id)
-          .mockResolvedValueOnce(null), // assertCategoryExists(parentId)
+          .mockResolvedValueOnce(cat)
+          .mockResolvedValueOnce(null),
         findBySlug: vi.fn().mockResolvedValue(null),
       });
 
@@ -298,16 +366,19 @@ describe('CategoriesService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('permite actualizar con parentId=null (promover a raíz)', async () => {
-      const cat = categoryFactory.build({ parentId: 'some-parent' });
-      const updated = { ...cat, parentId: null };
+    it('permite actualizar TRADE con parentId=null', async () => {
+      const cat = categoryFactory.build({
+        type: CategoryType.TRADE,
+        parentId: null,
+      });
+      const updated = { ...cat, name: 'Nuevo' };
       const { service } = makeService({
         findById: vi.fn().mockResolvedValue(cat),
         update: vi.fn().mockResolvedValue(updated),
       });
 
-      const result = await service.update(cat.id, { parentId: null });
-      expect(result.parentId).toBeNull();
+      const result = await service.update(cat.id, { name: 'Nuevo' });
+      expect(result.name).toBe('Nuevo');
     });
   });
 

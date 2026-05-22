@@ -1,0 +1,23 @@
+{
+  "country": { "name": "Uruguay", "isoCode": "UY", "slug": "uruguay" },
+  "states": [
+    {
+      "name": "Montevideo",
+      "slug": "montevideo",
+      "iso3166_2": "UY-MO",
+      "source": "SEED",
+      "cities": [
+        {
+          "name": "Montevideo",
+          "slug": "montevideo",
+          "source": "SEED",
+          "neighborhoods": [
+            { "name": "Pocitos", "slug": "pocitos", "source": "SEED" },
+            { "name": "Cordón", "slug": "cordon", "source": "SEED" },
+            { "name": "Centro", "slug": "centro", "source": "SEED" }
+          ]
+        }
+      ]
+    }
+  ]
+}

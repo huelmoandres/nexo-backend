@@ -7,8 +7,10 @@ Datos de desarrollo y staging **separados** de los tests unitarios (Fishery en `
 | Comando | Descripción |
 |--------|-------------|
 | `npm run db:seed` | Orquestador completo: geo → categorías → demo → backfill trust (stress solo si `STRESS_PRO_COUNT` o `SEED_STRESS` lo activan) |
-| `npm run db:seed:geo` | Solo catálogo geográfico Uruguay |
-| `npm run db:seed:categories` | Solo categorías (upsert por `slug`) |
+| `npm run db:seed:geo` | Solo catálogo geográfico Uruguay (JSON generado con `npm run geo:build`; `SEED_GEO_LITE=1` para subset CI) |
+| `npm run geo:build` | Regenera `prisma/data/uruguay-geo.json` desde GeoNames/IDE |
+| `npm run categories:build` | Regenera `prisma/data/categories.json` (42 oficios + 274 servicios) |
+| `npm run db:seed:categories` | Solo oficios (TRADE) y servicios (SERVICE), upsert por `slug` |
 | `npm run db:seed:demo` | Solo escenarios demo (requiere geo + categorías) |
 | `npm run db:seed:stress` | Orquestador con `SEED_STRESS=1` y `STRESS_PRO_COUNT=500` |
 | `npm run db:backfill:trust-identity` | Backfill idempotente `ProfessionalIdentity` / `TrustProfile` |
@@ -30,5 +32,6 @@ Ver comentarios en `.env.example` (sección **SEEDS**). Destacadas: `SEED_DEMO`,
 ## Coherencia
 
 - Geo: cadena país → estado → ciudad → barrio alineada al catálogo.
+- Categorías: `TRADE` (oficio, raíz) → `SERVICE` (servicio hijo). Demo usa `plomeria`, `electricidad`.
 - PostGIS: `ST_MakePoint(lon, lat)` WGS84 (mismo criterio que `UsersRepository`).
 - Búsqueda: profesionales requieren `location` + `isAvailable=true` + usuario no borrado.

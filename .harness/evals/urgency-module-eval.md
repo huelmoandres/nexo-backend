@@ -6,7 +6,7 @@
 
 ## Checklist de Geo-Matching (PostGIS)
 
-- [ ] La query de búsqueda de profesionales usa `ST_DWithin` con el índice GiST de `ProfessionalProfile.location`. Nunca un `WHERE lat BETWEEN x AND y` manual.
+- [ ] La query de dispatch usa `ST_DWithin` sobre `ServiceArea.location` (GiST). Nunca un `WHERE lat BETWEEN x AND y` manual.
 - [ ] El radio de búsqueda (5-10km) se toma de `ConfigService` (`search.radiusMeters`), no es un número mágico en el código.
 - [ ] Los resultados incluyen la distancia calculada por PostGIS (`ST_Distance`) en metros para construir el Score de Relevancia. No se recalcula en JavaScript.
 - [ ] La query solo devuelve profesionales con `isAvailable: true`, `kycStatus: VERIFIED` y `deletedAt IS NULL`.
@@ -22,7 +22,7 @@
   | Plan       | Delay | Priority BullMQ |
   |------------|-------|-----------------|
   | `BUSINESS` | 0s    | `1` (máxima)    |
-  | `MEDIUM`   | 10s   | `5`             |
+  | `PRO`      | 10s   | `5`             |
   | `FREE`     | 20s   | `10` (mínima)   |
 
   En BullMQ, un número **menor** de priority significa mayor precedencia en cola.

@@ -1,6 +1,7 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { afterEach, beforeEach } from 'vitest';
+import { seedPlanCatalog } from './seed-plan-catalog';
 
 /**
  * Setup ejecutado antes/después de cada ARCHIVO de test de integración (e2e).
@@ -34,15 +35,20 @@ beforeEach(async () => {
       "Urgency",
       "Job",
       "ProfessionalCategory",
+      "CompanyCategory",
+      "ServiceArea",
       "ProfessionalProfile",
-      "Category",
       "Company",
+      "PlanDefinition",
+      "Category",
       "User",
       "City",
       "State",
       "Country"
     RESTART IDENTITY CASCADE;
   `);
+
+  await seedPlanCatalog(prisma);
 });
 
 afterEach(async () => {

@@ -1,11 +1,12 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
-import type { Category } from '@prisma/client';
+import { CategoryType, type Category } from '@prisma/client';
 import type Redis from 'ioredis';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { buildProblem } from '@common/errors/problem.factory';
@@ -19,15 +20,8 @@ import { CategoriesRepository } from './categories.repository';
 import { CATEGORIES_CHANGED_EVENT } from './categories.events';
 
 /**
- * Lógica de negocio para categorías.
- *
- * Árbol jerárquico: trae todas las categorías con un único SELECT y
- * construye el árbol en memoria antes de persistir en Redis (TTL 1 hora).
- * Este approach es más eficiente que Prisma `include: { children: true }`
- * recursivo dado que el catálogo de categorías es pequeño.
- *
- * Invalidación de caché: siempre ocurre DESPUÉS de que la transacción DB
- * se completa con éxito, nunca antes.
+ * Lógica de negocio para oficios (TRADE) y servicios (SERVICE).
+ * Solo SUPER_ADMIN puede crear/editar vía controller.
  */
 @Injectable()
 export class CategoriesService {
@@ -39,19 +33,11 @@ export class CategoriesService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  /**
-   * Lista plana de todas las categorías activas, ordenadas por nombre.
-   */
   async findAll(): Promise<CategoryResponseDto[]> {
     const categories = await this.categoriesRepository.findAll();
     return categories.map((c) => this.toResponseDto(c));
   }
 
-  /**
-   * Árbol jerárquico con caché en Redis (TTL 1h).
-   * Si la clave existe en Redis, devuelve el valor cacheado directamente.
-   * Si no, construye el árbol en memoria y lo persiste en Redis.
-   */
   async getTree(): Promise<CategoryTreeNodeDto[]> {
     const cached = await this.redis.get(this.config.cacheKeyTree);
     if (cached) {
@@ -69,41 +55,34 @@ export class CategoriesService {
     return tree;
   }
 
-  /**
-   * Crea una categoría y luego invalida la caché del árbol.
-   * La invalidación ocurre solo si la creación en DB fue exitosa.
-   */
   async create(dto: CreateCategoryDto): Promise<CategoryResponseDto> {
     await this.assertSlugAvailable(dto.slug);
 
-    if (dto.parentId) {
-      await this.assertCategoryExists(dto.parentId);
-    }
+    const type = dto.type ?? CategoryType.TRADE;
+    const parentId = dto.parentId ?? null;
+    await this.assertTypeParentRules(type, parentId);
 
     const category = await this.categoriesRepository.create({
       name: dto.name,
       slug: dto.slug,
+      type,
       supportsUrgency: dto.supportsUrgency ?? false,
-      parentId: dto.parentId ?? null,
+      parentId,
     });
 
     await this.invalidateTreeCache();
     return this.toResponseDto(category);
   }
 
-  /**
-   * Actualiza una categoría y luego invalida la caché del árbol.
-   * La invalidación ocurre solo si la actualización en DB fue exitosa.
-   */
   async update(
     id: string,
     dto: UpdateCategoryDto,
   ): Promise<CategoryResponseDto> {
-    await this.assertCategoryExists(id);
+    const existing = await this.assertCategoryExists(id);
 
     if (dto.slug !== undefined) {
-      const existing = await this.categoriesRepository.findBySlug(dto.slug);
-      if (existing && existing.id !== id) {
+      const bySlug = await this.categoriesRepository.findBySlug(dto.slug);
+      if (bySlug && bySlug.id !== id) {
         throw new ConflictException(
           buildProblem(
             'CATEGORY_SLUG_DUPLICATE',
@@ -113,13 +92,15 @@ export class CategoriesService {
       }
     }
 
-    if (dto.parentId !== undefined && dto.parentId !== null) {
-      await this.assertCategoryExists(dto.parentId);
-    }
+    const type = dto.type ?? existing.type;
+    const parentId =
+      dto.parentId !== undefined ? dto.parentId : existing.parentId;
+    await this.assertTypeParentRules(type, parentId);
 
     const category = await this.categoriesRepository.update(id, {
       name: dto.name,
       slug: dto.slug,
+      type: dto.type,
       supportsUrgency: dto.supportsUrgency,
       parentId: dto.parentId,
     });
@@ -128,10 +109,6 @@ export class CategoriesService {
     return this.toResponseDto(category);
   }
 
-  /**
-   * Soft-delete de una categoría y luego invalida la caché del árbol.
-   * La invalidación ocurre solo si el soft-delete en DB fue exitoso.
-   */
   async remove(id: string): Promise<void> {
     await this.assertCategoryExists(id);
     await this.categoriesRepository.softDelete(id);
@@ -150,13 +127,58 @@ export class CategoriesService {
     }
   }
 
-  private async assertCategoryExists(id: string): Promise<void> {
+  private async assertCategoryExists(id: string): Promise<Category> {
     const category = await this.categoriesRepository.findById(id);
     if (!category) {
       throw new NotFoundException(
         buildProblem(
           'CATEGORY_NOT_FOUND',
           `No existe una categoría activa con el ID "${id}".`,
+        ),
+      );
+    }
+    return category;
+  }
+
+  private async assertTypeParentRules(
+    type: CategoryType,
+    parentId: string | null,
+  ): Promise<void> {
+    if (type === CategoryType.TRADE) {
+      if (parentId) {
+        throw new BadRequestException(
+          buildProblem(
+            'CATEGORY_TRADE_CANNOT_HAVE_PARENT',
+            'Un oficio (TRADE) no puede tener categoría padre.',
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!parentId) {
+      throw new BadRequestException(
+        buildProblem(
+          'CATEGORY_SERVICE_REQUIRES_PARENT',
+          'Un servicio (SERVICE) debe estar vinculado a un oficio padre.',
+        ),
+      );
+    }
+
+    const parent = await this.categoriesRepository.findById(parentId);
+    if (!parent) {
+      throw new NotFoundException(
+        buildProblem(
+          'CATEGORY_NOT_FOUND',
+          `No existe un oficio activo con el ID "${parentId}".`,
+        ),
+      );
+    }
+    if (parent.type !== CategoryType.TRADE) {
+      throw new BadRequestException(
+        buildProblem(
+          'CATEGORY_TYPE_INVALID_PARENT',
+          'El padre debe ser un oficio (TRADE), no otro servicio.',
         ),
       );
     }
@@ -167,10 +189,6 @@ export class CategoriesService {
     this.eventEmitter.emit(CATEGORIES_CHANGED_EVENT);
   }
 
-  /**
-   * Construye el árbol jerárquico en memoria a partir de una lista plana.
-   * Un único findAll() en DB + O(n) en memoria es más eficiente que Prisma recursivo.
-   */
   private buildTreeInMemory(categories: Category[]): CategoryTreeNodeDto[] {
     const nodeMap = new Map<string, CategoryTreeNodeDto>();
 
@@ -179,6 +197,7 @@ export class CategoriesService {
         id: cat.id,
         name: cat.name,
         slug: cat.slug,
+        type: cat.type,
         supportsUrgency: cat.supportsUrgency,
         children: [],
       });
@@ -205,6 +224,7 @@ export class CategoriesService {
       id: category.id,
       name: category.name,
       slug: category.slug,
+      type: category.type,
       supportsUrgency: category.supportsUrgency,
       parentId: category.parentId,
       createdAt: category.createdAt,

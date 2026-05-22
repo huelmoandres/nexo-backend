@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Category } from '@prisma/client';
+import type { Category, CategoryType } from '@prisma/client';
 import { PrismaService } from '@prisma/prisma.service';
 
 /**
@@ -45,6 +45,7 @@ export class CategoriesRepository {
   async create(data: {
     name: string;
     slug: string;
+    type: CategoryType;
     supportsUrgency: boolean;
     parentId?: string | null;
   }): Promise<Category> {
@@ -59,6 +60,7 @@ export class CategoriesRepository {
     data: {
       name?: string;
       slug?: string;
+      type?: CategoryType;
       supportsUrgency?: boolean;
       parentId?: string | null;
     },

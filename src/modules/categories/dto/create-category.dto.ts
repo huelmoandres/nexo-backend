@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CategoryType } from '@prisma/client';
 import {
   IsBoolean,
+  IsEnum,
   IsOptional,
   IsString,
   IsUUID,
@@ -40,8 +42,19 @@ export class CreateCategoryDto {
   supportsUrgency?: boolean;
 
   @ApiPropertyOptional({
+    enum: CategoryType,
+    example: CategoryType.TRADE,
+    description:
+      'TRADE = oficio (raíz, sin padre). SERVICE = servicio (requiere parentId de un TRADE).',
+    default: CategoryType.TRADE,
+  })
+  @IsOptional()
+  @IsEnum(CategoryType)
+  type?: CategoryType;
+
+  @ApiPropertyOptional({
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-    description: 'ID de la categoría padre. Omitir para categorías raíz.',
+    description: 'ID del oficio padre. Obligatorio si type=SERVICE.',
   })
   @IsOptional()
   @IsUUID()
