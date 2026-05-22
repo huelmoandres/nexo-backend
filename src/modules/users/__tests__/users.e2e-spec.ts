@@ -98,14 +98,14 @@ describe('UsersController (e2e)', () => {
     expect(meRes.body.professionalProfile.categories).toHaveLength(1);
   });
 
-  it('POST /users/company crea empresa y audit COMPANY_CREATED', async () => {
+  it('POST /users/company crea empresa y promueve CLIENT a COMPANY_ADMIN', async () => {
     const adminUid = randomUUID();
     await prisma.user.create({
       data: {
         supabaseUid: adminUid,
         email: `admin-${adminUid.slice(0, 8)}@nexos.com`,
         fullName: 'Admin Co',
-        role: Role.COMPANY_ADMIN,
+        role: Role.CLIENT,
       },
     });
 
@@ -124,6 +124,11 @@ describe('UsersController (e2e)', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.company.rut).toBe('000000000000');
+
+    const userAfter = await prisma.user.findUnique({
+      where: { supabaseUid: adminUid },
+    });
+    expect(userAfter!.role).toBe(Role.COMPANY_ADMIN);
 
     const audits = await prisma.auditLog.findMany({
       where: {

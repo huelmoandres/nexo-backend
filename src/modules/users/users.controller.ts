@@ -119,12 +119,12 @@ export class UsersController {
 
   @Post('company')
   @UseGuards(SupabaseAuthGuard, RolesGuard)
-  @Roles(Role.COMPANY_ADMIN)
+  @Roles(Role.CLIENT)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Registrar empresa (solo COMPANY_ADMIN)',
+    summary: 'Registrar empresa (onboarding CLIENT → COMPANY_ADMIN)',
     description:
-      'Crea la empresa, vincula al usuario como administrador y registra auditoría COMPANY_CREATED.',
+      'Crea la empresa, promueve al usuario a COMPANY_ADMIN, vincula como administrador y registra auditoría COMPANY_CREATED.',
   })
   @ApiBody({
     type: CreateCompanyDto,
@@ -155,7 +155,7 @@ export class UsersController {
   })
   @ApiResponse({
     status: 403,
-    description: 'Rol distinto de COMPANY_ADMIN',
+    description: 'Rol distinto de CLIENT (onboarding empresa)',
     schema: { $ref: '#/components/schemas/ProblemDetail' },
   })
   @ApiResponse({
@@ -175,7 +175,8 @@ export class UsersController {
   }
 
   @Post('professional-profile')
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.CLIENT, Role.INDEPENDENT_PRO)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Crear perfil profesional con ubicación PostGIS',
@@ -237,7 +238,8 @@ export class UsersController {
   }
 
   @Post('documents/presign')
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.INDEPENDENT_PRO)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'URL firmada para subir documento KYC',

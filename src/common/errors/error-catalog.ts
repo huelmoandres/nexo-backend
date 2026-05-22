@@ -153,6 +153,11 @@ export const ERRORS = {
     title: 'Rol no compatible con onboarding profesional',
     slug: 'professional-onboarding-role-conflict',
   },
+  COMPANY_ONBOARDING_ROLE_CONFLICT: {
+    status: 409,
+    title: 'Rol no compatible con registro de empresa',
+    slug: 'company-onboarding-role-conflict',
+  },
   DGI_VERIFICATION_NO_RUT: {
     status: 400,
     title: 'RUT requerido para verificación DGI',

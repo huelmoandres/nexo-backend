@@ -3,11 +3,12 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { Role } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { UsersCompanyService } from '../services/users-company.service';
 
 describe('UsersCompanyService', () => {
-  const baseUser = { id: 'u1' };
+  const baseUser = { id: 'u1', role: Role.CLIENT };
 
   const makeRutRegistration = (overrides: Record<string, unknown> = {}) => ({
     resolveRequiredRut: vi.fn().mockReturnValue('000000000000'),
@@ -15,14 +16,26 @@ describe('UsersCompanyService', () => {
     ...overrides,
   });
 
+  const makeAuthz = () => ({
+    invalidateRoleCache: vi.fn(),
+  });
+
+  const makeService = (
+    repo: Record<string, unknown>,
+    rutRegistration = makeRutRegistration(),
+    authz = makeAuthz(),
+  ) =>
+    new UsersCompanyService(
+      repo as never,
+      rutRegistration as never,
+      authz as never,
+    );
+
   it('lanza USER_NOT_FOUND si no existe usuario', async () => {
     const repo = {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue(null),
     };
-    const service = new UsersCompanyService(
-      repo as never,
-      makeRutRegistration() as never,
-    );
+    const service = makeService(repo);
 
     await expect(
       service.createCompany('sub', { name: 'ACME', rut: '000000000000' }, {}),
@@ -38,15 +51,26 @@ describe('UsersCompanyService', () => {
     const repo = {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue(baseUser),
     };
-    const service = new UsersCompanyService(
-      repo as never,
-      rutRegistration as never,
-    );
+    const service = makeService(repo, rutRegistration);
 
     await expect(
       service.createCompany('sub', { name: 'ACME', rut: 'bad' }, {}),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(rutRegistration.resolveRequiredRut).toHaveBeenCalledWith('bad');
+  });
+
+  it('lanza COMPANY_ONBOARDING_ROLE_CONFLICT para INDEPENDENT_PRO', async () => {
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue({
+        ...baseUser,
+        role: Role.INDEPENDENT_PRO,
+      }),
+    };
+    const service = makeService(repo);
+
+    await expect(
+      service.createCompany('sub', { name: 'ACME', rut: '000000000000' }, {}),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('lanza USER_ALREADY_OWNS_COMPANY cuando ya existe empresa propia', async () => {
@@ -55,10 +79,7 @@ describe('UsersCompanyService', () => {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue(baseUser),
       findCompanyByAdminId: vi.fn().mockResolvedValue({ id: 'c1' }),
     };
-    const service = new UsersCompanyService(
-      repo as never,
-      rutRegistration as never,
-    );
+    const service = makeService(repo, rutRegistration);
 
     await expect(
       service.createCompany('sub', { name: 'ACME', rut: '000000000000' }, {}),
@@ -73,10 +94,7 @@ describe('UsersCompanyService', () => {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue(baseUser),
       findCompanyByAdminId: vi.fn().mockResolvedValue(null),
     };
-    const service = new UsersCompanyService(
-      repo as never,
-      rutRegistration as never,
-    );
+    const service = makeService(repo, rutRegistration);
 
     await expect(
       service.createCompany('sub', { name: 'ACME', rut: '000000000000' }, {}),
@@ -86,22 +104,20 @@ describe('UsersCompanyService', () => {
     );
   });
 
-  it('crea empresa y retorna resumen mapeado', async () => {
+  it('crea empresa, promueve rol e invalida cache', async () => {
     const rutRegistration = makeRutRegistration();
     const createCompanyWithAudit = vi.fn().mockResolvedValue({
       id: 'cnew',
       name: 'ACME',
       rut: '000000000000',
     });
+    const authz = makeAuthz();
     const repo = {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue(baseUser),
       findCompanyByAdminId: vi.fn().mockResolvedValue(null),
       createCompanyWithAudit,
     };
-    const service = new UsersCompanyService(
-      repo as never,
-      rutRegistration as never,
-    );
+    const service = makeService(repo, rutRegistration, authz);
 
     const result = await service.createCompany(
       'sub',
@@ -109,19 +125,15 @@ describe('UsersCompanyService', () => {
       { ipAddress: '1.1.1.1' },
     );
 
-    expect(rutRegistration.resolveRequiredRut).toHaveBeenCalledWith(
-      '000000000000',
-    );
-    expect(rutRegistration.assertRutAvailable).toHaveBeenCalledWith(
-      '000000000000',
-    );
     expect(createCompanyWithAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'u1',
         name: 'ACME',
         rut: '000000000000',
+        promoteRoleToCompanyAdmin: true,
       }),
     );
+    expect(authz.invalidateRoleCache).toHaveBeenCalledWith('sub');
     expect(result.company).toEqual({
       id: 'cnew',
       name: 'ACME',

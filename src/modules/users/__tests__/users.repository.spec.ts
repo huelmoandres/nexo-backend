@@ -17,6 +17,7 @@ describe('UsersRepository', () => {
       company: { create: vi.fn().mockResolvedValue(company) },
       auditLog: { create: vi.fn().mockResolvedValue({}) },
       trustProfile: { create: vi.fn().mockResolvedValue({}) },
+      user: { update: vi.fn().mockResolvedValue({}) },
     };
 
     const prisma = {
@@ -36,6 +37,8 @@ describe('UsersRepository', () => {
     });
 
     expect(result.id).toBe('c1');
+    expect(tx.user.update).not.toHaveBeenCalled();
+
     expect(tx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -51,6 +54,38 @@ describe('UsersRepository', () => {
         subjectId: 'c1',
         companyId: 'c1',
       }),
+    });
+  });
+
+  it('createCompanyWithAudit promueve a COMPANY_ADMIN cuando flag true', async () => {
+    const company = companyFactory.build({ id: 'c2', adminId: 'u2' });
+    const userUpdate = vi.fn().mockResolvedValue({});
+    const tx = {
+      company: { create: vi.fn().mockResolvedValue(company) },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+      trustProfile: { create: vi.fn().mockResolvedValue({}) },
+      user: { update: userUpdate },
+    };
+    const prisma = {
+      $transaction: vi
+        .fn()
+        .mockImplementation(
+          async (cb: (t: typeof tx) => Promise<typeof company>) => cb(tx),
+        ),
+    } as unknown as PrismaService;
+
+    const repo = new UsersRepository(prisma);
+    await repo.createCompanyWithAudit({
+      userId: 'u2',
+      name: 'Co',
+      rut: '214567890013',
+      meta: {},
+      promoteRoleToCompanyAdmin: true,
+    });
+
+    expect(userUpdate).toHaveBeenCalledWith({
+      where: { id: 'u2' },
+      data: { role: 'COMPANY_ADMIN' },
     });
   });
 

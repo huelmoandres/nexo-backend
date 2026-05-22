@@ -3,6 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Role } from '@prisma/client';
+import { AuthorizationService } from '@modules/authorization/authorization.service';
 import { buildProblem } from '@common/errors/problem.factory';
 import type { CompanySummaryDto } from '../dto/company-summary.dto';
 import type { CreateCompanyDto } from '../dto/create-company.dto';
@@ -16,6 +18,7 @@ export class UsersCompanyService {
   constructor(
     private readonly usersRepository: UsersRepository,
     private readonly rutRegistration: RutRegistrationService,
+    private readonly authorizationService: AuthorizationService,
   ) {}
 
   async createCompany(
@@ -36,6 +39,8 @@ export class UsersCompanyService {
     const rutNormalized = this.rutRegistration.resolveRequiredRut(dto.rut);
     await this.rutRegistration.assertRutAvailable(rutNormalized);
 
+    this.assertRoleAllowsCompanyOnboarding(user.role);
+
     const existingOwn = await this.usersRepository.findCompanyByAdminId(
       user.id,
     );
@@ -53,11 +58,25 @@ export class UsersCompanyService {
       name: dto.name.trim(),
       rut: rutNormalized,
       meta,
+      promoteRoleToCompanyAdmin: true,
     });
+
+    this.authorizationService.invalidateRoleCache(supabaseUid);
 
     return {
       company: this.mapCompanySummary(company),
     };
+  }
+
+  private assertRoleAllowsCompanyOnboarding(role: Role): void {
+    if (role !== Role.CLIENT) {
+      throw new ConflictException(
+        buildProblem(
+          'COMPANY_ONBOARDING_ROLE_CONFLICT',
+          'Tu rol actual no permite registrar una nueva empresa.',
+        ),
+      );
+    }
   }
 
   private mapCompanySummary(input: {

@@ -148,6 +148,7 @@ export class UsersRepository {
     name: string;
     rut: string;
     meta: { ipAddress?: string; userAgent?: string };
+    promoteRoleToCompanyAdmin?: boolean;
   }): Promise<Company> {
     return this.prisma.$transaction(async (tx) => {
       const company = await tx.company.create({
@@ -183,6 +184,13 @@ export class UsersRepository {
           companyId: company.id,
         },
       });
+
+      if (input.promoteRoleToCompanyAdmin) {
+        await tx.user.update({
+          where: { id: input.userId },
+          data: { role: Role.COMPANY_ADMIN },
+        });
+      }
 
       return company;
     });

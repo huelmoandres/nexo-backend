@@ -38,7 +38,7 @@ Mismos verbos que profesional; ownership vía `companyId` y admin de la empresa.
 
 | Recurso | Guard | Regla |
 |---------|-------|-------|
-| Profesional | `SupabaseAuthGuard` | Usuario con `professionalProfile`; ownership por `user.sub` → perfil |
+| Profesional | `SupabaseAuthGuard` + `RolesGuard` | `@Roles(INDEPENDENT_PRO)`; ownership por `user.sub` → perfil |
 | Empresa | `SupabaseAuthGuard` + service | `EntitlementsService.assertCompanyAdmin(supabaseUid, companyId)` |
 
 No se usa `RolesGuard` explícito en controllers: el rol efectivo se valida al resolver el perfil/empresa (404 si no existe sujeto).

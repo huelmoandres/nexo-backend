@@ -32,6 +32,7 @@
 - [Planes y Entitlements](specs/plans-entitlements.md): PlanDefinition, límites multi-zona, admin SUPER_ADMIN y **§7 checklist** para módulos nuevos.
 - [Módulo Geo](specs/geo-module.md): Árbol Uruguay, resolve y cache Redis.
 - [Zonas de servicio](specs/service-areas-module.md): CRUD profesional/empresa y enforcement por plan.
+- [Inventario seguridad endpoints](specs/api-endpoints-security.md): Matriz JWT, RBAC y planes por ruta.
 - [Reseñas y Reputación](specs/reviews-reputation.md): Calificación multidimensional y Prueba Social.
 - [Chat y Mensajería](specs/chat-module.md): MongoDB, ciclo de vida y moderación preventiva de IA.
 - [Portfolio del Profesional](specs/portfolio-module.md): Vidriera pública con vínculo opcional a Job verificado, moderación IA híbrida y consentimiento del cliente.

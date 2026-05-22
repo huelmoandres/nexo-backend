@@ -20,6 +20,9 @@ import {
 import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '@modules/auth/interfaces/authenticated-user.interface';
 import { SupabaseAuthGuard } from '@modules/auth/guards/supabase-auth.guard';
+import { Role } from '@prisma/client';
+import { Roles } from '@modules/authorization/roles.decorator';
+import { RolesGuard } from '@modules/authorization/roles.guard';
 import { CreateServiceAreaDto } from './dto/create-service-area.dto';
 import { ServiceAreaResponseDto } from './dto/service-area-response.dto';
 import { UpdateServiceAreaDto } from './dto/update-service-area.dto';
@@ -27,7 +30,8 @@ import { ServiceAreaService } from './service-area.service';
 
 @ApiTags('service-areas')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard)
+@UseGuards(SupabaseAuthGuard, RolesGuard)
+@Roles(Role.INDEPENDENT_PRO)
 @Controller('professionals/me/service-areas')
 export class ProfessionalServiceAreasController {
   constructor(private readonly serviceAreas: ServiceAreaService) {}
