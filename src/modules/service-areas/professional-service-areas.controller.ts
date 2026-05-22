@@ -37,7 +37,9 @@ export class ProfessionalServiceAreasController {
   constructor(private readonly serviceAreas: ServiceAreaService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Listar zonas de servicio del profesional autenticado' })
+  @ApiOperation({
+    summary: 'Listar zonas de servicio del profesional autenticado',
+  })
   @ApiResponse({ status: 200, type: [ServiceAreaResponseDto] })
   list(
     @CurrentUser() user: AuthenticatedUser,

@@ -50,7 +50,9 @@ describe('PlansAdminService', () => {
     });
     planDefinitionRepo.updateEntitlements.mockResolvedValue({ id: 'cat-free' });
     const svc = makeService();
-    await svc.updateCatalogPlan('cat-free', { entitlements: validEntitlements });
+    await svc.updateCatalogPlan('cat-free', {
+      entitlements: validEntitlements,
+    });
     expect(planDefinitionRepo.updateEntitlements).toHaveBeenCalled();
   });
 
@@ -81,8 +83,12 @@ describe('PlansAdminService', () => {
       id: 'co-1',
       planDefinitionId: 'old',
     });
-    planDefinitionRepo.findById.mockResolvedValue({ code: SubscriptionPlan.FREE });
-    planDefinitionRepo.createCustomForCompany.mockResolvedValue({ id: 'custom-co' });
+    planDefinitionRepo.findById.mockResolvedValue({
+      code: SubscriptionPlan.FREE,
+    });
+    planDefinitionRepo.createCustomForCompany.mockResolvedValue({
+      id: 'custom-co',
+    });
     const svc = makeService();
     await svc.assignCompanyPlan('co-1', {
       subscriptionPlan: SubscriptionPlan.CUSTOM,
@@ -102,9 +108,13 @@ describe('PlansAdminService', () => {
       id: 'pp-1',
       planDefinitionId: 'old',
     });
-    planDefinitionRepo.findById.mockResolvedValue({ code: SubscriptionPlan.FREE });
+    planDefinitionRepo.findById.mockResolvedValue({
+      code: SubscriptionPlan.FREE,
+    });
     prisma.professionalProfile.update.mockResolvedValue({});
-    planDefinitionRepo.findById.mockResolvedValueOnce({ code: SubscriptionPlan.FREE });
+    planDefinitionRepo.findById.mockResolvedValueOnce({
+      code: SubscriptionPlan.FREE,
+    });
     planDefinitionRepo.findById.mockResolvedValueOnce({ id: 'catalog-pro-id' });
 
     const svc = makeService();
@@ -154,8 +164,12 @@ describe('PlansAdminService', () => {
       id: 'co-1',
       planDefinitionId: 'old',
     });
-    planDefinitionRepo.findById.mockResolvedValue({ code: SubscriptionPlan.FREE });
-    planDefinitionRepo.findById.mockResolvedValueOnce({ code: SubscriptionPlan.FREE });
+    planDefinitionRepo.findById.mockResolvedValue({
+      code: SubscriptionPlan.FREE,
+    });
+    planDefinitionRepo.findById.mockResolvedValueOnce({
+      code: SubscriptionPlan.FREE,
+    });
     planDefinitionRepo.findById.mockResolvedValueOnce({ id: 'catalog-biz-id' });
     const svc = makeService();
     await svc.assignCompanyPlan('co-1', {

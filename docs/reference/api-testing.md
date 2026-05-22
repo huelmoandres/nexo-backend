@@ -29,7 +29,21 @@ El servidor expone una UI interactiva de Swagger en desarrollo.
 
 ## 2. Importar la Colección en Postman
 
-### Paso a paso
+### Colección curada del repo (recomendado)
+
+En `postman/`:
+
+| Archivo | Uso |
+|---------|-----|
+| `nexos-api.postman_collection.json` | Toda la API + tests + carpeta E2E Mercado Pago |
+| `nexos-e2e-mercadopago.postman_collection.json` | Solo flujo E2E MP Checkout Pro |
+| `nexos-e2e-mercadopago-subscriptions.postman_collection.json` | Solo flujo E2E Suscripciones SaaS |
+| `e2e-mercadopago-subscriptions-folder.json` | Fragmento carpeta suscripciones (regenerar con script) |
+| `nexos-local.postman_environment.json` | Variables locales |
+
+No importes `e2e-mercadopago-folder.json` (fragmento; Postman da *Incorrect format*). Detalle: `postman/README.md`.
+
+### Paso a paso (desde OpenAPI)
 
 1. Con el servidor corriendo, descarga el JSON de OpenAPI:
    ```
@@ -60,8 +74,15 @@ Crea un **Environment** llamado `Nexos — Local` con las siguientes variables:
 | `authToken` | _(vacío — se llena manualmente o con el test de login)_ | JWT del usuario CLIENT de prueba |
 | `adminToken` | _(vacío)_ | JWT del usuario SUPER_ADMIN de prueba |
 | `testUserId` | _(vacío)_ | ID del usuario creado en la sesión de prueba |
-| `testJobId` | _(vacío)_ | ID del Job creado en la sesión de prueba |
-| `testEscrowId` | _(vacío)_ | ID del EscrowTransaction creado en la sesión de prueba |
+| `jobId` | _(vacío — lo setea el flujo Postman)_ | ID del Job creado en la sesión de prueba |
+| `client_email` / `client_uid` | `demo.client@nexos.local` / UUID seed | Usuario CLIENT para carpeta Jobs |
+| `payment_webhook_secret` | `nexos-dev-webhook-secret` (o valor de `.env`) | Header `x-webhook-secret` del webhook mock |
+| `mercadopago_webhook_secret` | _(vacío — panel MP)_ | Firma webhook MP; ver [mercadopago-checkout-pro-sandbox.md](../how-to/mercadopago-checkout-pro-sandbox.md) |
+| `paymentUrl` / `mp_preference_id` / `mp_payment_id` | _(vacío)_ | Seteados por flujo Checkout Pro en Postman |
+| `ngrok_base_url` | _(vacío)_ | Base HTTPS del túnel para `MERCADOPAGO_NOTIFICATION_URL` |
+| `changeOrderId` | _(vacío)_ | ID de change order pendiente |
+| `payoutAccountId` | _(vacío — lo setea Payout → Configurar cuenta PRO)_ | Destino de cobro para `POST /jobs/:id/accept` |
+| `bankId` | _(vacío — GET /api/payout/banks)_ | UUID banco UY para cuentas `BANK` |
 | `testDisputeId` | _(vacío)_ | ID del Dispute creado en la sesión de prueba |
 
 > **Tip:** Usa el script **Tests** de Postman en el request de login/auth para capturar el token automáticamente:
@@ -123,7 +144,22 @@ pm.test('Login exitoso', function () {
 
 ---
 
-## 5. Tests Automáticos en Postman
+## 5. Mercado Pago Checkout Pro (sandbox)
+
+Carpeta principal: **E2E — Mercado Pago Checkout Pro (sandbox)** (pasos 0–7, Collection Runner).
+
+| Paso | Variable | Éxito |
+|------|----------|--------|
+| 1 | `jobId` | 201 |
+| 1b | `payoutAccountId` | cuenta primary (seed demo) |
+| 3 | `paymentUrl` | abrir en navegador → pago MP |
+| 4 | — | escrow `HELD` |
+
+Seeds: `npm run db:seed:demo`. Guía: [mercadopago-checkout-pro-sandbox.md](../how-to/mercadopago-checkout-pro-sandbox.md). Notas locales MP: `postman/MP-SANDBOX.local.example.md`.
+
+---
+
+## 6. Tests Automáticos en Postman
 
 Cada request guardado en la colección oficial debe incluir tests básicos en la pestaña **Tests**.
 
@@ -169,7 +205,7 @@ pm.test('Respuesta paginada correcta', function () {
 
 ---
 
-## 6. Estructura de la Colección Oficial
+## 7. Estructura de la Colección Oficial
 
 La colección de Postman debe organizarse en carpetas que coincidan con los tags de Swagger:
 
@@ -183,13 +219,15 @@ Nexos API — Local/
 │   ├── PATCH Update Profile
 │   └── POST Upload KYC Document (presign)
 ├── jobs/
-│   ├── POST Create Job
-│   ├── GET Job by ID
-│   └── PATCH Update Job Status
-├── escrow/
-│   ├── POST Fund Escrow
-│   ├── POST Release Escrow
-│   └── POST Refund Escrow
+│   ├── Flujo completo (CLIENT → PRO → webhook → approve)
+│   └── change-orders
+├── payout/
+│   ├── Configurar cuenta PRO (antes de accept)
+│   ├── professionals/me/payout-accounts
+│   ├── companies/:companyId/payout-accounts
+│   └── jobs/:id/escrow/payout-attempts | retry
+├── payments/
+│   └── POST webhook (fondeo UYU)
 ├── urgencies/
 │   └── POST Dispatch Urgency
 ├── disputes/
@@ -204,7 +242,7 @@ Nexos API — Local/
 
 ---
 
-## 7. Checklist antes de hacer PR
+## 8. Checklist antes de hacer PR
 
 - [ ] El endpoint y sus DTOs son visibles en `http://localhost:3000/api/docs`.
 - [ ] Todos los DTOs de entrada tienen `@ApiProperty()` con `example` real.

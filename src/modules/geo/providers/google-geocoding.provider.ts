@@ -30,7 +30,10 @@ export class GoogleGeocodingProvider implements IGeocodingProvider {
     private readonly cfg: ConfigType<typeof googleMapsConfig>,
   ) {}
 
-  async reverseGeocode(lat: number, lng: number): Promise<GeocodingResult | null> {
+  async reverseGeocode(
+    lat: number,
+    lng: number,
+  ): Promise<GeocodingResult | null> {
     if (!this.cfg.enabled) {
       return null;
     }
@@ -39,7 +42,10 @@ export class GoogleGeocodingProvider implements IGeocodingProvider {
     url.searchParams.set('key', this.cfg.apiKey);
     url.searchParams.set('region', this.cfg.region);
     url.searchParams.set('language', this.cfg.language);
-    url.searchParams.set('result_type', 'street_address|route|locality|sublocality');
+    url.searchParams.set(
+      'result_type',
+      'street_address|route|locality|sublocality',
+    );
     return this.fetch(url);
   }
 
@@ -95,12 +101,13 @@ export class GoogleGeocodingProvider implements IGeocodingProvider {
   private mapResult(
     row: NonNullable<GoogleGeocodeResponse['results']>[number],
   ): GeocodingResult {
-    const components: GeocodingAddressComponent[] =
-      row.address_components.map((c) => ({
+    const components: GeocodingAddressComponent[] = row.address_components.map(
+      (c) => ({
         longName: c.long_name,
         shortName: c.short_name,
         types: c.types,
-      }));
+      }),
+    );
     return {
       latitude: row.geometry.location.lat,
       longitude: row.geometry.location.lng,

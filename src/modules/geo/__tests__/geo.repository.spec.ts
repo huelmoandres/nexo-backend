@@ -18,7 +18,9 @@ describe('GeoRepository', () => {
     const { repo, prisma } = makeRepo();
     prisma.country.findFirst.mockResolvedValue({ id: 'c1' });
     await repo.findCountryByIso('UY');
-    expect(prisma.country.findFirst).toHaveBeenCalledWith({ where: { isoCode: 'UY' } });
+    expect(prisma.country.findFirst).toHaveBeenCalledWith({
+      where: { isoCode: 'UY' },
+    });
   });
 
   it('findStatesByCountryId ordena por nombre', async () => {

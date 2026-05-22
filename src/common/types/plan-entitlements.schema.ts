@@ -134,7 +134,10 @@ function fromV1(raw: Record<string, unknown>): PlanEntitlements {
 
   return {
     schemaVersion: PLAN_ENTITLEMENTS_SCHEMA_VERSION,
-    serviceAreas: { max: serviceAreasMax, radiusMetersMax: serviceAreaRadiusMetersMax },
+    serviceAreas: {
+      max: serviceAreasMax,
+      radiusMetersMax: serviceAreaRadiusMetersMax,
+    },
     portfolio: { ...PLAN_ENTITLEMENTS_DEFAULTS.portfolio },
     search: { ...PLAN_ENTITLEMENTS_DEFAULTS.search },
     urgency: {
@@ -150,7 +153,12 @@ function parseV2(raw: Record<string, unknown>): PlanEntitlements {
   const searchRaw = raw['search'];
   const urgencyRaw = raw['urgency'];
 
-  if (!isRecord(serviceAreasRaw) || !isRecord(portfolioRaw) || !isRecord(searchRaw) || !isRecord(urgencyRaw)) {
+  if (
+    !isRecord(serviceAreasRaw) ||
+    !isRecord(portfolioRaw) ||
+    !isRecord(searchRaw) ||
+    !isRecord(urgencyRaw)
+  ) {
     throw new Error('Invalid PlanEntitlements v2 shape');
   }
 
@@ -200,10 +208,15 @@ export function parsePlanEntitlements(raw: unknown): PlanEntitlements {
     throw new Error('PlanEntitlements must be an object');
   }
   if (isV1Shape(raw)) {
-    throw new Error('PlanEntitlements v1 is not accepted in admin payloads; use schemaVersion 2');
+    throw new Error(
+      'PlanEntitlements v1 is not accepted in admin payloads; use schemaVersion 2',
+    );
   }
   const parsed = parseV2(raw);
-  if (raw['schemaVersion'] !== undefined && raw['schemaVersion'] !== PLAN_ENTITLEMENTS_SCHEMA_VERSION) {
+  if (
+    raw['schemaVersion'] !== undefined &&
+    raw['schemaVersion'] !== PLAN_ENTITLEMENTS_SCHEMA_VERSION
+  ) {
     throw new Error('Unsupported schemaVersion');
   }
   return parsed;

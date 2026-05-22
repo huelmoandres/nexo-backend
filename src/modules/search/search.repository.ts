@@ -174,7 +174,12 @@ export class SearchRepository {
     searchText: string,
     filters: SearchFilters,
     startParamIdx: number,
-  ): { textFilter: string; relevanceExpr: string; params: unknown[]; nextIdx: number } {
+  ): {
+    textFilter: string;
+    relevanceExpr: string;
+    params: unknown[];
+    nextIdx: number;
+  } {
     const params: unknown[] = [];
     let paramIdx = startParamIdx;
     let textFilter = '';
@@ -313,7 +318,11 @@ export class SearchRepository {
     let paramIdx = 4;
     const basePoint = `ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography`;
     const distanceExpr = `${this.minDistanceSubquery('company', 'co', basePoint)}`;
-    const existsClause = this.serviceAreaExistsClause('company', 'co', basePoint);
+    const existsClause = this.serviceAreaExistsClause(
+      'company',
+      'co',
+      basePoint,
+    );
 
     let categoryJoin = '';
     let categoryFilter = '';

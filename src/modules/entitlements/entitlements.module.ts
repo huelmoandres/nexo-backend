@@ -30,6 +30,10 @@ import { PlansAdminService } from './plans-admin.service';
     PlansAdminService,
     PlanDefinitionRepository,
   ],
-  exports: [EntitlementsService, PlanDefinitionRepository, EntitlementsResolverService],
+  exports: [
+    EntitlementsService,
+    PlanDefinitionRepository,
+    EntitlementsResolverService,
+  ],
 })
 export class EntitlementsModule {}

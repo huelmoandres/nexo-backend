@@ -1,0 +1,12 @@
+{
+  "_comment": "Ejemplo topic=payment rechazado. Reemplazar data.id y external_reference con captura real.",
+  "topic": "payment",
+  "type": "payment",
+  "data": {
+    "id": "987654321"
+  },
+  "payment_api_response_shape": {
+    "status": "rejected",
+    "external_reference": "subscription:professional:00000000-0000-4000-8000-000000000002"
+  }
+}

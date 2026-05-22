@@ -153,7 +153,9 @@ describe('ServiceAreaRepository', () => {
     };
     const prisma = {
       serviceArea: { findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn() },
-      $transaction: vi.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),
+      $transaction: vi.fn(async (fn: (t: typeof tx) => Promise<unknown>) =>
+        fn(tx),
+      ),
     };
     const repo = new ServiceAreaRepository(prisma as never);
     const spy = vi.spyOn(

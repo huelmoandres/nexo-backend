@@ -32,6 +32,12 @@
 - [Planes y Entitlements](specs/plans-entitlements.md): PlanDefinition, límites multi-zona, admin SUPER_ADMIN y **§7 checklist** para módulos nuevos.
 - [Módulo Geo](specs/geo-module.md): Árbol Uruguay, resolve y cache Redis.
 - [Zonas de servicio](specs/service-areas-module.md): CRUD profesional/empresa y enforcement por plan.
+- [Módulo Jobs](specs/jobs-module.md): Ciclo de vida, pricing por líneas, change orders y moneda.
+- [Monedas y cotización BCU](specs/currency-exchange-rates.md): Catálogo UYU/USD, SOAP BCU, worker 19:00 UY.
+- [Política FX y conciliación](specs/fx-policy-and-reconciliation.md): Riesgo plataforma, snapshot escrow, checklist PSP.
+- [Pagos Mercado Pago](specs/payments-module.md): Checkout Pro, webhooks, config MLU.
+- [Billing / Suscripciones MP](specs/billing-module.md): PRO/BUSINESS recurrente, trial 7d, dunning, webhooks separados de jobs.
+- [Destinos de cobro (Payout Accounts)](specs/payout-accounts-module.md): Cuentas MP/banco, gate en `accept`, payout tras liberar escrow.
 - [Inventario seguridad endpoints](specs/api-endpoints-security.md): Matriz JWT, RBAC y planes por ruta.
 - [Reseñas y Reputación](specs/reviews-reputation.md): Calificación multidimensional y Prueba Social.
 - [Chat y Mensajería](specs/chat-module.md): MongoDB, ciclo de vida y moderación preventiva de IA.
@@ -56,8 +62,12 @@
 - [Dispute Module Eval](evals/dispute-module-eval.md): Evidencia Proactiva, Segunda Oportunidad y acceso SUPER_ADMIN.
 - [Search & Reviews Eval](evals/search-reviews-eval.md): Score de Relevancia, reseña multidimensional y Soft Delete.
 - [Planes y Entitlements Eval](evals/plans-entitlements-eval.md): Catálogo, CUSTOM, límites de zonas y APIs admin.
+- [Billing Module Eval](evals/billing-module-eval.md): Suscripciones MP, ngrok webhooks reales, cobertura 100%.
 - [Geo Module Eval](evals/geo-module-eval.md): Árbol, resolve y cache.
 - [Service Areas Eval](evals/service-areas-module-eval.md): CRUD y límites de plan.
+- [Jobs Module Eval](evals/jobs-module-eval.md): State machine, pricing y conformidad 48h.
+- [Currency / BCU Eval](evals/currency-exchange-rates-eval.md): Sync SOAP y conversión USD→UYU.
+- [Payout Accounts Eval](evals/payout-accounts-eval.md): Gate accept, intentos append-only, Postman Payout.
 - [Portfolio Module Eval](evals/portfolio-module-eval.md): Inmutabilidad post-verificación, fail-closed IA, ownership de paths y privacidad PII.
 - [Global Tech Eval](evals/global-tech-eval.md): Path Aliases, Config Centralizada, RFC 7807, TypeScript Strict y límites de código.
 

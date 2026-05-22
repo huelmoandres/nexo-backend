@@ -10,8 +10,9 @@
 //   CREATE EXTENSION IF NOT EXISTS "postgis";
 //
 // Convenciones:
-//   - Dinero: todos los campos *Cents son Int (centavos UYU × 100).
-//     Usar el Value Object Money de src/common/types/money.value-object.ts.
+//   - Dinero: campos *Cents son Int (minor units × 10^minorUnits).
+//     Job/líneas: moneda del contrato (UYU o USD). Escrow.amountCents: siempre UYU (liquidación).
+//     Ver .harness/rules/money-rules.md y MoneyConversionService.
 //   - Fechas: TIMESTAMPTZ — siempre UTC. Usar date-fns en la capa de Service.
 //   - Soft Delete: las tablas con deletedAt NUNCA se borran físicamente.
 //     Siempre update({ data: { deletedAt: new Date() } }).
@@ -105,14 +106,39 @@ enum SubscriptionPlan {
   CUSTOM
 }
 
+enum SubscriptionBillingStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
 enum JobStatus {
   PENDING          // Publicado, esperando profesional
   ACCEPTED         // Profesional asignado, trabajo no iniciado
   IN_PROGRESS      // Trabajo en curso
-  COMPLETED        // Profesional marcó como terminado, esperando conformidad
-  PENDING_APPROVAL // Sinónimo explícito para el periodo de 48hs
+  COMPLETED        // Profesional marcó como terminado, esperando conformidad (48hs)
+  PENDING_APPROVAL // Legacy alias del periodo post-COMPLETED — preferir COMPLETED + approvalDeadline
   CLOSED           // Conformidad dada, Escrow liberado
   CANCELLED        // Cancelado antes de inicio
+}
+
+enum JobPricingMode {
+  ESTIMATE
+  FIXED
+}
+
+enum JobPriceLineType {
+  LABOR
+  MATERIAL
+  OTHER
+}
+
+enum JobChangeOrderStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum EscrowStatus {
@@ -121,6 +147,46 @@ enum EscrowStatus {
   HELD_DISPUTED  // Disputa abierta, fondos congelados
   RELEASED       // Fondos liberados al profesional (estado terminal exitoso)
   REFUNDED       // Fondos devueltos al cliente (estado terminal de cancelación)
+}
+
+enum EscrowPayoutStatus {
+  NOT_APPLICABLE // Sin payout aún (PENDING/HELD) o v1 sin ejecución
+  PENDING        // Liberación aprobada; payout en curso
+  SUCCEEDED      // MP confirmó transferencia al pro
+  FAILED         // MP rechazó — reintentable
+  CANCELLED      // Reintentos cancelados por operaciones
+}
+
+enum PayoutMethod {
+  MERCADO_PAGO
+  BANK
+}
+
+enum PayoutSubjectType {
+  PROFESSIONAL
+  COMPANY
+}
+
+enum PayoutIdentifierType {
+  MP_CVU
+  MP_ALIAS
+  MP_EMAIL
+  MP_PHONE
+  BANK_TRANSFER_KEY
+}
+
+enum PayoutAttemptStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum PayoutAttemptTrigger {
+  RELEASE_FLOW
+  ADMIN_RETRY
+  ADMIN_MANUAL
+  SYSTEM_RETRY
 }
 
 enum DisputeStatus {
@@ -170,6 +236,10 @@ enum NotificationType {
   PORTFOLIO_CONSENT_REQUESTED // Cliente recibe solicitud de verificación de badge
   PORTFOLIO_CONSENT_REMINDER  // Recordatorio de consent pendiente (delay 3 días)
   PORTFOLIO_CONSENT_RESOLVED  // Profesional recibe resultado del consent (aceptado/rechazado)
+  // Billing / suscripciones SaaS
+  SUBSCRIPTION_PAYMENT_FAILED
+  SUBSCRIPTION_GRACE_REMINDER
+  SUBSCRIPTION_DOWNGRADED
 }
 
 enum AuditAction {
@@ -179,6 +249,13 @@ enum AuditAction {
   FUND_ESCROW
   RELEASE_FUNDS
   REFUND_CLIENT
+  PAYOUT_ACCOUNT_CREATED
+  PAYOUT_ACCOUNT_UPDATED
+  PAYOUT_ACCOUNT_SET_PRIMARY
+  PAYOUT_ATTEMPT_CREATED
+  PAYOUT_SUCCEEDED
+  PAYOUT_FAILED
+  RETRY_PAYOUT
   // Disputas
   OPEN_DISPUTE
   SECOND_CHANCE_ACTIVATED
@@ -349,6 +426,7 @@ model User {
   professionalProfile ProfessionalProfile?
   ownedCompany        Company?             @relation("CompanyAdmin")
   jobsAsClient        Job[]                @relation("JobClient")
+  jobChangeOrdersProposed JobChangeOrder[] @relation("JobChangeOrderProposer")
   disputesAsClient    Dispute[]            @relation("DisputeClient")
   disputesAsPro       Dispute[]            @relation("DisputeProfessional")
   reviewsAsClient     Review[]             @relation("ReviewClient")
@@ -408,6 +486,8 @@ model Company {
   planDefinition     PlanDefinition     @relation("CompanyPlan", fields: [planDefinitionId], references: [id])
   customPlanDefinition PlanDefinition?  @relation("CustomPlanCompany")
   serviceAreas         ServiceArea[]
+  payoutAccounts       PayoutAccount[]
+  billingSubscription  BillingSubscription?
 
   /// Vidriera / búsqueda (fase empresa buscable).
   bio           String?
@@ -520,6 +600,8 @@ model ProfessionalProfile {
   certifications  ProfessionalCertification[]
   portfolioItems  PortfolioItem[]
   serviceAreas    ServiceArea[]
+  payoutAccounts  PayoutAccount[]
+  billingSubscription BillingSubscription?
 
   dgiVerificationStatus DgiVerificationStatus @default(UNVERIFIED)
   dgiVerificationMethod String?
@@ -537,6 +619,39 @@ model ProfessionalProfile {
   @@index([stateId])
   @@index([cityId])
   @@index([neighborhoodId])
+}
+
+/// Suscripción SaaS recurrente (Mercado Pago preapproval). Una fila activa por profesional o empresa.
+model BillingSubscription {
+  id                    String                    @id @default(uuid())
+  professionalProfileId String?                   @unique
+  professionalProfile   ProfessionalProfile?      @relation(fields: [professionalProfileId], references: [id], onDelete: Cascade)
+  companyId             String?                   @unique
+  company               Company?                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  planCode              SubscriptionPlan
+  status                SubscriptionBillingStatus
+  trialEndsAt           DateTime?                 @db.Timestamptz
+  currentPeriodStart    DateTime?                 @db.Timestamptz
+  currentPeriodEnd      DateTime?                 @db.Timestamptz
+  graceEndsAt           DateTime?                 @db.Timestamptz
+  cancelAtPeriodEnd     Boolean                   @default(false)
+  dunningReminderSent   Int                       @default(0)
+  lastDunningAt         DateTime?                 @db.Timestamptz
+  mpPreapprovalId       String?
+  mpPreapprovalPlanId   String?
+  externalReference     String                    @unique
+  billingAmountUsdCents Int?
+  billingAmountUyuCents Int?
+  customAmountUsdCents  Int?
+  exchangeRateId        String?
+  exchangeRate          ExchangeRate?             @relation(fields: [exchangeRateId], references: [id])
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([status])
+  @@index([graceEndsAt])
+  @@index([currentPeriodEnd])
 }
 
 model ProfessionalIdentity {
@@ -688,6 +803,43 @@ model ProfessionalCategory {
 // BLOQUE C — TRABAJO Y CICLO FINANCIERO
 // =============================================================================
 
+model Currency {
+  id            String   @id @default(uuid())
+  code          String   @unique
+  name          String
+  minorUnits    Int      @default(2)
+  /// Código BCU (ej. USD = 2225). Null para moneda base UYU.
+  bcuMonedaCode Int?
+  isActive      Boolean  @default(true)
+  isDefault     Boolean  @default(false)
+  jobs          Job[]
+  escrowJobCurrency EscrowTransaction[] @relation("EscrowJobCurrency")
+  ratesAsBase   ExchangeRate[]          @relation("RateBaseCurrency")
+  ratesAsQuote  ExchangeRate[]          @relation("RateQuoteCurrency")
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  updatedAt     DateTime @updatedAt @db.Timestamptz
+}
+
+/// Tipo de cambio oficial (BCU). Par típico: base UYU, quote USD.
+model ExchangeRate {
+  id              String   @id @default(uuid())
+  baseCurrencyId  String
+  baseCurrency    Currency @relation("RateBaseCurrency", fields: [baseCurrencyId], references: [id])
+  quoteCurrencyId String
+  quoteCurrency   Currency @relation("RateQuoteCurrency", fields: [quoteCurrencyId], references: [id])
+  effectiveDate   DateTime @db.Date
+  /// UYU por 1 unidad de quote, × 1e6 (sin float).
+  buyRateMicros   Int
+  sellRateMicros  Int
+  source          String   @default("BCU")
+  escrows         EscrowTransaction[]
+  billingSubscriptions BillingSubscription[]
+  createdAt       DateTime @default(now()) @db.Timestamptz
+
+  @@unique([baseCurrencyId, quoteCurrencyId, effectiveDate])
+  @@index([quoteCurrencyId, effectiveDate(sort: Desc)])
+}
+
 model Job {
   id String @id @default(uuid())
 
@@ -698,22 +850,39 @@ model Job {
   professionalId String?
   professional   ProfessionalProfile? @relation("JobProfessional", fields: [professionalId], references: [id])
 
+  /// Cuenta de cobro elegida al aceptar (snapshot lógico; escrow copia FK).
+  payoutAccountId String?
+  payoutAccount   PayoutAccount? @relation("JobPayoutAccount", fields: [payoutAccountId], references: [id])
+
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
 
-  status      JobStatus @default(PENDING)
-  title       String
-  description String
+  currencyId String
+  currency   Currency @relation(fields: [currencyId], references: [id])
 
-  /// Monto acordado en centavos (Pesos Uruguayos × 100).
-  /// Ejemplo: $1,500 UYU = 150000 centavos.
-  /// Usar: Money.fromCents(agreedAmountCents) en la capa de Service.
-  agreedAmountCents Int
+  status       JobStatus      @default(PENDING)
+  pricingMode  JobPricingMode @default(FIXED)
+  title        String
+  description  String
+
+  /// Total vigente en minor units de currencyId (suma líneas aprobadas + change orders).
+  totalAmountCents Int
+
+  addressLine      String?
+  countryId        String?
+  stateId          String?
+  cityId           String?
+  neighborhoodId   String?
+  latitude         Float?
+  longitude        Float?
 
   /// Timestamp cuando el profesional marcó el trabajo como COMPLETED.
-  completedAt       DateTime? @db.Timestamptz
+  completedAt      DateTime? @db.Timestamptz
   /// Deadline de aceptación silenciosa: completedAt + 48hs hábiles (calculado con date-fns).
-  approvalDeadline  DateTime? @db.Timestamptz
+  approvalDeadline DateTime? @db.Timestamptz
+
+  priceLines    JobPriceLine[]
+  changeOrders  JobChangeOrder[]
 
   // Relaciones
   escrowTransaction EscrowTransaction?
@@ -729,6 +898,46 @@ model Job {
   updatedAt DateTime  @updatedAt @db.Timestamptz
 }
 
+model JobPriceLine {
+  id          String           @id @default(uuid())
+  jobId       String
+  job         Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  type        JobPriceLineType
+  label       String
+  amountCents Int
+  sortOrder   Int              @default(0)
+  createdAt   DateTime         @default(now()) @db.Timestamptz
+
+  @@index([jobId])
+}
+
+model JobChangeOrder {
+  id           String               @id @default(uuid())
+  jobId        String
+  job          Job                  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  proposedById String
+  proposedBy   User                 @relation("JobChangeOrderProposer", fields: [proposedById], references: [id])
+  status       JobChangeOrderStatus @default(PENDING)
+  clientNote   String?
+  lines        JobChangeOrderLine[]
+  createdAt    DateTime             @default(now()) @db.Timestamptz
+  updatedAt    DateTime             @updatedAt @db.Timestamptz
+
+  @@index([jobId, status])
+}
+
+model JobChangeOrderLine {
+  id            String           @id @default(uuid())
+  changeOrderId String
+  changeOrder   JobChangeOrder   @relation(fields: [changeOrderId], references: [id], onDelete: Cascade)
+  type          JobPriceLineType
+  label         String
+  amountCents   Int
+  sortOrder     Int              @default(0)
+
+  @@index([changeOrderId])
+}
+
 /// Núcleo financiero ACID. Toda mutación de esta tabla requiere prisma.$transaction().
 /// Ver docs/explanation/escrow-logic.md para la State Machine completa.
 model EscrowTransaction {
@@ -738,7 +947,16 @@ model EscrowTransaction {
 
   status EscrowStatus @default(PENDING)
 
-  /// Monto total retenido en centavos. Usar Money.fromCents(amountCents).
+  /// Moneda del contrato al fondear (copia de Job.currencyId).
+  jobCurrencyId String?
+  jobCurrency   Currency? @relation("EscrowJobCurrency", fields: [jobCurrencyId], references: [id])
+  /// Monto en minor units de jobCurrency al fondear.
+  jobAmountCents Int?
+  /// Tasa BCU usada si jobCurrency es USD.
+  exchangeRateId String?
+  exchangeRate   ExchangeRate? @relation(fields: [exchangeRateId], references: [id])
+
+  /// Monto retenido en centavos UYU (liquidación / pasarela).
   amountCents Int
   /// Comisión de HRProgrammers en centavos. Calculado al fondear.
   commissionCents Int @default(0)
@@ -754,12 +972,97 @@ model EscrowTransaction {
   /// URL externa de seguimiento o comprobante de la pasarela de pagos.
   externalUrl       String?
 
+  /// Snapshot de destino de cobro al aceptar/fondear.
+  payoutAccountId String?
+  payoutAccount   PayoutAccount? @relation("EscrowPayoutAccount", fields: [payoutAccountId], references: [id])
+
+  payoutStatus EscrowPayoutStatus @default(NOT_APPLICABLE)
+
   releasedAt DateTime? @db.Timestamptz
   refundedAt DateTime? @db.Timestamptz
   createdAt  DateTime  @default(now()) @db.Timestamptz
   updatedAt  DateTime  @updatedAt @db.Timestamptz
 
-  auditLogs AuditLog[]
+  auditLogs      AuditLog[]
+  payoutAttempts PayoutAttempt[]
+}
+
+/// Catálogo de bancos uruguayos para destino BANK.
+model Bank {
+  id        String  @id @default(uuid())
+  code      String  @unique
+  name      String
+  bcuPrefix String?
+  isActive  Boolean @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  payoutAccounts PayoutAccount[]
+}
+
+/// Destino de cobro del profesional o empresa (N por sujeto).
+model PayoutAccount {
+  id          String @id @default(uuid())
+  subjectType PayoutSubjectType
+  method      PayoutMethod
+  label       String
+  isPrimary   Boolean @default(false)
+  isActive    Boolean @default(true)
+
+  professionalProfileId String?
+  professionalProfile   ProfessionalProfile? @relation(fields: [professionalProfileId], references: [id])
+  companyId             String?
+  company               Company?             @relation(fields: [companyId], references: [id])
+
+  identifierType     PayoutIdentifierType
+  transferIdentifier String?
+  mpAlias            String?
+  accountHolderName  String?
+  bankId             String?
+  bank               Bank?   @relation(fields: [bankId], references: [id])
+
+  verifiedAt DateTime? @db.Timestamptz
+  createdAt  DateTime  @default(now()) @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @db.Timestamptz
+
+  jobsAsPayout     Job[]              @relation("JobPayoutAccount")
+  escrowsAsPayout  EscrowTransaction[] @relation("EscrowPayoutAccount")
+  payoutAttempts   PayoutAttempt[]
+
+  @@index([subjectType, professionalProfileId])
+  @@index([subjectType, companyId])
+}
+
+/// Ledger inmutable de intentos de payout al profesional.
+model PayoutAttempt {
+  id                  String @id @default(uuid())
+  escrowTransactionId String
+  escrowTransaction   EscrowTransaction @relation(fields: [escrowTransactionId], references: [id])
+  payoutAccountId     String
+  payoutAccount       PayoutAccount @relation(fields: [payoutAccountId], references: [id])
+
+  attemptNumber Int
+  status        PayoutAttemptStatus @default(PENDING)
+  amountCents   Int
+  netAmountCents Int
+
+  destinationSnapshot Json
+  providerReference   String?
+  providerStatus      String?
+  failureCode         String?
+  failureMessage      String?
+  /// Comprobante de transferencia manual (S3/R2); obligatorio en confirmación ADMIN_MANUAL.
+  receiptStorageKey   String?
+  adminPayoutNote     String?
+
+  triggeredBy         PayoutAttemptTrigger
+  triggeredByUserId   String?
+
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  completedAt DateTime? @db.Timestamptz
+
+  @@unique([escrowTransactionId, attemptNumber])
+  @@index([status, createdAt])
 }
 
 model Urgency {

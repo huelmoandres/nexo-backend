@@ -1,7 +1,4 @@
-import {
-  ForbiddenException,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAN_CATALOG_DEFAULTS } from '@common/types/plan-entitlements.schema';
 import { EntitlementsService } from '../entitlements.service';
@@ -47,11 +44,11 @@ describe('EntitlementsService', () => {
     resolver.resolveByPlanDefinitionId.mockResolvedValue(
       PLAN_CATALOG_DEFAULTS.PRO,
     );
-    resolver.resolveForSubject.mockResolvedValue(PLAN_CATALOG_DEFAULTS.BUSINESS);
+    resolver.resolveForSubject.mockResolvedValue(
+      PLAN_CATALOG_DEFAULTS.BUSINESS,
+    );
     const svc = makeService();
-    expect(
-      (await svc.resolveByPlanDefinitionId('x')).serviceAreas.max,
-    ).toBe(3);
+    expect((await svc.resolveByPlanDefinitionId('x')).serviceAreas.max).toBe(3);
     expect((await svc.resolveForCompany('co')).portfolio.itemsMax).toBe(50);
     expect((await svc.resolveForProfessional('pp')).serviceAreas.max).toBe(10);
   });
@@ -79,25 +76,27 @@ describe('EntitlementsService', () => {
   it('assertCompanyAdmin lanza si usuario no existe', async () => {
     prisma.user.findFirst.mockResolvedValue(null);
     const svc = makeService();
-    await expect(
-      svc.assertCompanyAdmin('uid', 'co-1'),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.assertCompanyAdmin('uid', 'co-1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('assertCompanyAdmin permite admin de la empresa', async () => {
     prisma.user.findFirst.mockResolvedValue({ id: 'u1' });
     prisma.company.findFirst.mockResolvedValue({ id: 'co-1' });
     const svc = makeService();
-    await expect(svc.assertCompanyAdmin('uid', 'co-1')).resolves.toBeUndefined();
+    await expect(
+      svc.assertCompanyAdmin('uid', 'co-1'),
+    ).resolves.toBeUndefined();
   });
 
   it('assertCompanyAdmin lanza si no es admin', async () => {
     prisma.user.findFirst.mockResolvedValue({ id: 'u1' });
     prisma.company.findFirst.mockResolvedValue(null);
     const svc = makeService();
-    await expect(
-      svc.assertCompanyAdmin('uid', 'co-1'),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.assertCompanyAdmin('uid', 'co-1')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
   it('isSearchQueryExpansionEnabled delega', () => {

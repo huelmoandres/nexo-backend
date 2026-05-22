@@ -126,8 +126,9 @@ export class PortfolioService {
       );
     }
 
-    const planEntitlements =
-      await this.entitlements.resolveForProfessional(professionalProfileId);
+    const planEntitlements = await this.entitlements.resolveForProfessional(
+      professionalProfileId,
+    );
     await this.entitlements.assert(
       'portfolio.item.create',
       'professional',
@@ -225,8 +226,9 @@ export class PortfolioService {
     }
 
     const currentCount = await this.repository.countPhotosByItemId(itemId);
-    const planEntitlements =
-      await this.entitlements.resolveForProfessional(professionalProfileId);
+    const planEntitlements = await this.entitlements.resolveForProfessional(
+      professionalProfileId,
+    );
     const photosLimit = Math.min(
       this.config.maxPhotosPerItem,
       planEntitlements.portfolio.photosPerItemMax,

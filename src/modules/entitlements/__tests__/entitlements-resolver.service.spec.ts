@@ -76,7 +76,11 @@ describe('EntitlementsResolverService', () => {
   });
 
   it('resolveForSubject memoiza por subject', async () => {
-    requestStore.setForSubject('company', 'co-1', PLAN_CATALOG_DEFAULTS.BUSINESS);
+    requestStore.setForSubject(
+      'company',
+      'co-1',
+      PLAN_CATALOG_DEFAULTS.BUSINESS,
+    );
     const svc = makeService();
     const result = await svc.resolveForSubject('company', 'co-1');
     expect(result.portfolio.itemsMax).toBe(50);

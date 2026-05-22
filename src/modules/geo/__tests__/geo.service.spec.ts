@@ -31,18 +31,24 @@ describe('GeoService', () => {
         neighborhoodSlug: 'pocitos',
       },
     ]),
-    findStatesByCountryId: vi.fn().mockResolvedValue([
-      { id: 's1', name: 'Montevideo', slug: 'montevideo' },
-    ]),
-    findCitiesByStateId: vi.fn().mockResolvedValue([
-      { id: 'ci1', name: 'Montevideo', slug: 'montevideo' },
-    ]),
-    findNeighborhoodsByCityId: vi.fn().mockResolvedValue([
-      { id: 'n1', name: 'Pocitos', slug: 'pocitos' },
-    ]),
-    searchByName: vi.fn().mockResolvedValue([
-      { level: 'state', id: 's1', name: 'Montevideo', slug: 'montevideo' },
-    ]),
+    findStatesByCountryId: vi
+      .fn()
+      .mockResolvedValue([
+        { id: 's1', name: 'Montevideo', slug: 'montevideo' },
+      ]),
+    findCitiesByStateId: vi
+      .fn()
+      .mockResolvedValue([
+        { id: 'ci1', name: 'Montevideo', slug: 'montevideo' },
+      ]),
+    findNeighborhoodsByCityId: vi
+      .fn()
+      .mockResolvedValue([{ id: 'n1', name: 'Pocitos', slug: 'pocitos' }]),
+    searchByName: vi
+      .fn()
+      .mockResolvedValue([
+        { level: 'state', id: 's1', name: 'Montevideo', slug: 'montevideo' },
+      ]),
     ...overrides,
   });
 
@@ -160,7 +166,9 @@ describe('GeoService', () => {
     const { service } = makeService({
       findCountryByIso: vi.fn().mockResolvedValue(null),
     });
-    await expect(service.listStates()).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.listStates()).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('listCities y listNeighborhoods mapean resumen', async () => {

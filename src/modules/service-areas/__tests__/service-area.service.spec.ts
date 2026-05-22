@@ -1,7 +1,4 @@
-import {
-  ConflictException,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { serviceAreaFactory } from '@test/factories/service-area.factory';
 import { ServiceAreaService } from '../service-area.service';
@@ -375,8 +372,8 @@ describe('ServiceAreaService', () => {
       professionalProfile: null,
     });
     const svc = makeService();
-    await expect(
-      svc.listForCurrentProfessional('uid'),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.listForCurrentProfessional('uid')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

@@ -197,8 +197,7 @@ export class GeoResolveService {
 
   private assertHasInput(dto: GeoResolveRequestDto): void {
     const hasAddress = Boolean(dto.addressLine?.trim());
-    const hasCoords =
-      dto.latitude !== undefined && dto.longitude !== undefined;
+    const hasCoords = dto.latitude !== undefined && dto.longitude !== undefined;
     if (!hasAddress && !hasCoords) {
       throw new BadRequestException(
         buildProblem(
@@ -252,9 +251,8 @@ export class GeoResolveService {
     neighborhoodName?: string;
   } {
     const find = (...types: string[]) =>
-      result.components.find((c) =>
-        types.some((t) => c.types.includes(t)),
-      )?.longName;
+      result.components.find((c) => types.some((t) => c.types.includes(t)))
+        ?.longName;
 
     const stateName = find('administrative_area_level_1');
     const cityName =

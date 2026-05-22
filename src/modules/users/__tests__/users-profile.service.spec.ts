@@ -46,7 +46,9 @@ describe('UsersProfileService', () => {
     resolveForProfessional: vi
       .fn()
       .mockResolvedValue(PLAN_CATALOG_DEFAULTS.FREE),
-    resolveForCompany: vi.fn().mockResolvedValue(PLAN_CATALOG_DEFAULTS.BUSINESS),
+    resolveForCompany: vi
+      .fn()
+      .mockResolvedValue(PLAN_CATALOG_DEFAULTS.BUSINESS),
   });
 
   const createService = (
@@ -447,7 +449,13 @@ describe('UsersProfileService', () => {
         .fn()
         .mockResolvedValue({ latitude: -34.9, longitude: -56.2 }),
     };
-    const service = createService(repo, {}, makeRutRegistration(), makeAuthz(), geoResolveService);
+    const service = createService(
+      repo,
+      {},
+      makeRutRegistration(),
+      makeAuthz(),
+      geoResolveService,
+    );
 
     await service.createProfessionalProfile('sub', {
       experienceYears: 2,
@@ -483,7 +491,13 @@ describe('UsersProfileService', () => {
       }),
       getProfileCoordinates: vi.fn().mockResolvedValue(null),
     };
-    const service = createService(repo, {}, makeRutRegistration(), makeAuthz(), geoResolveService);
+    const service = createService(
+      repo,
+      {},
+      makeRutRegistration(),
+      makeAuthz(),
+      geoResolveService,
+    );
 
     await service.createProfessionalProfile('sub', {
       experienceYears: 2,
@@ -513,9 +527,17 @@ describe('UsersProfileService', () => {
       hasProfessionalProfile: vi.fn().mockResolvedValue(false),
       countCategoriesByIds: vi.fn().mockResolvedValue(1),
       createProfessionalProfileWithPostgis,
-      getProfileCoordinates: vi.fn().mockResolvedValue({ latitude: -34.9, longitude: -56.2 }),
+      getProfileCoordinates: vi
+        .fn()
+        .mockResolvedValue({ latitude: -34.9, longitude: -56.2 }),
     };
-    const service = createService(repo, {}, makeRutRegistration(), makeAuthz(), geoResolveService);
+    const service = createService(
+      repo,
+      {},
+      makeRutRegistration(),
+      makeAuthz(),
+      geoResolveService,
+    );
 
     await service.createProfessionalProfile('sub', {
       experienceYears: 2,

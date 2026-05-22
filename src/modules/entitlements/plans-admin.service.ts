@@ -208,7 +208,9 @@ export class PlansAdminService {
     }
   }
 
-  private parseEntitlements(raw: unknown): ReturnType<typeof mergePlanEntitlements> {
+  private parseEntitlements(
+    raw: unknown,
+  ): ReturnType<typeof mergePlanEntitlements> {
     try {
       return mergePlanEntitlements(parsePlanEntitlements(raw));
     } catch {

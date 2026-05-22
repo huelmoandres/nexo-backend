@@ -1,6 +1,6 @@
 # Inventario de seguridad: endpoints HTTP
 
-**Última revisión:** 2026-05-22  
+**Última revisión:** 2026-05-22 (payout + escrow payout HTTP)  
 **Fuente:** controllers en `src/modules/**/*.controller.ts` + guard global `SupabaseAuthGuard` en `AppModule`.
 
 ## Reglas generales
@@ -45,6 +45,36 @@
 - `POST /users/company`: rol `CLIENT` + promoción a `COMPANY_ADMIN` en transacción.
 - `professionals/me/service-areas`: añadido `RolesGuard` + `INDEPENDENT_PRO`.
 
+## Jobs, monedas y pagos (2026-05-21)
+
+| Módulo | Ruta (prefijo `/api`) | Auth | Rol / notas |
+|--------|----------------------|------|-------------|
+| **currencies** | `GET /currencies` | Público | Catálogo UYU/USD |
+| **exchange-rates** | `GET /exchange-rates/latest` | Público | Cotización USD desde DB |
+| **exchange-rates** | `GET /exchange-rates/bcu` | Público | Cotización USD en vivo (SOAP BCU) |
+| **jobs** | `POST /jobs`, `GET /jobs/mine` | JWT | `CLIENT` + ownership |
+| **jobs** | `GET /jobs/available`, `POST accept`, `complete`, change-orders | JWT | `INDEPENDENT_PRO`; **accept** exige ≥1 cuenta activa + primary (gate payout) |
+| **jobs** | `GET /jobs/:id`, `PATCH status` | JWT | Cliente o pro asignado |
+| **jobs** | `POST approve-completion` | JWT | `CLIENT`; dispara `release`; payout manual → `PENDING` |
+| **jobs** | `GET /jobs/:id/escrow/payout-attempts` | JWT | Ownership del job (cliente / pro) |
+| **jobs** | `POST /jobs/:id/escrow/payout/retry` | JWT | `SUPER_ADMIN`; solo `gateway` + `payoutStatus=FAILED` |
+| **admin** | `GET /admin/escrow/payouts-pending` | JWT | `SUPER_ADMIN` |
+| **admin** | `POST /admin/jobs/:id/escrow/payout/presign-receipt` | JWT | `SUPER_ADMIN` |
+| **admin** | `POST /admin/jobs/:id/escrow/payout/confirm` | JWT | `SUPER_ADMIN`; comprobante S3 obligatorio |
+| **payout** | `GET /payout/banks` | JWT | Catálogo bancos UY activos |
+| **payout** | `GET/POST/PATCH/DELETE /professionals/me/payout-accounts` | JWT | `INDEPENDENT_PRO` + ownership |
+| **payout** | `POST /professionals/me/payout-accounts/:id/set-primary` | JWT | `INDEPENDENT_PRO` |
+| **payout** | `GET/POST /companies/:companyId/payout-accounts` | JWT | `COMPANY_ADMIN` + `assertCompanyAdmin` |
+| **payout** | `POST /companies/:companyId/payout-accounts/:id/set-primary` | JWT | `COMPANY_ADMIN` |
+| **payments** | `POST /payments/webhook` | Público + header `x-webhook-secret` | Fondeo UYU (mock/E2E) |
+| **payments** | `POST /payments/webhooks/mercadopago` | Público + firma MP | Fondeo tras `payment.approved` |
+| **jobs** | `POST /jobs/:id/checkout` | JWT CLIENT | Checkout Pro MP |
+| **billing** | `GET /billing/plans` | JWT | `INDEPENDENT_PRO`, `COMPANY_ADMIN` | Lectura catálogo USD |
+| **billing** | `POST /billing/subscribe` | JWT | PRO/empresa admin; solo `PRO` \| `BUSINESS` | Alta suscripción MP |
+| **billing** | `GET /billing/subscription` | JWT | Ownership sujeto | Estado trial/grace |
+| **billing** | `POST /billing/subscription/cancel` | JWT | Ownership; cancela preapproval MP | — |
+| **payments** | `POST /payments/webhooks/mercadopago/subscriptions` | Público + firma MP | Solo `external_reference` `subscription:*` | N/A |
+
 ## Pendiente (roadmap)
 
-Módulos sin HTTP aún: `jobs`, `urgency`, `escrow`, `dispute`, `reviews`, `chat`. Cada uno debe registrarse aquí al implementarse.
+Módulos sin HTTP aún: `urgency`, `dispute`, `reviews`, `chat`. Escrow operativo vía `EscrowService` + rutas bajo `/jobs/:id/escrow/*` (sin controller escrow dedicado).

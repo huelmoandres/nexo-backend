@@ -1,0 +1,12 @@
+{
+  "_comment": "Ejemplo IPN legacy topic=subscription_preapproval o preapproval. Reemplazar con captura real.",
+  "topic": "subscription_preapproval",
+  "type": "subscription_preapproval",
+  "data": {
+    "id": "preapproval-id-from-mp"
+  },
+  "preapproval_api_response_shape": {
+    "status": "authorized",
+    "external_reference": "subscription:professional:00000000-0000-4000-8000-000000000002"
+  }
+}

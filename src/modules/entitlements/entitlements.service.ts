@@ -39,7 +39,10 @@ export class EntitlementsService {
   resolveForProfessional(
     professionalProfileId: string,
   ): Promise<PlanEntitlements> {
-    return this.resolver.resolveForSubject('professional', professionalProfileId);
+    return this.resolver.resolveForSubject(
+      'professional',
+      professionalProfileId,
+    );
   }
 
   resolveForCompany(companyId: string): Promise<PlanEntitlements> {
@@ -103,7 +106,12 @@ export class EntitlementsService {
     subjectId: string,
     context?: AssertCapabilityContext,
   ): Promise<void> {
-    return this.assertService.assert(capability, subjectType, subjectId, context);
+    return this.assertService.assert(
+      capability,
+      subjectType,
+      subjectId,
+      context,
+    );
   }
 
   isSearchQueryExpansionEnabled(entitlements: PlanEntitlements): boolean {

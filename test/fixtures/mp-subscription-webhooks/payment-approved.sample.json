@@ -1,0 +1,12 @@
+{
+  "_comment": "Ejemplo basado en notificación MP topic=payment. Reemplazar con captura real de sandbox (ngrok). Consultar payment vía GET /v1/payments/{id}.",
+  "topic": "payment",
+  "type": "payment",
+  "data": {
+    "id": "123456789"
+  },
+  "payment_api_response_shape": {
+    "status": "approved",
+    "external_reference": "subscription:professional:00000000-0000-4000-8000-000000000002"
+  }
+}

@@ -88,10 +88,7 @@ export class GeoController {
   @ApiQuery({ name: 'q', required: true })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiOperation({ summary: 'Búsqueda por nombre en catálogo geo' })
-  async search(
-    @Query('q') q: string,
-    @Query('limit') limit?: string,
-  ) {
+  async search(@Query('q') q: string, @Query('limit') limit?: string) {
     const parsedLimit = limit ? Math.min(parseInt(limit, 10) || 20, 50) : 20;
     return this.geoService.search(q, parsedLimit);
   }

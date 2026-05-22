@@ -54,6 +54,14 @@ export const VERIFICATION_DOC_KEY_PATTERN = new RegExp(
 );
 
 /**
+ * Comprobante de payout manual (admin).
+ * Formato: `escrow/<escrowTransactionId>/payout-receipts/<uuid>.<ext>`
+ */
+export const PAYOUT_RECEIPT_KEY_PATTERN = new RegExp(
+  `^escrow/${UUID_RE_PART}/payout-receipts/${UUID_RE_PART}\\.(jpg|jpeg|png|pdf)$`,
+);
+
+/**
  * Devuelve el prefijo canónico del scope de un usuario.
  *
  * @param userId - ID del usuario (UUID o slug compatible con `[A-Za-z0-9_-]+`).
@@ -126,6 +134,36 @@ export function buildVerificationDocKey(userId: string, ext: string): string {
   assertValidUserId(userId);
   const safeExt = normalizeExtension(ext, ['pdf']);
   return `${userScope(userId)}verification/${randomUUID()}.${safeExt}`;
+}
+
+/**
+ * Key para comprobante de transferencia manual al profesional.
+ */
+export function buildPayoutReceiptKey(
+  escrowTransactionId: string,
+  ext: string,
+): string {
+  assertValidIdSegment(escrowTransactionId, 'escrowTransactionId');
+  const safeExt = normalizeExtension(ext, ['jpg', 'jpeg', 'png', 'pdf']);
+  return `escrow/${escrowTransactionId}/payout-receipts/${randomUUID()}.${safeExt}`;
+}
+
+/**
+ * Valida que la key de comprobante corresponda al escrow indicado.
+ */
+export function assertPayoutReceiptKeyForEscrow(
+  key: string,
+  escrowTransactionId: string,
+): void {
+  if (!PAYOUT_RECEIPT_KEY_PATTERN.test(key)) {
+    throw new Error(`storage-paths: invalid payout receipt key "${key}"`);
+  }
+  const prefix = `escrow/${escrowTransactionId}/payout-receipts/`;
+  if (!key.startsWith(prefix)) {
+    throw new Error(
+      `storage-paths: receipt key does not belong to escrow ${escrowTransactionId}`,
+    );
+  }
 }
 
 /**

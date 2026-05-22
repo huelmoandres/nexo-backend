@@ -44,7 +44,10 @@ export class EntitlementsAssertService {
         const ctx = context as AssertServiceAreaRadiusContext | undefined;
         if (ctx?.radiusMeters === undefined) {
           throw new BadRequestException(
-            buildProblem('VALIDATION_ERROR', 'Falta radiusMeters en el contexto.'),
+            buildProblem(
+              'VALIDATION_ERROR',
+              'Falta radiusMeters en el contexto.',
+            ),
           );
         }
         return this.assertServiceAreaRadius(
@@ -54,8 +57,7 @@ export class EntitlementsAssertService {
       }
       case 'portfolio.item.create': {
         const ctx = context as AssertPortfolioItemContext | undefined;
-        const max =
-          ctx?.effectiveMax ?? entitlements.portfolio.itemsMax;
+        const max = ctx?.effectiveMax ?? entitlements.portfolio.itemsMax;
         return this.assertPortfolioItemCreate(subjectId, max);
       }
       case 'portfolio.photo.add': {
@@ -68,8 +70,7 @@ export class EntitlementsAssertService {
             ),
           );
         }
-        const max =
-          ctx.effectiveMax ?? entitlements.portfolio.photosPerItemMax;
+        const max = ctx.effectiveMax ?? entitlements.portfolio.photosPerItemMax;
         return this.assertPortfolioPhotoAdd(ctx.currentPhotoCount, max);
       }
       case 'search.queryExpansion':
@@ -107,7 +108,10 @@ export class EntitlementsAssertService {
     }
   }
 
-  private assertServiceAreaRadius(maxRadius: number, radiusMeters: number): void {
+  private assertServiceAreaRadius(
+    maxRadius: number,
+    radiusMeters: number,
+  ): void {
     if (radiusMeters > maxRadius) {
       throw new BadRequestException(
         buildProblem(

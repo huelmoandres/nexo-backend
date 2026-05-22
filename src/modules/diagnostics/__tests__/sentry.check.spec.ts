@@ -9,6 +9,7 @@ function buildConfig(dsn: string): AppConfig {
   return {
     problemDetailTypeBaseUrl: 'https://nexos.com/errors',
     sentryDsn: dsn,
+    appTimezone: 'America/Montevideo',
   };
 }
 

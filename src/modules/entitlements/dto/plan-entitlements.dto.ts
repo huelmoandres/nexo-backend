@@ -9,7 +9,11 @@ import {
 import { Type } from 'class-transformer';
 
 export class ServiceAreasEntitlementsDto {
-  @ApiPropertyOptional({ example: 3, nullable: true, description: 'null = ilimitado' })
+  @ApiPropertyOptional({
+    example: 3,
+    nullable: true,
+    description: 'null = ilimitado',
+  })
   @IsOptional()
   @IsInt()
   @Min(0)

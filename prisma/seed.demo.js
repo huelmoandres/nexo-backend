@@ -12,6 +12,10 @@
 /** RUT válido DGI (documentación API). */
 const DEMO_COMPANY_RUT = '214567890013';
 
+/** Cuenta de cobro MP para E2E Postman / accept job (22 dígitos CVU válido). */
+const DEMO_PRO_PAYOUT_LABEL = 'Demo cobro MP';
+const DEMO_PRO_PAYOUT_CVU = '1234567890123456789012';
+
 const DEMO = {
   client: {
     email: 'demo.client@nexos.local',
@@ -164,6 +168,65 @@ async function ensureDemoProfessional(prisma, geoIds, categoryIds) {
 }
 
 /**
+ * Cuenta primary MERCADO_PAGO para demo.pro (idempotente por label).
+ *
+ * @param {import('@prisma/client').PrismaClient} prisma
+ */
+async function ensureDemoProPayoutAccount(prisma) {
+  const user = await prisma.user.findUnique({
+    where: { email: DEMO.pro.email },
+    include: { professionalProfile: true },
+  });
+  if (!user?.professionalProfile) {
+    console.info('Demo: sin perfil PRO, omitiendo cuenta de cobro.');
+    return;
+  }
+  const profileId = user.professionalProfile.id;
+  const existing = await prisma.payoutAccount.findFirst({
+    where: {
+      professionalProfileId: profileId,
+      label: DEMO_PRO_PAYOUT_LABEL,
+    },
+  });
+  if (existing) {
+    if (!existing.isPrimary || !existing.isActive) {
+      await prisma.$transaction(async (tx) => {
+        await tx.payoutAccount.updateMany({
+          where: { professionalProfileId: profileId, isPrimary: true },
+          data: { isPrimary: false },
+        });
+        await tx.payoutAccount.update({
+          where: { id: existing.id },
+          data: { isPrimary: true, isActive: true },
+        });
+      });
+    }
+    console.info('Demo: cuenta de cobro PRO ya existe.');
+    return;
+  }
+  await prisma.$transaction(async (tx) => {
+    await tx.payoutAccount.updateMany({
+      where: { professionalProfileId: profileId, isPrimary: true },
+      data: { isPrimary: false },
+    });
+    await tx.payoutAccount.create({
+      data: {
+        subjectType: 'PROFESSIONAL',
+        professionalProfileId: profileId,
+        method: 'MERCADO_PAGO',
+        identifierType: 'MP_CVU',
+        label: DEMO_PRO_PAYOUT_LABEL,
+        transferIdentifier: DEMO_PRO_PAYOUT_CVU,
+        accountHolderName: DEMO.pro.fullName,
+        isPrimary: true,
+        isActive: true,
+      },
+    });
+  });
+  console.info('Demo: cuenta de cobro MP (primary) creada para profesional demo.');
+}
+
+/**
  * @param {import('@prisma/client').PrismaClient} prisma
  */
 async function ensureDemoClient(prisma) {
@@ -277,6 +340,7 @@ async function runSeedDemo(prisma) {
 
   await ensureDemoClient(prisma);
   await ensureDemoProfessional(prisma, geoIds, categoryIds);
+  await ensureDemoProPayoutAccount(prisma);
   await ensureDemoCompany(prisma, geoIds);
 }
 
@@ -298,4 +362,10 @@ if (require.main === module) {
   });
 }
 
-module.exports = { runSeedDemo, DEMO, DEMO_COMPANY_RUT };
+module.exports = {
+  runSeedDemo,
+  DEMO,
+  DEMO_COMPANY_RUT,
+  DEMO_PRO_PAYOUT_LABEL,
+  DEMO_PRO_PAYOUT_CVU,
+};

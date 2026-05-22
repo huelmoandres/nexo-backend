@@ -153,7 +153,13 @@ model EscrowTransaction {
 }
 ```
 
-### Librería oficial: `date-fns`
+### Zona de negocio (`APP_TIMEZONE`)
+
+- Variable: `APP_TIMEZONE` (default `America/Montevideo`) en `app.config.ts`.
+- **Persistencia:** siempre UTC en PostgreSQL (`Timestamptz`).
+- **Días calendario** (cotización BCU, `stale`, crons Bull con `tz`): usar `@common/date/app-timezone` (`calendarDateString`, `isEffectiveDateStale`), no `format(new Date(), …)` ni medianoche UTC.
+
+### Librería oficial: `date-fns` + `date-fns-tz`
 
 **Justificación técnica de la elección sobre Day.js:**
 - Opera sobre objetos `Date` nativos de JavaScript sin wrappers. Ideal para pasar fechas directamente a Prisma y BullMQ (que trabajan con ms timestamps).

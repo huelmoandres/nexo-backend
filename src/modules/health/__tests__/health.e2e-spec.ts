@@ -12,7 +12,9 @@ describe('Health (e2e)', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) {
+      await app.close();
+    }
   });
 
   it('GET /health/live responde ok sin prefijo api', async () => {

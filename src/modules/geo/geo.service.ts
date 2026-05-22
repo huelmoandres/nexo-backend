@@ -63,7 +63,10 @@ export class GeoService {
     }));
   }
 
-  async search(q: string, limit = 20): Promise<
+  async search(
+    q: string,
+    limit = 20,
+  ): Promise<
     Array<
       GeoEntitySummaryDto & {
         level: 'state' | 'city' | 'neighborhood';
@@ -101,7 +104,12 @@ export class GeoService {
   ): GeoTreeNodeDto[] {
     const stateMap = new Map<
       string,
-      GeoTreeNodeDto['states'][number] & { citiesMap: Map<string, GeoTreeNodeDto['states'][number]['cities'][number]> }
+      GeoTreeNodeDto['states'][number] & {
+        citiesMap: Map<
+          string,
+          GeoTreeNodeDto['states'][number]['cities'][number]
+        >;
+      }
     >();
 
     for (const row of rows) {

@@ -44,4 +44,11 @@ describe('appConfig', () => {
     const cfg = appConfig();
     expect(cfg.sentryDsn).toBe('');
   });
+
+  it('appTimezone usa APP_TIMEZONE o default America/Montevideo', () => {
+    delete process.env['APP_TIMEZONE'];
+    expect(appConfig().appTimezone).toBe('America/Montevideo');
+    process.env['APP_TIMEZONE'] = '  America/Montevideo  ';
+    expect(appConfig().appTimezone).toBe('America/Montevideo');
+  });
 });

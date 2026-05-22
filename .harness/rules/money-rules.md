@@ -92,3 +92,23 @@ Toda transición de estado del Escrow debe crear un registro en `AuditLog` con:
 - `timestamp`: generado por la base de datos
 
 Sin este registro, la transición no ocurrió desde el punto de vista de auditoría.
+
+---
+
+## REGLA 6: Contrato multi-moneda vs liquidación en UYU
+
+| Capa | Moneda | Campos |
+|------|--------|--------|
+| **Contrato** (Job, `JobPriceLine`, change orders) | `UYU` o `USD` del catálogo | `Job.currencyId`, `totalAmountCents`, líneas en minor units de esa moneda |
+| **Liquidación** (Escrow, pasarela, comisiones) | **Siempre UYU** | `EscrowTransaction.amountCents` = centavos UYU retenidos/cobrados |
+
+**Conversión USD → UYU** al fondear (`fundEscrow`):
+- Usar `ExchangeRate` BCU del día (tasa **venta** `sellRateMicros`).
+- Persistir `exchangeRateId`, `jobAmountCents`, `jobCurrencyId` en Escrow para auditoría.
+- Función pura sin `float`; redondeo a centavo UYU (half-up).
+
+**Prohibido:** sumar `jobAmountCents` (USD) con `amountCents` (UYU) sin conversión explícita.
+
+**Timer 48h:** se encola cuando el Job pasa a `COMPLETED`, no al fondear. Ver [escrow-logic.md](../../docs/explanation/escrow-logic.md) §5.
+
+**Riesgo FX plataforma y conciliación PSP:** ver [fx-policy-and-reconciliation.md](../specs/fx-policy-and-reconciliation.md). Reembolsos: devolver UYU del snapshot (`amountCents`), no reconvertir a tipo del día del refund.

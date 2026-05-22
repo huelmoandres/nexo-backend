@@ -64,7 +64,9 @@ export class UsersProfileService {
     return this.mapUserToResponse(user);
   }
 
-  async getMyEntitlements(supabaseUid: string): Promise<UserEntitlementsResponseDto> {
+  async getMyEntitlements(
+    supabaseUid: string,
+  ): Promise<UserEntitlementsResponseDto> {
     const user = await this.usersRepository.findBySupabaseUidForMe(supabaseUid);
     if (!user) {
       throw new NotFoundException(
@@ -267,7 +269,9 @@ export class UsersProfileService {
     }
   }
 
-  private async resolveGeoForOnboarding(dto: CreateProfessionalProfileDto): Promise<{
+  private async resolveGeoForOnboarding(
+    dto: CreateProfessionalProfileDto,
+  ): Promise<{
     latitude: number;
     longitude: number;
     addressLine?: string;
@@ -277,8 +281,7 @@ export class UsersProfileService {
     neighborhoodId?: string;
   }> {
     const addressLine = dto.addressLine?.trim();
-    const hasCoords =
-      dto.latitude !== undefined && dto.longitude !== undefined;
+    const hasCoords = dto.latitude !== undefined && dto.longitude !== undefined;
 
     if (!addressLine && !hasCoords) {
       throw new BadRequestException(

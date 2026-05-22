@@ -13,6 +13,7 @@ import { GlobalExceptionFilter } from '../global-exception.filter';
 const makeAppConfig = (sentryDsn = '') => ({
   problemDetailTypeBaseUrl: 'https://nexos.com/errors',
   sentryDsn,
+  appTimezone: 'America/Montevideo',
 });
 
 describe('GlobalExceptionFilter', () => {

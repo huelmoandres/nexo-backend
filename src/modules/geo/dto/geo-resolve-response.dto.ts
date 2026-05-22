@@ -39,7 +39,12 @@ export class GeoResolveResponseDto {
   geo!: GeoResolvedIdsDto | null;
 
   @ApiPropertyOptional({
-    enum: ['NOT_FOUND', 'OUTSIDE_URUGUAY', 'INCOMPLETE_COMPONENTS', 'PROVIDER_UNAVAILABLE'],
+    enum: [
+      'NOT_FOUND',
+      'OUTSIDE_URUGUAY',
+      'INCOMPLETE_COMPONENTS',
+      'PROVIDER_UNAVAILABLE',
+    ],
   })
   reason?: string | null;
 

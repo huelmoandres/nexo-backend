@@ -7,7 +7,7 @@
 ## Estado Actual del Proyecto
 
 **Fase:** Implementación de dominios core + auditoría integral aplicada
-**Fecha de última actualización:** 2026-05-22 (Inventario módulos, política RBAC+planes en docs, specs geo y service-areas)
+**Fecha de última actualización:** 2026-05-22 (Payout accounts + cobertura 100% + docs/Postman)
 
 ---
 
@@ -29,7 +29,11 @@
 | `entitlements` | **Implementado (v2)** | `.harness/specs/plans-entitlements.md` — schema v2, resolver+caché, capabilities, portfolio/search, `GET /users/me/entitlements` |
 | `service-areas` | **Implementado (fase 3)** | `.harness/specs/service-areas-module.md` — enforcement vía entitlements |
 | `notifications` | **Implementado** | `src/modules/notifications/` — spec dedicada pendiente |
-| `jobs` | **Roadmap (modelo Prisma)** | Sin `JobsModule`; prerequisito sugerido antes de escrow |
+| `jobs` | **Implementado (v1)** | `.harness/specs/jobs-module.md` — accept con gate payout, rutas `/escrow/payout-*` |
+| `exchange-rates` | **Implementado (v1)** | `.harness/specs/currency-exchange-rates.md` — UYU/USD, BCU cron 19:00, GET públicos |
+| `payout-accounts` | **Implementado (v1)** | `.harness/specs/payout-accounts-module.md` — MP/banco, mock gateway, `PayoutAttempt` |
+| `escrow` | **Implementado (v1)** | `EscrowService` + `EscrowPayoutService` + cola `silent-acceptance` |
+| `payments` | **Implementado (v1)** | `POST /payments/webhook` + `IPaymentGateway` mock (validate/issuePayout) |
 | Escrow, Urgency, Dispute, Reviews, Chat | **Roadmap** | Specs y evals en harness; ver tabla legacy abajo |
 
 ### Roadmap (legacy harness)
@@ -43,7 +47,7 @@
 | ChatModule | Pendiente | `.harness/specs/chat-module.md` | — |
 | PortfolioModule | Ver fila `portfolio` en tabla principal (legacy duplicada) | `.harness/specs/portfolio-module.md` | `.harness/evals/portfolio-module-eval.md` |
 | NotificationModule | Ver fila `notifications` en tabla principal | — | — |
-| JobsModule | Pendiente (prioridad producto) | — (modelo `Job` en schema) | — |
+| JobsModule | Ver fila `jobs` en tabla principal | `.harness/specs/jobs-module.md` | `.harness/evals/jobs-module-eval.md` |
 
 ### Evaluación RBAC / planes documentada
 

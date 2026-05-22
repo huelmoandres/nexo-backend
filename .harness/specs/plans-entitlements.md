@@ -51,7 +51,19 @@ JSON v1 plano en BD se acepta vía `normalizeEntitlements` (migración automáti
 
 - `GET /api/users/me/entitlements` — entitlements del profesional o empresa del usuario autenticado
 
-## 5. Runtime (enforcement)
+## 5. Billing → plan efectivo
+
+| Estado `Subscription` (billing) | Plan efectivo en perfil / resolver |
+|----------------------------------|-----------------------------------|
+| `TRIALING` / `ACTIVE` | PRO o BUSINESS contratado |
+| `PAST_DUE` (antes de `graceEndsAt`) | Mismo plan pagado |
+| `CANCELED` con acceso hasta `currentPeriodEnd` | Mismo plan hasta fin de período |
+| Tras gracia sin pago / `EXPIRED` | FREE |
+| Sin fila billing | `subscriptionPlan` del perfil (comportamiento actual) |
+
+Ver [billing-module.md](billing-module.md). El perfil se sincroniza en transiciones de `BillingService`.
+
+## 6. Runtime (enforcement)
 
 - `EntitlementsResolverService` — 1 query por sujeto + caché por `planDefinitionId`/`version`
 - `EntitlementsAssertService` — capabilities: `serviceArea.create`, `serviceArea.radius`, `portfolio.item.create`, `portfolio.photo.add`

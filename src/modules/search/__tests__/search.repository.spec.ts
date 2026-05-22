@@ -176,7 +176,9 @@ describe('SearchRepository', () => {
 
   describe('countProfessionals', () => {
     it('devuelve total desde bigint', async () => {
-      const prisma = { $queryRawUnsafe: vi.fn().mockResolvedValueOnce([{ total: 7n }]) };
+      const prisma = {
+        $queryRawUnsafe: vi.fn().mockResolvedValueOnce([{ total: 7n }]),
+      };
       const repo = new SearchRepository(prisma as never);
       await expect(repo.countProfessionals(baseFilters)).resolves.toBe(7);
     });
@@ -205,7 +207,9 @@ describe('SearchRepository', () => {
 
   describe('countCompanies', () => {
     it('devuelve total desde bigint', async () => {
-      const prisma = { $queryRawUnsafe: vi.fn().mockResolvedValueOnce([{ total: 2n }]) };
+      const prisma = {
+        $queryRawUnsafe: vi.fn().mockResolvedValueOnce([{ total: 2n }]),
+      };
       const repo = new SearchRepository(prisma as never);
       await expect(repo.countCompanies(baseFilters)).resolves.toBe(2);
     });

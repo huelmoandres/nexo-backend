@@ -6,7 +6,10 @@ import {
   VERIFICATION_DOC_KEY_PATTERN,
   USER_ROOT_PREFIX,
   assertKeyBelongsToUser,
+  PAYOUT_RECEIPT_KEY_PATTERN,
+  assertPayoutReceiptKeyForEscrow,
   buildKycKey,
+  buildPayoutReceiptKey,
   buildPortfolioPhotoKey,
   buildVerificationDocKey,
   parseUserIdFromKey,
@@ -237,6 +240,29 @@ describe('storage-paths', () => {
           'users/u1/portfolio/i/550e8400-e29b-41d4-a716-446655440000.jpg',
         ),
       ).toBe(false);
+    });
+  });
+
+  describe('buildPayoutReceiptKey', () => {
+    const escrowId = '550e8400-e29b-41d4-a716-446655440000';
+
+    it('genera key bajo escrow/<id>/payout-receipts/', () => {
+      const key = buildPayoutReceiptKey(escrowId, 'pdf');
+      expect(key).toMatch(PAYOUT_RECEIPT_KEY_PATTERN);
+      expect(key.startsWith(`escrow/${escrowId}/payout-receipts/`)).toBe(true);
+    });
+
+    it('assertPayoutReceiptKeyForEscrow valida prefijo', () => {
+      const key = buildPayoutReceiptKey(escrowId, 'png');
+      expect(() =>
+        assertPayoutReceiptKeyForEscrow(key, escrowId),
+      ).not.toThrow();
+      expect(() =>
+        assertPayoutReceiptKeyForEscrow(
+          key,
+          '00000000-0000-0000-0000-000000000099',
+        ),
+      ).toThrow();
     });
   });
 

@@ -28,10 +28,7 @@ export class EntitlementsRequestStore {
     return this.byPlanId.get(planDefinitionId);
   }
 
-  setForPlanId(
-    planDefinitionId: string,
-    entitlements: PlanEntitlements,
-  ): void {
+  setForPlanId(planDefinitionId: string, entitlements: PlanEntitlements): void {
     this.byPlanId.set(planDefinitionId, entitlements);
   }
 

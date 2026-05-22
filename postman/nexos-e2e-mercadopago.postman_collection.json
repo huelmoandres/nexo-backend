@@ -1,0 +1,398 @@
+{
+  "info": {
+    "name": "Nexos E2E — Mercado Pago",
+    "_postman_id": "nexos-e2e-mercadopago-v1",
+    "description": "Flujo E2E Checkout Pro (sandbox). Importá el environment Nexos Local (nexos-local.postman_environment.json). Colección completa: nexos-api.postman_collection.json.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-token: genera JWT via /api/auth/dev-token si no hay token válido.",
+          "// Solo funciona en desarrollo (NODE_ENV !== 'production').",
+          "// Si skip_auto_token está seteado (post-logout), no regenerar.",
+          "",
+          "const noAuth = pm.request.auth && pm.request.auth.type === 'noauth';",
+          "if (noAuth) return;",
+          "",
+          "if (pm.environment.get('skip_auto_token') === 'true') return;",
+          "",
+          "const token = pm.environment.get('access_token');",
+          "const exp = parseInt(pm.environment.get('token_exp') || '0');",
+          "",
+          "if (token && Date.now() < exp) return;",
+          "",
+          "const email = pm.environment.get('current_email') || 'demo.pro@nexos.local';",
+          "const uid = pm.environment.get('current_uid') || '00000000-0000-4000-8000-000000000002';",
+          "const base = pm.environment.get('baseUrl') || 'http://localhost:3000';",
+          "",
+          "pm.sendRequest({",
+          "  url: `${base}/api/auth/dev-token?email=${encodeURIComponent(email)}&uid=${encodeURIComponent(uid)}`,",
+          "  method: 'GET'",
+          "}, (err, res) => {",
+          "  if (err) { console.error('Auto-token failed:', err); return; }",
+          "  const body = res.json();",
+          "  if (body.token) {",
+          "    pm.environment.set('access_token', body.token);",
+          "    pm.environment.set('token_exp', (Date.now() + 3500000).toString());",
+          "  }",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "E2E — Mercado Pago Checkout Pro (sandbox)",
+      "description": "## Flujo end-to-end con pago real en sandbox\n\n**Prerrequisitos**\n- `npm run start:dev` + `ngrok http 3000`\n- `.env`: `PAYMENT_GATEWAY_PROVIDER=mercadopago`, tokens MP, `MERCADOPAGO_NOTIFICATION_URL` = URL ngrok\n- Panel MP: Webhooks → evento **Pagos** → misma URL; clave en `MERCADOPAGO_WEBHOOK_SECRET`\n- Seeds: `npm run db:seed:demo` (incluye cuenta de cobro PRO)\n- Guía: `docs/how-to/mercadopago-checkout-pro-sandbox.md`\n\n| Paso | Rol | Variable clave | Éxito |\n|------|-----|----------------|-------|\n| 0 | — | — | 200 health |\n| 1 | CLIENT | `jobId` | 201 job |\n| 1b | PRO | `payoutAccountId` | lista cuentas |\n| 2 | PRO | — | ACCEPTED |\n| 3 | CLIENT | `paymentUrl` | 200 + URL MP |\n| manual | Comprador MP | — | Pago aprobado en navegador |\n| 4 | CLIENT | — | escrow `HELD` |\n| 5–7 | PRO/CLIENT | — | ciclo job hasta CLOSED |\n\n**Paso manual:** abrir `{{paymentUrl}}` con usuario **comprador de prueba** MP (no el vendedor). Tarjetas: https://www.mercadopago.com.uy/developers/es/docs/checkout-pro/integration-test/test-purchases",
+      "item": [
+        {
+          "name": "0. Health (API viva)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health/live",
+            "description": "Opcional. Confirma que el backend responde antes del flujo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API viva', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1. Crear job (CLIENT)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('current_email', pm.environment.get('client_email') || 'demo.client@nexos.local');",
+                  "pm.environment.set('current_uid', pm.environment.get('client_uid') || '00000000-0000-4000-8000-000000000001');",
+                  "pm.environment.unset('access_token');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Job creado', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  pm.environment.set('jobId', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoryId\": \"{{categoryId}}\",\n  \"currencyCode\": \"UYU\",\n  \"pricingMode\": \"FIXED\",\n  \"title\": \"E2E Mercado Pago sandbox\",\n  \"description\": \"Prueba Checkout Pro — pago con tarjeta de test.\",\n  \"addressLine\": \"Av. Brasil 2880, Pocitos, Montevideo\",\n  \"priceLines\": [\n    { \"type\": \"LABOR\", \"label\": \"Servicio demo MP\", \"amountCents\": 50000 }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/jobs",
+            "description": "CLIENT (`demo.client@nexos.local`). Monto: 500 UYU (50000 centavos). Requiere `categoryId` en environment (seed categorías)."
+          }
+        },
+        {
+          "name": "1b. Obtener payoutAccountId (PRO)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('current_email', 'demo.pro@nexos.local');",
+                  "pm.environment.set('current_uid', '00000000-0000-4000-8000-000000000002');",
+                  "pm.environment.unset('access_token');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cuentas OK', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json();",
+                  "pm.test('Hay cuenta de cobro', () => pm.expect(list.length).to.be.above(0));",
+                  "const primary = list.find((a) => a.isPrimary) || list[0];",
+                  "pm.environment.set('payoutAccountId', primary.id);",
+                  "console.log('payoutAccountId', primary.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/professionals/me/payout-accounts",
+            "description": "PRO. Tras `db:seed:demo` debería existir cuenta primary \"Demo cobro MP\". Guarda `payoutAccountId` para el paso 2."
+          }
+        },
+        {
+          "name": "2. Aceptar job (PRO)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('current_email', 'demo.pro@nexos.local');",
+                  "pm.environment.set('current_uid', '00000000-0000-4000-8000-000000000002');",
+                  "pm.environment.unset('access_token');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Aceptado', () => pm.response.to.have.status(201));",
+                  "pm.test('ACCEPTED', () => pm.expect(pm.response.json().status).to.eql('ACCEPTED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payoutAccountId\": \"{{payoutAccountId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/jobs/{{jobId}}/accept",
+            "description": "INDEPENDENT_PRO. Crea escrow `PENDING`. Requiere paso 1b o seed demo con cuenta de cobro."
+          }
+        },
+        {
+          "name": "3. Checkout Pro — crear preference (CLIENT)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('current_email', pm.environment.get('client_email') || 'demo.client@nexos.local');",
+                  "pm.environment.set('current_uid', pm.environment.get('client_uid') || '00000000-0000-4000-8000-000000000001');",
+                  "pm.environment.unset('access_token');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Checkout OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('paymentUrl', body.paymentUrl || '');",
+                  "pm.environment.set('mp_preference_id', body.providerReference || '');",
+                  "pm.test('paymentUrl', () => pm.expect(body.paymentUrl).to.be.a('string').and.not.empty);",
+                  "console.log('>>> ABRIR EN NAVEGADOR (comprador de prueba MP):', body.paymentUrl);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/jobs/{{jobId}}/checkout",
+            "description": "Crea preference MP (UYU). Copiar `paymentUrl` de la consola Postman o variable de entorno.\n\n**PASO MANUAL:** abrir URL en el navegador → login **comprador de prueba** MP → pagar con tarjeta test.\n\nDoc tarjetas: https://www.mercadopago.com.uy/developers/es/docs/checkout-pro/integration-test/test-purchases"
+          }
+        },
+        {
+          "name": "4. Verificar escrow HELD (CLIENT)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('current_email', pm.environment.get('client_email') || 'demo.client@nexos.local');",
+                  "pm.environment.set('current_uid', pm.environment.get('client_uid') || '00000000-0000-4000-8000-000000000001');",
+                  "pm.environment.unset('access_token');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Job OK', () => pm.response.to.have.status(200));",
+                  "const escrow = pm.response.json().escrowTransaction;",
+                  "pm.test('Escrow HELD', () => pm.expect(escrow && escrow.status).to.eql('HELD'));",
+                  "console.log('escrow status:', escrow && escrow.status);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/jobs/{{jobId}}",
+            "description": "Ejecutar **después** de pagar en MP y recibir webhook (log: POST .../webhooks/mercadopago 200). Si sigue PENDING: ngrok, webhook secret, o pago no aprobado."
+          }
+        },
+        {
+          "name": "5. IN_PROGRESS (PRO)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('current_email', 'demo.pro@nexos.local');",
+                  "pm.environment.set('current_uid', '00000000-0000-4000-8000-000000000002');",
+                  "pm.environment.unset('access_token');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"IN_PROGRESS\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/jobs/{{jobId}}/status",
+            "description": "Opcional: continúa el ciclo de vida del job tras el pago."
+          }
+        },
+        {
+          "name": "6. Completar trabajo (PRO)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('current_email', 'demo.pro@nexos.local');",
+                  "pm.environment.set('current_uid', '00000000-0000-4000-8000-000000000002');",
+                  "pm.environment.unset('access_token');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('COMPLETED', () => pm.expect(pm.response.json().status).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/jobs/{{jobId}}/complete",
+            "description": "PRO marca trabajo completado."
+          }
+        },
+        {
+          "name": "7. Aprobar y cerrar (CLIENT)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('current_email', pm.environment.get('client_email') || 'demo.client@nexos.local');",
+                  "pm.environment.set('current_uid', pm.environment.get('client_uid') || '00000000-0000-4000-8000-000000000001');",
+                  "pm.environment.unset('access_token');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CLOSED', () => pm.expect(pm.response.json().status).to.eql('CLOSED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/jobs/{{jobId}}/approve-completion",
+            "description": "CLIENT aprueba; job CLOSED; escrow RELEASED y payoutStatus PENDING. Admin: transferir neto en MP + presign/confirm comprobante (ver admin-payout-manual-mercadopago.md)."
+          }
+        }
+      ]
+    }
+  ]
+}

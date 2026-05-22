@@ -50,7 +50,9 @@ export class ServiceAreaRepository {
     return this.prisma.serviceArea.count({ where: { companyId } });
   }
 
-  async getCoordinates(serviceAreaId: string): Promise<ServiceAreaCoordinates | null> {
+  async getCoordinates(
+    serviceAreaId: string,
+  ): Promise<ServiceAreaCoordinates | null> {
     const rows = await this.prisma.$queryRawUnsafe<
       Array<{ latitude: number; longitude: number }>
     >(
@@ -216,9 +218,11 @@ export class ServiceAreaRepository {
 
       const patch: Record<string, unknown> = {};
       if (data.label !== undefined) patch['label'] = data.label;
-      if (data.radiusMeters !== undefined) patch['radiusMeters'] = data.radiusMeters;
+      if (data.radiusMeters !== undefined)
+        patch['radiusMeters'] = data.radiusMeters;
       if (data.isPrimary !== undefined) patch['isPrimary'] = data.isPrimary;
-      if (data.addressLine !== undefined) patch['addressLine'] = data.addressLine;
+      if (data.addressLine !== undefined)
+        patch['addressLine'] = data.addressLine;
       if (data.countryId !== undefined) patch['countryId'] = data.countryId;
       if (data.stateId !== undefined) patch['stateId'] = data.stateId;
       if (data.cityId !== undefined) patch['cityId'] = data.cityId;

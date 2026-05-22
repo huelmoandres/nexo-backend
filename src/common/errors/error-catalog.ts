@@ -418,4 +418,194 @@ export const ERRORS = {
     title: 'Acceso a empresa denegado',
     slug: 'company-access-denied',
   },
+  EXCHANGE_RATE_NOT_AVAILABLE: {
+    status: 503,
+    title: 'Cotización no disponible',
+    slug: 'exchange-rate-not-available',
+  },
+  BCU_FETCH_FAILED: {
+    status: 502,
+    title: 'No se pudo consultar el BCU',
+    slug: 'bcu-fetch-failed',
+  },
+  JOB_NOT_FOUND: {
+    status: 404,
+    title: 'Trabajo no encontrado',
+    slug: 'job-not-found',
+  },
+  JOB_ACCESS_DENIED: {
+    status: 403,
+    title: 'Sin acceso al trabajo',
+    slug: 'job-access-denied',
+  },
+  JOB_INVALID_STATUS_TRANSITION: {
+    status: 409,
+    title: 'Transición de estado inválida',
+    slug: 'job-invalid-status-transition',
+  },
+  JOB_ALREADY_ASSIGNED: {
+    status: 409,
+    title: 'Trabajo ya asignado',
+    slug: 'job-already-assigned',
+  },
+  JOB_CURRENCY_INVALID: {
+    status: 400,
+    title: 'Moneda inválida',
+    slug: 'job-currency-invalid',
+  },
+  JOB_PRICE_LINES_REQUIRED: {
+    status: 400,
+    title: 'Líneas de precio requeridas',
+    slug: 'job-price-lines-required',
+  },
+  JOB_CHANGE_ORDER_NOT_FOUND: {
+    status: 404,
+    title: 'Orden de cambio no encontrada',
+    slug: 'job-change-order-not-found',
+  },
+  JOB_CHANGE_ORDER_INVALID_STATUS: {
+    status: 409,
+    title: 'Estado de orden de cambio inválido',
+    slug: 'job-change-order-invalid-status',
+  },
+  INVALID_ESCROW_TRANSITION: {
+    status: 409,
+    title: 'Transición de escrow inválida',
+    slug: 'invalid-escrow-transition',
+  },
+  ESCROW_NOT_FOUND: {
+    status: 404,
+    title: 'Escrow no encontrado',
+    slug: 'escrow-not-found',
+  },
+  PAYMENT_WEBHOOK_INVALID: {
+    status: 401,
+    title: 'Webhook de pago inválido',
+    slug: 'payment-webhook-invalid',
+  },
+  PAYMENT_CHECKOUT_FAILED: {
+    status: 502,
+    title: 'No se pudo iniciar el pago',
+    slug: 'payment-checkout-failed',
+  },
+  PAYMENT_NOT_ALLOWED: {
+    status: 409,
+    title: 'Pago no permitido en este estado',
+    slug: 'payment-not-allowed',
+  },
+  PAYMENT_AMOUNT_MISMATCH: {
+    status: 409,
+    title: 'Monto del pago no coincide',
+    slug: 'payment-amount-mismatch',
+  },
+  PAYMENT_RATE_STALE: {
+    status: 503,
+    title: 'Cotización desactualizada; no se puede cobrar en USD',
+    slug: 'payment-rate-stale',
+  },
+  BILLING_PLAN_NOT_AVAILABLE: {
+    status: 400,
+    title: 'Plan de suscripción no disponible',
+    slug: 'billing-plan-not-available',
+  },
+  BILLING_SUBSCRIPTION_EXISTS: {
+    status: 409,
+    title: 'Ya existe una suscripción activa',
+    slug: 'billing-subscription-exists',
+  },
+  BILLING_SUBSCRIPTION_NOT_FOUND: {
+    status: 404,
+    title: 'Suscripción no encontrada',
+    slug: 'billing-subscription-not-found',
+  },
+  BILLING_SUBSCRIBE_FAILED: {
+    status: 502,
+    title: 'No se pudo iniciar la suscripción',
+    slug: 'billing-subscribe-failed',
+  },
+  BILLING_CANCEL_FAILED: {
+    status: 502,
+    title: 'No se pudo cancelar la suscripción en Mercado Pago',
+    slug: 'billing-cancel-failed',
+  },
+  BILLING_WEBHOOK_INVALID: {
+    status: 401,
+    title: 'Webhook de suscripción inválido',
+    slug: 'billing-webhook-invalid',
+  },
+  BILLING_RATE_STALE: {
+    status: 503,
+    title: 'Cotización desactualizada; no se puede suscribir en USD',
+    slug: 'billing-rate-stale',
+  },
+  PAYOUT_ACCOUNT_REQUIRED: {
+    status: 409,
+    title: 'Cuenta de cobro requerida',
+    slug: 'payout-account-required',
+  },
+  PAYOUT_PRIMARY_REQUIRED: {
+    status: 409,
+    title: 'Cuenta de cobro primaria requerida',
+    slug: 'payout-primary-required',
+  },
+  PAYOUT_ACCOUNT_NOT_FOUND: {
+    status: 404,
+    title: 'Cuenta de cobro no encontrada',
+    slug: 'payout-account-not-found',
+  },
+  PAYOUT_ACCOUNT_NOT_OWNED: {
+    status: 403,
+    title: 'Cuenta de cobro no pertenece al sujeto',
+    slug: 'payout-account-not-owned',
+  },
+  PAYOUT_IDENTIFIER_INVALID: {
+    status: 400,
+    title: 'Identificador de cobro inválido',
+    slug: 'payout-identifier-invalid',
+  },
+  PAYOUT_BANK_NOT_ALLOWED: {
+    status: 400,
+    title: 'Banco no permitido',
+    slug: 'payout-bank-not-allowed',
+  },
+  PAYOUT_DESTINATION_REJECTED: {
+    status: 422,
+    title: 'Destino de cobro rechazado por la pasarela',
+    slug: 'payout-destination-rejected',
+  },
+  PAYOUT_NOT_RETRYABLE: {
+    status: 409,
+    title: 'Payout no reintentable en este estado',
+    slug: 'payout-not-retryable',
+  },
+  PAYOUT_MAX_ATTEMPTS: {
+    status: 409,
+    title: 'Máximo de reintentos de payout alcanzado',
+    slug: 'payout-max-attempts',
+  },
+  PAYOUT_NOT_CONFIRMABLE: {
+    status: 409,
+    title: 'Payout no confirmable en este estado',
+    slug: 'payout-not-confirmable',
+  },
+  PAYOUT_ALREADY_SUCCEEDED: {
+    status: 409,
+    title: 'Payout ya confirmado',
+    slug: 'payout-already-succeeded',
+  },
+  PAYOUT_RECEIPT_REQUIRED: {
+    status: 400,
+    title: 'Comprobante de pago obligatorio',
+    slug: 'payout-receipt-required',
+  },
+  PAYOUT_RECEIPT_INVALID_KEY: {
+    status: 400,
+    title: 'Clave de comprobante inválida',
+    slug: 'payout-receipt-invalid-key',
+  },
+  PAYOUT_MANUAL_ONLY: {
+    status: 409,
+    title: 'Payout automático deshabilitado; usar confirmación manual',
+    slug: 'payout-manual-only',
+  },
 } as const;

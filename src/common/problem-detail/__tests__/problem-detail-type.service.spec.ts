@@ -6,6 +6,7 @@ describe('ProblemDetailTypeService', () => {
     const config = {
       problemDetailTypeBaseUrl: 'https://docs.nexos.dev/problems',
       sentryDsn: '',
+      appTimezone: 'America/Montevideo',
     };
     const svc = new ProblemDetailTypeService(config);
     expect(svc.getBaseUrl()).toBe('https://docs.nexos.dev/problems');

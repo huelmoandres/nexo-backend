@@ -10,7 +10,13 @@ import { ServiceAreaRepository } from './service-area.repository';
 import { ServiceAreaService } from './service-area.service';
 
 @Module({
-  imports: [PrismaModule, AuthModule, AuthorizationModule, EntitlementsModule, UsersModule],
+  imports: [
+    PrismaModule,
+    AuthModule,
+    AuthorizationModule,
+    EntitlementsModule,
+    UsersModule,
+  ],
   controllers: [
     ProfessionalServiceAreasController,
     CompanyServiceAreasController,

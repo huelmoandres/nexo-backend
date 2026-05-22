@@ -35,14 +35,14 @@ describe('SearchService', () => {
   });
 
   const makeEntitlements = (expansionEnabled = true) => ({
-    resolveByPlanDefinitionId: vi.fn().mockResolvedValue(
-      expansionEnabled
-        ? PLAN_CATALOG_DEFAULTS.PRO
-        : PLAN_CATALOG_DEFAULTS.FREE,
-    ),
-    isSearchQueryExpansionEnabled: vi
+    resolveByPlanDefinitionId: vi
       .fn()
-      .mockReturnValue(expansionEnabled),
+      .mockResolvedValue(
+        expansionEnabled
+          ? PLAN_CATALOG_DEFAULTS.PRO
+          : PLAN_CATALOG_DEFAULTS.FREE,
+      ),
+    isSearchQueryExpansionEnabled: vi.fn().mockReturnValue(expansionEnabled),
   });
 
   const makeService = async (

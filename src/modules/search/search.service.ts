@@ -43,10 +43,7 @@ export class SearchService implements OnModuleInit {
     const q = dto.q?.trim() || undefined;
     let expandedTerms: string[] | undefined;
     if (q) {
-      if (
-        this.config.expansion.enabled &&
-        this.platformQueryExpansionEnabled
-      ) {
+      if (this.config.expansion.enabled && this.platformQueryExpansionEnabled) {
         expandedTerms = await this.queryExpander.expand(q);
       } else {
         // FTS/trigram siempre con el término original; expansión IA es opt-in por catálogo.

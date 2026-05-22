@@ -61,3 +61,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Docker local data volumes (bind mounts de docker-compose.yml)
 # Para un reset completo: rm -rf .docker_data/
 .docker_data/
+
+# Notas locales Mercado Pago sandbox (credenciales comprador/tarjeta)
+postman/MP-SANDBOX.local.md

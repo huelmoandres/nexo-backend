@@ -7,7 +7,9 @@ describe('EntitlementsRequestStore', () => {
     const store = new EntitlementsRequestStore();
     store.setForSubject('professional', 'pp-1', PLAN_CATALOG_DEFAULTS.PRO);
     store.setForPlanId('plan-1', PLAN_CATALOG_DEFAULTS.FREE);
-    expect(store.getForSubject('professional', 'pp-1')?.serviceAreas.max).toBe(3);
+    expect(store.getForSubject('professional', 'pp-1')?.serviceAreas.max).toBe(
+      3,
+    );
     expect(store.getForPlanId('plan-1')?.serviceAreas.max).toBe(1);
     store.clear();
     expect(store.getForSubject('professional', 'pp-1')).toBeUndefined();

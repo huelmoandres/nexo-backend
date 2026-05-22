@@ -93,6 +93,9 @@ describe('AdminPlansController', () => {
       },
     };
     await controller.createCompanyCustom('co-1', dto);
-    expect(plansAdmin.createCompanyCustomPlan).toHaveBeenCalledWith('co-1', dto);
+    expect(plansAdmin.createCompanyCustomPlan).toHaveBeenCalledWith(
+      'co-1',
+      dto,
+    );
   });
 });

@@ -22,7 +22,16 @@ import { portfolioConfig } from '@config/portfolio.config';
 import { storageConfig } from '@config/storage.config';
 import { dgiConfig } from '@config/dgi.config';
 import { usersConfig } from '@config/users.config';
+import { exchangeRatesConfig } from '@config/exchange-rates.config';
+import { escrowConfig } from '@config/escrow.config';
+import { paymentsConfig } from '@config/payments.config';
+import { payoutConfig } from '@config/payout.config';
+import { billingConfig } from '@config/billing.config';
 import { validateEnv } from '@config/env.validation';
+import { ExchangeRatesModule } from '@modules/exchange-rates/exchange-rates.module';
+import { EscrowModule } from '@modules/escrow/escrow.module';
+import { JobsModule } from '@modules/jobs/jobs.module';
+import { PaymentsModule } from '@modules/payments/payments.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { CategoriesModule } from '@modules/categories/categories.module';
 import { GeoModule } from '@modules/geo/geo.module';
@@ -35,6 +44,7 @@ import { PortfolioModule } from '@modules/portfolio/portfolio.module';
 import { StorageModule } from '@modules/storage/storage.module';
 import { ServiceAreasModule } from '@modules/service-areas/service-areas.module';
 import { UsersModule } from '@modules/users/users.module';
+import { BillingModule } from '@modules/billing/billing.module';
 
 @Module({
   imports: [
@@ -54,6 +64,11 @@ import { UsersModule } from '@modules/users/users.module';
         storageConfig,
         usersConfig,
         dgiConfig,
+        exchangeRatesConfig,
+        escrowConfig,
+        paymentsConfig,
+        payoutConfig,
+        billingConfig,
       ],
       validate: validateEnv,
     }),
@@ -89,6 +104,11 @@ import { UsersModule } from '@modules/users/users.module';
     ServiceAreasModule,
     NotificationsModule,
     PortfolioModule,
+    ExchangeRatesModule,
+    EscrowModule,
+    JobsModule,
+    PaymentsModule,
+    BillingModule,
   ],
   providers: [
     GlobalExceptionFilter,

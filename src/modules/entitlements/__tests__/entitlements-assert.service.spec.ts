@@ -1,7 +1,4 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAN_CATALOG_DEFAULTS } from '@common/types/plan-entitlements.schema';
 import { EntitlementsAssertService } from '../entitlements-assert.service';
@@ -121,8 +118,8 @@ describe('EntitlementsAssertService', () => {
 
   it('isSearchQueryExpansionEnabled', () => {
     const svc = makeService();
-    expect(
-      svc.isSearchQueryExpansionEnabled(PLAN_CATALOG_DEFAULTS.PRO),
-    ).toBe(true);
+    expect(svc.isSearchQueryExpansionEnabled(PLAN_CATALOG_DEFAULTS.PRO)).toBe(
+      true,
+    );
   });
 });

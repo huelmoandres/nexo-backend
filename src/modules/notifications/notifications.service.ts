@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConsentDeclineReason, NotificationType } from '@prisma/client';
+import {
+  ConsentDeclineReason,
+  NotificationType,
+  SubscriptionPlan,
+} from '@prisma/client';
 import { PrismaService } from '@prisma/prisma.service';
 
 const DECLINE_REASON_LABEL: Record<ConsentDeclineReason, string> = {
@@ -92,6 +96,55 @@ export class NotificationsService {
       'portfolio.consent.declined',
       input.professionalUserId,
     );
+  }
+
+  async notifySubscriptionPaymentFailed(input: {
+    userId: string;
+    planCode: SubscriptionPlan;
+    subscriptionId: string;
+  }): Promise<void> {
+    await this.createNotification({
+      userId: input.userId,
+      type: NotificationType.SUBSCRIPTION_PAYMENT_FAILED,
+      title: 'Problema con el cobro de tu plan',
+      message: `No pudimos cobrar tu plan ${input.planCode}. Actualizá tu medio de pago en Mercado Pago para seguir con los beneficios.`,
+      relatedEntityType: 'BillingSubscription',
+      relatedEntityId: input.subscriptionId,
+    });
+    this.logPushEmailStub('subscription.payment_failed', input.userId);
+  }
+
+  async notifySubscriptionGraceReminder(input: {
+    userId: string;
+    planCode: SubscriptionPlan;
+    subscriptionId: string;
+    reminderNumber: number;
+  }): Promise<void> {
+    await this.createNotification({
+      userId: input.userId,
+      type: NotificationType.SUBSCRIPTION_GRACE_REMINDER,
+      title: 'Recordatorio: regularizá tu suscripción',
+      message: `Recordatorio ${input.reminderNumber}/3: tu plan ${input.planCode} está pendiente de pago. Regularizá en Mercado Pago antes de que pases a Free.`,
+      relatedEntityType: 'BillingSubscription',
+      relatedEntityId: input.subscriptionId,
+    });
+    this.logPushEmailStub('subscription.grace_reminder', input.userId);
+  }
+
+  async notifySubscriptionDowngraded(input: {
+    userId: string;
+    subscriptionId: string;
+  }): Promise<void> {
+    await this.createNotification({
+      userId: input.userId,
+      type: NotificationType.SUBSCRIPTION_DOWNGRADED,
+      title: 'Tu plan pasó a Free',
+      message:
+        'Tu suscripción venció por falta de pago. Volviste al plan Free; podés suscribirte de nuevo cuando quieras.',
+      relatedEntityType: 'BillingSubscription',
+      relatedEntityId: input.subscriptionId,
+    });
+    this.logPushEmailStub('subscription.downgraded', input.userId);
   }
 
   private async createNotification(input: {

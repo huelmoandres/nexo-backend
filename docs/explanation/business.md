@@ -24,7 +24,13 @@ Nexos no es solo para "oficios"; agrupa diferentes lógicas de negocio según el
 ## 5. Modelo de Monetización
 Nexos utiliza un modelo híbrido para maximizar la retención y rentabilidad:
 - **Comisión Transaccional:** Un porcentaje retenido del pago Escrow por cada trabajo finalizado, comercializado de cara al usuario como un "Seguro de Trabajo".
-- **Suscripciones (SaaS para Profesionales/Empresas):** Planes escalonados (Básico, Medium, Business) que otorgan beneficios como mayor visibilidad en búsquedas, categorías ilimitadas y ventajas de milisegundos en el broadcast de urgencias.
+- **Suscripciones (SaaS para Profesionales/Empresas):** Cobro recurrente vía Mercado Pago Suscripciones (distinto de Checkout Pro de jobs).
+  - **FREE:** USD 0 — límites base.
+  - **PRO:** **USD 5 / mes** — trial 7 días; self-service `POST /api/billing/subscribe`.
+  - **BUSINESS:** **USD 50 / mes** — trial 7 días; self-service.
+  - **CUSTOM:** precio negociado — solo admin; sin checkout público.
+  - Fallo de pago: gracia 10 días, 3 avisos; luego downgrade a FREE.
+  - Guía sandbox: [mercadopago-subscriptions-sandbox.md](../how-to/mercadopago-subscriptions-sandbox.md).
 
 ## 6. Filosofía del Sistema y Restricciones
 - **La IA como Asistente, NUNCA como Juez:** El sistema integrará IA para optimizar procesos (sugerir precios, clasificar riesgos, resumir disputas), pero NINGUNA IA tiene autorización para ejecutar bloqueos de cuentas, reembolsos o liberar pagos en disputa sin intervención humana.

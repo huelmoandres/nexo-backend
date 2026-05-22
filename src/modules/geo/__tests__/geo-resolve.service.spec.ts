@@ -91,7 +91,12 @@ describe('GeoResolveService', () => {
       latitude: -34.9,
       longitude: -56.1,
       formattedAddress: 'cached',
-      geo: { countryId: 'c1', stateId: 's1', cityId: 'ci1', neighborhoodId: null },
+      geo: {
+        countryId: 'c1',
+        stateId: 's1',
+        cityId: 'ci1',
+        neighborhoodId: null,
+      },
       created: { city: false, neighborhood: false },
       source: 'google',
     };

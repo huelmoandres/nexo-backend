@@ -1,0 +1,171 @@
+{
+  "name": "Billing — Suscripciones MP (sandbox)",
+  "description": "## Flujo E2E suscripciones SaaS (Mercado Pago)\n\n**Prerrequisitos**\n- `npm run start:dev` + `ngrok http 3000`\n- `.env`: `PAYMENT_GATEWAY_PROVIDER=mercadopago`, tokens MP\n- `MERCADOPAGO_SUBSCRIPTION_NOTIFICATION_URL` = `https://<ngrok>/api/payments/webhooks/mercadopago/subscriptions`\n- Panel MP: Webhooks (suscripciones / pagos según app) + `MERCADOPAGO_WEBHOOK_SECRET`\n- Seeds: `npm run db:seed:demo` (profesional demo)\n- Guía: `docs/how-to/mercadopago-subscriptions-sandbox.md`\n\n| Paso | Rol | Variable | Éxito |\n|------|-----|----------|-------|\n| 0 | — | — | 200 health |\n| 1 | PRO | — | planes PRO/BUSINESS USD |\n| 2 | PRO | `subscriptionInitPoint` | 201 + init_point |\n| manual | Comprador MP | — | Checkout suscripción en navegador |\n| 3 | PRO | — | `TRIALING` o `ACTIVE` (poll; **webhook real MP**) |\n| 4 | PRO | — | cancel 200 |\n\n**Manual:** abrir `{{subscriptionInitPoint}}` con usuario **comprador de prueba** MP. No simular webhook con POST inventado.",
+  "item": [
+    {
+      "name": "0. Health (API viva)",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/health/live"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": ["pm.test('API viva', () => pm.response.to.have.status(200));"]
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. GET billing/plans (PRO)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.environment.set('current_email', pm.environment.get('pro_email') || 'demo.pro@nexos.local');",
+              "pm.environment.set('current_uid', pm.environment.get('pro_uid') || '00000000-0000-4000-8000-000000000002');",
+              "pm.environment.unset('access_token');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Planes 200', () => pm.response.to.have.status(200));",
+              "const plans = pm.response.json().plans || [];",
+              "pm.test('Incluye PRO USD 5', () => {",
+              "  const pro = plans.find((p) => p.code === 'PRO');",
+              "  pm.expect(pro && pro.amountUsdCents === 500).to.be.true;",
+              "});",
+              "pm.test('Incluye BUSINESS USD 50', () => {",
+              "  const biz = plans.find((p) => p.code === 'BUSINESS');",
+              "  pm.expect(biz && biz.amountUsdCents === 5000).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/billing/plans"
+      }
+    },
+    {
+      "name": "2. POST subscribe PRO",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.environment.set('current_email', pm.environment.get('pro_email') || 'demo.pro@nexos.local');",
+              "pm.environment.set('current_uid', pm.environment.get('pro_uid') || '00000000-0000-4000-8000-000000000002');",
+              "pm.environment.unset('access_token');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Subscribe 201', () => pm.response.to.have.status(201));",
+              "if (pm.response.code === 201) {",
+              "  const body = pm.response.json();",
+              "  pm.environment.set('subscriptionId', body.subscriptionId);",
+              "  pm.environment.set('subscriptionInitPoint', body.initPoint);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"plan\": \"PRO\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/billing/subscribe",
+        "description": "Devuelve init_point MP. Abrir en navegador con comprador de prueba (paso manual)."
+      }
+    },
+    {
+      "name": "3. GET subscription (poll post-webhook)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.environment.set('current_email', pm.environment.get('pro_email') || 'demo.pro@nexos.local');",
+              "pm.environment.set('current_uid', pm.environment.get('pro_uid') || '00000000-0000-4000-8000-000000000002');",
+              "pm.environment.unset('access_token');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Subscription 200', () => pm.response.to.have.status(200));",
+              "const s = pm.response.json();",
+              "pm.test('Estado trial o activo', () => {",
+              "  pm.expect(['TRIALING', 'ACTIVE', 'PAST_DUE', 'CANCELED']).to.include(s.status);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/billing/subscription",
+        "description": "Repetir tras webhook real MP hasta ver TRIALING/ACTIVE coherente con BD."
+      }
+    },
+    {
+      "name": "4. POST subscription/cancel (opcional)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.environment.set('current_email', pm.environment.get('pro_email') || 'demo.pro@nexos.local');",
+              "pm.environment.set('current_uid', pm.environment.get('pro_uid') || '00000000-0000-4000-8000-000000000002');",
+              "pm.environment.unset('access_token');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Cancel 200', () => pm.response.to.have.status(200));",
+              "pm.test('Estado CANCELED', () => pm.expect(pm.response.json().status).to.eql('CANCELED'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/billing/subscription/cancel",
+        "description": "Corta cobro recurrente en MP. Verificar preapproval canceled en panel MP."
+      }
+    }
+  ]
+}

@@ -26,7 +26,9 @@ describe('GoogleGeocodingProvider', () => {
   });
 
   it('retorna null si el proveedor está deshabilitado', async () => {
-    const provider = new GoogleGeocodingProvider(makeConfig({ enabled: false }) as never);
+    const provider = new GoogleGeocodingProvider(
+      makeConfig({ enabled: false }) as never,
+    );
     await expect(provider.forwardGeocode('test')).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -152,7 +154,9 @@ describe('GoogleGeocodingProvider', () => {
     fetchMock.mockImplementation(
       (_url: string, init?: { signal?: AbortSignal }) =>
         new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+          init?.signal?.addEventListener('abort', () =>
+            reject(new Error('aborted')),
+          );
         }),
     );
     const provider = new GoogleGeocodingProvider(
@@ -174,7 +178,11 @@ describe('GoogleGeocodingProvider', () => {
             place_id: 'p',
             geometry: { location: { lat: -34.9, lng: -56.1 } },
             address_components: [
-              { long_name: 'Montevideo', short_name: 'MV', types: ['locality'] },
+              {
+                long_name: 'Montevideo',
+                short_name: 'MV',
+                types: ['locality'],
+              },
             ],
           },
         ],
@@ -185,7 +193,9 @@ describe('GoogleGeocodingProvider', () => {
   });
 
   it('reverseGeocode retorna null si deshabilitado', async () => {
-    const provider = new GoogleGeocodingProvider(makeConfig({ enabled: false }) as never);
+    const provider = new GoogleGeocodingProvider(
+      makeConfig({ enabled: false }) as never,
+    );
     await expect(provider.reverseGeocode(-34.9, -56.1)).resolves.toBeNull();
   });
 

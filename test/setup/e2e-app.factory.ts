@@ -13,7 +13,10 @@ import { appConfig } from '@config/app.config';
 export async function createE2eApp(
   rootModule: Type<unknown>,
 ): Promise<INestApplication> {
-  const app = await NestFactory.create(rootModule, { logger: false });
+  const app = await NestFactory.create(rootModule, {
+    logger: ['error', 'warn'],
+    abortOnError: false,
+  });
   app.setGlobalPrefix('api', {
     exclude: ['api/docs', 'api/docs-json', 'health/live', 'health/ready'],
   });

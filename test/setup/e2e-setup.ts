@@ -37,6 +37,7 @@ beforeEach(async () => {
       "ProfessionalCategory",
       "CompanyCategory",
       "ServiceArea",
+      "BillingSubscription",
       "ProfessionalProfile",
       "Company",
       "PlanDefinition",

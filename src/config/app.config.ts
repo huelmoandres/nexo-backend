@@ -1,4 +1,5 @@
 import { registerAs } from '@nestjs/config';
+import { DEFAULT_APP_TIMEZONE } from '@common/date/app-timezone';
 
 const DEFAULT_PROBLEM_DETAIL_BASE = 'https://nexos.com/errors';
 
@@ -15,10 +16,12 @@ function normalizeProblemDetailBase(raw: string | undefined): string {
  * Variables de entorno:
  *   - `PROBLEM_DETAIL_TYPE_BASE_URL` — origen del campo `type` en RFC 7807.
  *   - `SENTRY_DSN`                   — DSN de Sentry; si vacío, Sentry no se inicializa.
+ *   - `APP_TIMEZONE`                 — IANA tz para fechas de negocio y crons locales.
  */
 export const appConfig = registerAs('app', () => ({
   problemDetailTypeBaseUrl: normalizeProblemDetailBase(
     process.env['PROBLEM_DETAIL_TYPE_BASE_URL'],
   ),
   sentryDsn: process.env['SENTRY_DSN'] ?? '',
+  appTimezone: process.env['APP_TIMEZONE']?.trim() || DEFAULT_APP_TIMEZONE,
 }));

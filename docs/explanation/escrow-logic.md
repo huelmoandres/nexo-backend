@@ -22,7 +22,6 @@ La State Machine tiene **5 estados** y comienza desde `PENDING`. El diagrama com
              │
              │  Webhook de pasarela de pagos → POST /payments/webhook
              │  EscrowService.fundEscrow(jobId) — dentro de prisma.$transaction()
-             │  ⚡ En este momento se crea el BullMQ Job de aceptación silenciosa
              ▼
           ┌──────┐
           │ HELD │  ← El dinero está retenido en la plataforma.
@@ -85,12 +84,23 @@ Esta transición es el punto de entrada del dinero real al sistema. El flujo es:
 4. Llama a `EscrowService.fundEscrow(jobId)` que ejecuta dentro de `prisma.$transaction()`:
    - `EscrowTransaction.status: PENDING → HELD`
    - `EscrowTransaction.providerReference = referencia_de_la_pasarela`
-   - Crea el BullMQ Job de aceptación silenciosa con delay de 48hs hábiles
-   - Persiste `EscrowTransaction.bullJobId`
+   - Si el Job está en USD: convierte `totalAmountCents` a UYU con tasa BCU **venta** vigente; persiste `exchangeRateId`, `jobAmountCents`, `jobCurrencyId` (snapshot — no recalcular en liberación ni reembolso)
+   - `EscrowTransaction.amountCents` = monto retenido en **centavos UYU**
+   - Persiste `providerReference`
    - Crea entrada en `AuditLog` con `action: FUND_ESCROW`
 5. El webhook responde `200 OK` a la pasarela. Si falla, la pasarela reintenta (por eso la idempotencia con `Idempotency-Key` es obligatoria).
 
 > **Regla:** Si el cliente abandona el flujo de pago sin completarlo, el `EscrowTransaction` queda en `PENDING` indefinidamente. Un Worker de limpieza (cola `pending-cleanup`) cancela los Escrows en `PENDING` por más de 2 horas y devuelve el `Job` a estado `PENDING` (disponible nuevamente).
+
+### Transición: `HELD` / `HELD_DISPUTED` → `REFUNDED` (reembolso)
+
+Al devolver fondos al cliente (disputa o cancelación):
+
+1. El monto a reembolsar es **`EscrowTransaction.amountCents`** (UYU ya retenidos al fondear), no una nueva conversión con la tasa BCU del día del reembolso.
+2. Para jobs que entraron en USD, `jobAmountCents` + `exchangeRateId` quedan solo como **auditoría** del tipo usado en el fondeo.
+3. La pasarela debe ejecutar `refund` sobre el cobro en UYU (`providerReference`).
+
+Detalle operativo y conciliación: [.harness/specs/fx-policy-and-reconciliation.md](../../.harness/specs/fx-policy-and-reconciliation.md).
 
 ---
 
@@ -125,10 +135,13 @@ El sistema está diseñado para obligar a los profesionales a registrar los cost
 
 ## 5. Aceptación Silenciosa (48hs)
 
-Cuando el profesional marca el trabajo como `COMPLETED`:
-1. Se crea un **BullMQ Job** con un delay de 48 horas hábiles (configurable en `src/config/escrow.config.ts`).
-2. Si el cliente no abre una disputa en ese plazo, el Job se ejecuta y transiciona el estado de `HELD` → `RELEASED` automáticamente.
-3. Si el cliente abre una disputa antes de que el Job se ejecute, el Job es cancelado mediante su ID almacenado en la tabla `EscrowTransaction.bullJobId`.
+Cuando el profesional marca el trabajo como `COMPLETED` (ventana de conformidad del cliente):
+1. Se crea un **BullMQ Job** (`silent-acceptance`) con delay de 48 horas hábiles (configurable en `src/config/escrow.config.ts`).
+2. Durante esa ventana el `Job` permanece en `COMPLETED` y el Escrow en `HELD`. El cliente puede: aprobar explícitamente (`CLOSED` + `RELEASED`), o abrir disputa (`HELD_DISPUTED`, cancela el timer).
+3. Si el cliente no actúa en el plazo, el worker ejecuta `HELD` → `RELEASED` y `Job` → `CLOSED` en una transacción.
+4. Si el cliente abre disputa antes de que el Job BullMQ se ejecute, se cancela mediante `EscrowTransaction.bullJobId`.
+
+> **Nota:** El timer **no** se crea al fondear (`PENDING → HELD`); solo al pasar a `COMPLETED`.
 
 ---
 
