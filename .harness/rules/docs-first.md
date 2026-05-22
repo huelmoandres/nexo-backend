@@ -17,12 +17,13 @@ La consecuencia práctica es que el spec/eval/rule **describe la intención** y 
 
 | Acción | Documentación que se actualiza ANTES de tocar código |
 |--------|------------------------------------------------------|
-| **Agregar un módulo nuevo** | Crear `.harness/specs/<mod>-module.md` + `.harness/evals/<mod>-module-eval.md`. Agregar filas en [INDEX.md](../INDEX.md) y [SESSION_STATE.md](../SESSION_STATE.md). Actualizar `docs/explanation/architecture.md` si suma una pieza nueva al diagrama. |
+| **Agregar un módulo nuevo** | Crear `.harness/specs/<mod>-module.md` + `.harness/evals/<mod>-module-eval.md` con secciones obligatorias **RBAC** y **Planes y entitlements** (ver §9). Registrar en [INDEX.md](../INDEX.md) y [SESSION_STATE.md](../SESSION_STATE.md). Actualizar `docs/explanation/architecture.md` si suma una pieza nueva al diagrama. Leer [security-roles.md](../../docs/reference/security-roles.md) y [plans-entitlements.md](../specs/plans-entitlements.md) §7 antes del spec. |
 | **Modificar un módulo documentado** | Actualizar la(s) sección(es) afectadas en su spec/eval/rules (state machine, endpoints, DTO, invariantes, validaciones). Reflejar el cambio en `SESSION_STATE.md` si altera el estado funcional declarado. |
 | **Eliminar / deprecar un módulo** | Marcar deprecation explícito en spec/eval (encabezado **DEPRECATED**), actualizar `SESSION_STATE.md` y planificar la remoción. Solo después se borra el código. |
 | **Cambiar infra transversal** (Prisma schema, JWT/Auth, Storage, Money, RFC 7807, Redis, BullMQ) | Actualizar la `rule` correspondiente en `.harness/rules/`. Si no existe rule para el tema, crearla. |
 | **Agregar endpoint nuevo a un módulo existente** | Incluirlo en la sección "Controladores y Endpoints" del spec del módulo. Si requiere nuevo slug RFC 7807, agregarlo en [api-standards.md](../../docs/reference/api-standards.md). |
 | **Cambiar política de seguridad o PII** | Actualizar [docs/reference/security-roles.md](../../docs/reference/security-roles.md) y referenciar desde la spec del módulo afectado. |
+| **Agregar capability de plan o cambiar límites por plan** | Actualizar [plans-entitlements.md](../specs/plans-entitlements.md), defaults en `plan-entitlements.schema.ts`, eval de entitlements y la spec del módulo consumidor. |
 
 ---
 
@@ -62,6 +63,8 @@ Todo PR debe poder responder afirmativamente a estas preguntas. Si alguna queda 
 - [ ] ¿`INDEX.md` y `SESSION_STATE.md` reflejan el estado real tras este cambio?
 - [ ] Si el cambio toca un endpoint público o un slug RFC 7807, ¿está reflejado en [api-standards.md](../../docs/reference/api-standards.md)?
 - [ ] Si el cambio toca PII, RBAC o KYC, ¿está reflejado en [security-roles.md](../../docs/reference/security-roles.md)?
+- [ ] Si el módulo nuevo o extendido expone endpoints, ¿la spec incluye sección **RBAC** (roles, guards, ownership)?
+- [ ] Si el módulo limita producto por plan, ¿la spec documenta **Planes y entitlements** y el checklist de [plans-entitlements.md](../specs/plans-entitlements.md) §7 está cumplido?
 - [ ] Si el cambio toca infra transversal, ¿hay una `rule` en `.harness/rules/` que lo describa?
 
 ---
@@ -85,3 +88,23 @@ Todo PR debe poder responder afirmativamente a estas preguntas. Si alguna queda 
 ## 8. Por qué existe esta regla
 
 Sin Docs-First, el harness se vuelve obsoleto en pocas semanas. Cuando un agente nuevo o un dev que vuelve después de tiempo lee `.harness/specs/foo-module.md` y encuentra que la realidad del código no coincide, **pierde toda la utilidad del harness** y empieza a tomar decisiones desde cero. La doctrina mantiene el harness vivo: cuesta más por cambio, pero rinde a lo largo del tiempo del proyecto.
+
+---
+
+## 9. Plantilla obligatoria en specs de módulo (RBAC + planes)
+
+Toda `.harness/specs/<mod>-module.md` debe incluir estas secciones (pueden declarar "N/A" con justificación):
+
+```markdown
+## RBAC
+- Roles permitidos por endpoint
+- Guards (`RolesGuard`, `SupabaseAuthGuard`, ownership, `SUPER_ADMIN`)
+
+## Planes y entitlements
+- ¿Aplica a professional / company / ninguno?
+- Capabilities nuevas (si aplica) + defaults FREE/PRO/BUSINESS en catálogo
+- Errores RFC 7807 (`PLAN_FEATURE_UNAVAILABLE`, `SERVICE_AREA_LIMIT_REACHED`, etc.)
+- Tests: unit de assert + e2e de límite de plan cuando aplique
+```
+
+Referencia de decisión y proceso técnico: [plans-entitlements.md](../specs/plans-entitlements.md) §7 y [security-roles.md](../../docs/reference/security-roles.md) §6.

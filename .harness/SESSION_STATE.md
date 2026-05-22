@@ -7,7 +7,7 @@
 ## Estado Actual del Proyecto
 
 **Fase:** Implementación de dominios core + auditoría integral aplicada
-**Fecha de última actualización:** 2026-05-22 (Entitlements v2: JSON por dominio, registry, caché, portfolio/search enforcement)
+**Fecha de última actualización:** 2026-05-22 (Inventario módulos, política RBAC+planes en docs, specs geo y service-areas)
 
 ---
 
@@ -20,14 +20,16 @@
 | `storage` | **Implementado** | `.harness/specs/storage-rules.md` |
 | `health` | **Implementado** | Liveness/readiness; readiness usa Diagnostics |
 | `diagnostics` | **Implementado** | Sin spec larga — ver `src/modules/diagnostics/` + `.harness/INDEX.md` |
-| `categories` | **Implementado** | (Swagger tag `categories`) |
+| `categories` | **Implementado** | (Swagger tag `categories`) — spec dedicada pendiente |
+| `geo` | **Implementado** | `.harness/specs/geo-module.md` — árbol UY, resolve, cache Redis |
 | `search` | **Implementado (fase 4)** | `.harness/specs/search-matching.md` — ServiceArea geo + empresas en resultados |
 | `portfolio` | **Completo** | `.harness/specs/portfolio-module.md` — Owner CRUD + consent + BullMQ + públicos + presign + throttle + moderación admin + worker IA + cleanup worker real |
 | `ai` | **Implementado** | `src/modules/ai/` — módulo IA compartido + InferenceCacheGcService |
 | `authorization` | **Implementado** | `src/modules/authorization/` — AuthorizationService + RolesGuard compartidos |
 | `entitlements` | **Implementado (v2)** | `.harness/specs/plans-entitlements.md` — schema v2, resolver+caché, capabilities, portfolio/search, `GET /users/me/entitlements` |
-| `service-areas` | **Implementado (fase 3)** | CRUD `/api/professionals/me/service-areas` y `/api/companies/:id/service-areas` |
-| `notifications` | **Implementado** | `src/modules/notifications/` — notificaciones transaccionales |
+| `service-areas` | **Implementado (fase 3)** | `.harness/specs/service-areas-module.md` — enforcement vía entitlements |
+| `notifications` | **Implementado** | `src/modules/notifications/` — spec dedicada pendiente |
+| `jobs` | **Roadmap (modelo Prisma)** | Sin `JobsModule`; prerequisito sugerido antes de escrow |
 | Escrow, Urgency, Dispute, Reviews, Chat | **Roadmap** | Specs y evals en harness; ver tabla legacy abajo |
 
 ### Roadmap (legacy harness)
@@ -40,7 +42,19 @@
 | ReviewModule | Pendiente | `.harness/specs/reviews-reputation.md` | `.harness/evals/search-reviews-eval.md` |
 | ChatModule | Pendiente | `.harness/specs/chat-module.md` | — |
 | PortfolioModule | Ver fila `portfolio` en tabla principal (legacy duplicada) | `.harness/specs/portfolio-module.md` | `.harness/evals/portfolio-module-eval.md` |
-| NotificationModule | Pendiente | — | — |
+| NotificationModule | Ver fila `notifications` en tabla principal | — | — |
+| JobsModule | Pendiente (prioridad producto) | — (modelo `Job` en schema) | — |
+
+### Evaluación RBAC / planes documentada
+
+| Módulo | Spec con § RBAC + § Planes | Notas |
+|--------|---------------------------|--------|
+| `geo`, `service-areas` | Sí (2026-05-22) | Plantilla en specs nuevas |
+| `portfolio`, `users`, `search` | Parcial / en specs existentes | Ampliar secciones al tocar el módulo |
+| `categories`, `notifications`, `authorization`, `ai` | Pendiente spec dedicada | Declarar N/A planes donde aplique |
+| Roadmap (`jobs`, `urgency`, …) | Obligatorio al crear spec | Ver `plans-entitlements.md` §7 |
+
+Política transversal: [docs-first.md](rules/docs-first.md) §9, [security-roles.md](../docs/reference/security-roles.md) §6, [plans-entitlements.md](specs/plans-entitlements.md) §7.
 
 ---
 
@@ -81,9 +95,10 @@
 
 ## Próximos Pasos (sugeridos)
 
-1. Dominios de roadmap (Escrow, Urgencias, etc.) según prioridad de producto.
-2. Mantener `SESSION_STATE.md` y [AGENTS.md](../AGENTS.md) cuando cambie infra o auth.
-3. Ampliar E2E de smoke donde aporte señal (p. ej. health) sin sustituir cobertura unitaria crítica.
+1. **Siguiente módulo de negocio (pendiente decisión producto):** `jobs` (contratos/trabajos, modelo ya en Prisma) **o** `urgency` (vertical 24h; dominio `urgency` en entitlements listo). Ambos requieren spec con § RBAC y § Planes antes del código.
+2. Dominios posteriores: Escrow → Dispute → Reviews → Chat (orden por dependencias).
+3. Specs pendientes para código existente: `categories`, `notifications`, `authorization`.
+4. Mantener `SESSION_STATE.md` y [AGENTS.md](../AGENTS.md) cuando cambie infra o auth.
 
 ---
 
@@ -98,6 +113,7 @@
 - **2026-05-13 (AiModule + worker IA):** Nuevo `AiModule` en `src/modules/ai/` con: `PiiSanitizerService`, `InferenceCacheService` (Redis L1 + Postgres L2, `hitsCount`, `policyVersion`), `InferenceLockService` (Redlock, `finally` unlock, TTL > timeout, jitter en colisión, shutdown hook), `ImagePrepService` (sharp, `durationMs` + `outputBytes`), `CategoryMatcherService` (`parentId` + CATEGORY_MAX_DEPTH), `OpenAiTextModerationProvider`, `AwsRekognitionImageSafetyProvider`, `AiContentModerationService` (circuit breaker opossum, fail-closed). Worker `portfolio-moderate` operativo: descarga buffers R2, llama provider, escribe veredicto en BD con `policyVersion` en `PortfolioModerationLog`. `PortfolioModule` usa `AiContentModerationService` cuando `PORTFOLIO_AI_ENABLED=true`; stub cuando false. Nueva tabla `AiInferenceCache` en Prisma. `downloadObject` en `IStorageService`. `ai.config.ts` registrado en `AppModule`.
 - **2026-05-13:** Throttler global + límites en auth/consent; lecturas públicas; cola/moderación admin y reporte autenticado; `AuditAction` ampliado; catálogo `TOO_MANY_REQUESTS` (429 RFC 7807). Harness (`SESSION_STATE`, `portfolio-module.md`) alineado al código.
 
+- **2026-05-22 (Inventario módulos + política planes/RBAC):** Docs-First §9 (plantilla RBAC+planes en specs), `plans-entitlements.md` §7, `security-roles.md` §6, specs/evals `geo-module` y `service-areas-module`, `SESSION_STATE`/`INDEX`/`architecture` alineados a `AppModule`. Próximo módulo de negocio: `jobs` o `urgency` (decisión producto).
 - **2026-05-07:** Alineación harness: AGENTS.md, SESSION_STATE actualizado al estado real (filtro RFC 7807, ValidationPipe, Pino, Sentry, diagnostics), nota JWKS en spec de auth, reglas `auth-jwt` + checklist de performance, tests de `supabase-jwks.util.ts`, smoke E2E `/health/live`.
 - **2026-05-12:** Introducida la **doctrina Docs-First** como regla permanente del repo. Nuevo artefacto [`.harness/rules/docs-first.md`](rules/docs-first.md) con la matriz de obligaciones (agregar / modificar / eliminar), excepciones explícitas, orden de commits y checklist de PR. Anclajes agregados en [AGENTS.md](../AGENTS.md) (sección "Workflow Docs-First"), [.cursorrules](../.cursorrules) (sección 3 "PROTOCOLO DE CAMBIOS") e [INDEX.md](INDEX.md). Primer caso de uso: harness completo del módulo `portfolio` (spec + eval), gobernanza transversal en `storage-rules.md` (ownership de paths) y nueva política PII en `security-roles.md`. Cero código TypeScript o Prisma en este cambio; solo doctrina y harness.
 - **2026-05-12 (Portfolio Owner CRUD):** Implementados los 7 endpoints owner del módulo `portfolio` siguiendo TDD estricto y coverage 100% sobre el directorio del módulo. Endpoints: `POST /portfolio/items` (DRAFT con validación de Job verificable), `POST /items/:id/photos` (con regex canónica `users/<professionalId>/portfolio/<itemId>/`, ownership vía `storage-paths.ts`, dedup y atomicidad de `displayOrder` en `prisma.$transaction`), `DELETE /items/:id/photos/:photoId` (compact reorder atómico), `PATCH /items/:id` (con freeze guard `PORTFOLIO_CATEGORY_FROZEN_POST_VERIFICATION` si `verifiedFromJob=true`), `DELETE /items/:id` (soft-delete + encola `portfolio-cleanup` stub), `POST /items/:id/publish` (HEAD checks con cache Redis `storage:exists:*` TTL 60s, 1 retry con 503 → `PORTFOLIO_PHOTOS_STORAGE_UNAVAILABLE`, moderation provider stub `AlwaysApprovedModerationProvider`, transición DRAFT → PUBLISHED), `GET /items/mine` (paginado). *Seguimiento 2026-05-13:* consent+Bull+notifs, públicos, moderación humana/reporte, throttle; sigue pendiente cleanup físico e IA real.

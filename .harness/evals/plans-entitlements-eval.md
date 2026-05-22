@@ -22,3 +22,8 @@ Ejecutar antes de merge de cambios en `entitlements` o límites de zonas.
 
 - [ ] Urgency spec usa plan `PRO` (no `MEDIUM`)
 - [ ] Factories de test incluyen `planDefinitionId` FREE por defecto
+
+## Documentación (módulos nuevos)
+
+- [ ] La spec del módulo incluye secciones **RBAC** y **Planes y entitlements** (o N/A justificado)
+- [ ] Si se añade capability, está listada en `plans-entitlements.md` §5 y §7

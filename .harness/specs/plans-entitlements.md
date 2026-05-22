@@ -61,7 +61,7 @@ JSON v1 plano en BD se acepta vía `normalizeEntitlements` (migración automáti
 
 | Módulo | Regla |
 |--------|--------|
-| `service-areas` | Máximo zonas y radio por plan |
+| `service-areas` | Máximo zonas y radio por plan — ver [service-areas-module.md](service-areas-module.md) |
 | `portfolio` | Ítems y fotos por plan (`min(plan, portfolio.config)` como techo) |
 | `search` | Expansión IA deshabilitada si catálogo FREE tiene `queryExpansionEnabled: false` (política plataforma en v1) |
 
@@ -70,3 +70,34 @@ Errores: `SERVICE_AREA_LIMIT_REACHED`, `PLAN_FEATURE_UNAVAILABLE`, `PLAN_ENTITLE
 ## 6. Alta de sujetos
 
 `UsersRepository` asigna `planDefinitionId` FREE y crea `ServiceArea` "Principal" al registrar perfil profesional.
+
+## 7. Checklist para módulos nuevos (planes + RBAC)
+
+Antes del primer commit de código de un módulo con endpoints HTTP, completar esta tabla en su spec (`.harness/specs/<mod>-module.md`):
+
+| Pregunta | Si SÍ | Si NO |
+|----------|-------|-------|
+| ¿El endpoint muta datos de un **profesional** o **empresa** sujeto a plan? | Documentar sujeto; llamar `EntitlementsService.assert(...)` antes de persistir | Marcar "N/A planes" en la spec |
+| ¿El límite es solo **quién puede llamar** la API (rol)? | Sección RBAC + `RolesGuard` / ownership | No mezclar con plan |
+| ¿Es lectura **pública** o infra (health, geo tree)? | RBAC: `@Public()` o sin guard; planes: N/A explícito | — |
+| ¿Hace falta un **dominio nuevo** en JSON v2? | Extender `plan-entitlements.schema.ts`, `PLAN_CATALOG_DEFAULTS`, migración si hace falta, capability en `entitlements.types.ts` + `EntitlementsAssertService` | Reutilizar dominio existente |
+
+### Proceso técnico (cuando aplica plan)
+
+1. Añadir `PlanCapability` en [`entitlements.types.ts`](../../src/modules/entitlements/entitlements.types.ts).
+2. Implementar rama en [`entitlements-assert.service.ts`](../../src/modules/entitlements/entitlements-assert.service.ts).
+3. Invocar desde el service del módulo vía [`entitlements.service.ts`](../../src/modules/entitlements/entitlements.service.ts) (fachada).
+4. Actualizar defaults FREE/PRO/BUSINESS en [`plan-entitlements.schema.ts`](../../src/common/types/plan-entitlements.schema.ts).
+5. Tests unitarios del assert + e2e que reproduzca límite (p. ej. plan FREE).
+6. Actualizar esta spec (tabla §5) y el eval del módulo.
+
+### Módulos sin enforcement de plan (explícito)
+
+| Módulo | Motivo |
+|--------|--------|
+| `auth`, `health`, `diagnostics`, `storage` | Infra / transversal |
+| `geo`, `categories` (lectura pública o admin catálogo) | Catálogo plataforma, no sujeto a suscripción |
+| `entitlements` | Motor de planes |
+| `notifications` | Canal interno; límites futuros si aplica |
+
+Ver también [security-roles.md](../../docs/reference/security-roles.md) §6 para RBAC por módulo.

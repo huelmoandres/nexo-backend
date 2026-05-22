@@ -18,8 +18,9 @@ Actuá como arquitecto de software senior: no inventar requisitos; seguir la doc
 1. **Negocio y plataforma:** [docs/explanation/business.md](docs/explanation/business.md) y [docs/explanation/architecture.md](docs/explanation/architecture.md).
 2. **Estándares:** [docs/reference/coding-guidelines.md](docs/reference/coding-guidelines.md); para HTTP: [docs/reference/api-standards.md](docs/reference/api-standards.md).
 3. **Seguridad / auditoría:** [docs/reference/security-roles.md](docs/reference/security-roles.md), [docs/reference/logging-audit.md](docs/reference/logging-audit.md) cuando apliquen roles, Escrow o dinero.
-4. **Módulo concreto:** spec en [`.harness/specs/`](.harness/specs/) correspondiente.
-5. **Luego** el código en `src/modules/<dominio>/`.
+4. **Planes y límites de producto:** [.harness/specs/plans-entitlements.md](.harness/specs/plans-entitlements.md) (obligatorio al **crear o extender** un módulo con endpoints de mutación o límites por suscripción).
+5. **Módulo concreto:** spec en [`.harness/specs/`](.harness/specs/) correspondiente (debe incluir secciones **RBAC** y **Planes y entitlements**; plantilla en [docs-first §9](.harness/rules/docs-first.md)).
+6. **Luego** el código en `src/modules/<dominio>/`.
 
 ---
 
@@ -27,7 +28,7 @@ Actuá como arquitecto de software senior: no inventar requisitos; seguir la doc
 
 **Regla permanente:** antes de **agregar, modificar o eliminar** un módulo o cualquier cosa documentada en el repo, se actualiza primero la documentación. La doc va siempre adelante del código.
 
-- **Agregar módulo:** crear `.harness/specs/<mod>-module.md` + `.harness/evals/<mod>-module-eval.md` y registrar en `INDEX.md` / `SESSION_STATE.md` antes del primer commit de código.
+- **Agregar módulo:** crear `.harness/specs/<mod>-module.md` + `.harness/evals/<mod>-module-eval.md` (con **RBAC** y **Planes y entitlements**), leer `security-roles.md` y `plans-entitlements.md` §7, y registrar en `INDEX.md` / `SESSION_STATE.md` antes del primer commit de código.
 - **Modificar módulo documentado:** actualizar el spec/eval/rules afectado **antes** de tocar `src/modules/<mod>/`.
 - **Eliminar / deprecar:** marcar deprecation en la doc, actualizar `SESSION_STATE.md` y solo después borrar código.
 - **Commit `docs(...)` siempre va antes** del `feat/refactor/fix` que implementa el cambio.

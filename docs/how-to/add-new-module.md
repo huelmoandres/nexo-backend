@@ -3,7 +3,7 @@
 **Audiencia:** Desarrollador que ya entiende el proyecto y necesita agregar un nuevo dominio.
 **Asume:** Que el entorno ya está corriendo (ver `docs/tutorials/getting-started.md`).
 
-**Checklist de contexto (antes de codear):** leer [AGENTS.md](../../AGENTS.md), el [.harness/INDEX.md](../../.harness/INDEX.md) y la spec del dominio en `.harness/specs/` si ya existe.
+**Checklist de contexto (antes de codear):** leer [AGENTS.md](../../AGENTS.md), el [.harness/INDEX.md](../../.harness/INDEX.md), [security-roles.md](../reference/security-roles.md) §6 y [plans-entitlements.md](../../.harness/specs/plans-entitlements.md) §7. Crear o actualizar `.harness/specs/<nombre>-module.md` con secciones **RBAC** y **Planes y entitlements** ([docs-first §9](../../.harness/rules/docs-first.md)) **antes** del primer commit de código.
 
 ---
 

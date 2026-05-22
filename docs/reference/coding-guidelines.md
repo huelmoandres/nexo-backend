@@ -38,6 +38,10 @@ constructor(private readonly configService: ConfigService) {
 - **Librería:** `class-validator` con decoradores.
 - **Transformación:** Uso obligatorio de `class-transformer` para asegurar que los tipos de los DTOs coincidan con la lógica interna.
 
+## 4.1 RBAC y planes en services
+
+En controllers de mutación: aplicar guards de rol en el controller; validar ownership en el service. Si el recurso está sujeto a suscripción (`ProfessionalProfile`, `Company`), llamar a `EntitlementsService` antes de `create`/`update` en Prisma. Documentar ambos en la spec del módulo (plantilla en [.harness/rules/docs-first.md](../../.harness/rules/docs-first.md) §9).
+
 ---
 
 ## 5. TypeScript Path Aliases

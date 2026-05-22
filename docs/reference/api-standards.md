@@ -15,6 +15,15 @@ Se deben usar con precisión semántica para que el frontend actúe en consecuen
 - **503 Service Unavailable:** Dependencia externa no disponible (p. ej. R2 sin configurar o no responde).
 - **500 Internal Server Error:** Error crítico de infraestructura (notifica a Sentry).
 
+### 1.1 Autorización en endpoints de mutación
+
+Todo endpoint que **crea, actualiza o elimina** datos debe declarar en la spec del módulo:
+
+1. **RBAC:** rol mínimo (`RolesGuard`) y/o ownership del recurso ([security-roles.md](security-roles.md) §6).
+2. **Planes:** si el sujeto es `ProfessionalProfile` o `Company`, invocar `EntitlementsService.assert(...)` **antes** de persistir cuando el límite dependa del plan ([plans-entitlements.md](../../.harness/specs/plans-entitlements.md) §7).
+
+`403` por rol usa `AUTH_INSUFFICIENT_PERMISSIONS`; límites de producto usan `PLAN_FEATURE_UNAVAILABLE` o `SERVICE_AREA_LIMIT_REACHED` según el catálogo en `error-catalog.ts`.
+
 ## 2. Formato de Errores (RFC 7807)
 No usar códigos numéricos internos. Toda respuesta de error debe seguir esta estructura:
 

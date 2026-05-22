@@ -82,3 +82,36 @@ Aplica esta política transversal:
   - Ningún breadcrumb de Sentry los contiene.
   - Ninguna fila de `PortfolioModerationLog` los contiene.
 - Test que verifica que importar el provider crudo fuera del archivo del decorator falla en lint.
+
+---
+
+## 6. Evaluación RBAC por módulo
+
+Todo módulo nuevo o extendido debe documentar en su spec (`.harness/specs/<mod>-module.md`) una tabla **RBAC** antes de implementar controllers.
+
+### 6.1 Cuándo usar cada mecanismo
+
+| Mecanismo | Usar cuando |
+|-----------|-------------|
+| `SupabaseAuthGuard` (global + excepciones `@Public()`) | Casi todos los endpoints; el usuario debe estar autenticado. |
+| `RolesGuard` + `@Roles(...)` | La operación depende del **rol** (`CLIENT`, `INDEPENDENT_PRO`, `COMPANY_ADMIN`, `SUPER_ADMIN`, etc.). |
+| **Ownership** en el service | El recurso pertenece al usuario (`professionalProfile.userId`, `company.adminId`). No confiar solo en IDs del path. |
+| `EntitlementsService.assertCompanyAdmin` | Mutaciones sobre una **empresa** por su `companyId`. |
+| Sin RBAC de rol (solo JWT) | Lecturas del propio perfil (`GET /users/me`) o endpoints marcados `@Public()`. |
+
+Los **planes** no reemplazan al RBAC: un `INDEPENDENT_PRO` autenticado puede recibir `403 PLAN_FEATURE_UNAVAILABLE` aunque su rol permita la ruta. Ver [.harness/specs/plans-entitlements.md](../../.harness/specs/plans-entitlements.md) §7.
+
+### 6.2 Matriz de referencia (módulos actuales)
+
+| Módulo | Patrón RBAC típico | Planes |
+|--------|-------------------|--------|
+| `users` | JWT; registro perfil/empresa según rol | `GET /users/me/entitlements` |
+| `categories` | `SUPER_ADMIN` en mutaciones; lectura pública árbol | N/A |
+| `geo` | `@Public()` en lectura y resolve | N/A |
+| `search` | `@Public()` búsqueda | Expansión IA por plan (política plataforma) |
+| `service-areas` | JWT + ownership profesional; empresa + `assertCompanyAdmin` | Zonas y radio |
+| `portfolio` | JWT + ownership; moderación `SUPER_ADMIN` | Ítems y fotos |
+| `entitlements` (admin) | `SUPER_ADMIN` | N/A (administra planes) |
+| `notifications` | Interno / workers | N/A (por ahora) |
+
+Al añadir un módulo de roadmap (`jobs`, `urgency`, `escrow`, …), definir roles por endpoint y enlazar capabilities de plan en la misma spec.
