@@ -15,8 +15,8 @@ describe('IsRutUruguay', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('pasa cuando el RUT es válido (12 ceros)', async () => {
-    const dto = plainToInstance(SampleDto, { rut: '000000000000' });
+  it('pasa cuando el RUT es válido (demo DGI)', async () => {
+    const dto = plainToInstance(SampleDto, { rut: '214567890018' });
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
   });

@@ -50,4 +50,7 @@ export const storageMock: IStorageService = {
 
   /** Simula la descarga de un objeto como Buffer (uso interno de workers). */
   downloadObject: vi.fn().mockResolvedValue(Buffer.from('mock-image-bytes')),
+
+  /** Simula listados por prefijo para jobs de mantenimiento/cleanup. */
+  listObjectsByPrefix: vi.fn().mockResolvedValue([]),
 };

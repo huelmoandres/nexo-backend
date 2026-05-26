@@ -8,7 +8,7 @@ export class CompanySummaryDto {
   name!: string;
 
   @ApiProperty({
-    example: '214567890013',
+    example: '214567890018',
     description: 'RUT normalizado (12 dígitos).',
   })
   rut!: string;

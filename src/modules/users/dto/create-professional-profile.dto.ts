@@ -69,7 +69,7 @@ export class CreateProfessionalProfileDto {
   longitude?: number;
 
   @ApiPropertyOptional({
-    example: '214567890013',
+    example: '214567890018',
     description:
       'RUT uruguayo opcional (12 dígitos, dígito verificador DGI). Monotributo / unipersonal.',
   })

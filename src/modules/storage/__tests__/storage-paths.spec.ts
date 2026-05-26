@@ -263,6 +263,9 @@ describe('storage-paths', () => {
           '00000000-0000-0000-0000-000000000099',
         ),
       ).toThrow();
+      expect(() =>
+        assertPayoutReceiptKeyForEscrow('invalid-key', escrowId),
+      ).toThrow(/invalid payout receipt key/);
     });
   });
 

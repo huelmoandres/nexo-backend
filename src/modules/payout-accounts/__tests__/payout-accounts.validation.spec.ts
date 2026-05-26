@@ -218,6 +218,44 @@ describe('payout-accounts.validation', () => {
     expect(
       maskTransferIdentifier(PayoutIdentifierType.MP_EMAIL, 'user@', null),
     ).toContain('@');
+    expect(
+      maskTransferIdentifier(
+        PayoutIdentifierType.MP_EMAIL,
+        'xy@example.com',
+        null,
+      ),
+    ).toBe('xy***@example.com');
+    expect(
+      maskTransferIdentifier(
+        PayoutIdentifierType.MP_EMAIL,
+        '@nodomain',
+        null,
+      ),
+    ).toBe('***@nodomain');
+    expect(
+      maskTransferIdentifier(
+        PayoutIdentifierType.MP_EMAIL,
+        '@',
+        null,
+      ),
+    ).toBe('***@');
+    expect(
+      maskTransferIdentifier(
+        PayoutIdentifierType.MP_EMAIL,
+        'ab@c.com',
+        null,
+      ),
+    ).toBe('ab***@c.com');
+  });
+
+  it('mask email con partes undefined tras split', () => {
+    const splitSpy = vi
+      .spyOn(String.prototype, 'split')
+      .mockReturnValueOnce([undefined, undefined] as never);
+    expect(
+      maskTransferIdentifier(PayoutIdentifierType.MP_EMAIL, 'a@b.com', null),
+    ).toBe('***@');
+    splitSpy.mockRestore();
   });
 
   afterEach(() => vi.restoreAllMocks());

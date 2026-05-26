@@ -17,6 +17,8 @@ describe('EscrowPayoutService', () => {
     countPayoutAttempts: vi.fn(),
     createPayoutAttempt: vi.fn(),
     completePayoutAttempt: vi.fn(),
+    listPendingManualPayouts: vi.fn(),
+    countPendingManualPayouts: vi.fn(),
   };
 
   const payoutAccounts = {
@@ -435,6 +437,273 @@ describe('EscrowPayoutService', () => {
     ).rejects.toMatchObject({ response: { code: 'PAYOUT_MANUAL_ONLY' } });
   });
 
+  it('listPendingManualPayouts usa page y limit por defecto', async () => {
+    escrowRepository.listPendingManualPayouts.mockResolvedValue([]);
+    escrowRepository.countPendingManualPayouts.mockResolvedValue(0);
+
+    const res = await makeService(payoutCfgManual).listPendingManualPayouts(
+      {} as never,
+    );
+
+    expect(escrowRepository.listPendingManualPayouts).toHaveBeenCalledWith({
+      skip: 0,
+      take: 20,
+    });
+    expect(res.page).toBe(1);
+    expect(res.limit).toBe(20);
+  });
+
+  it('listPendingManualPayouts pagina y mapea filas', async () => {
+    escrowRepository.listPendingManualPayouts.mockResolvedValue([
+      {
+        id: 'esc-1',
+        jobId: 'job-1',
+        amountCents: 100,
+        commissionCents: 10,
+        netAmountCents: 90,
+        providerReference: 'chk-1',
+        payoutStatus: EscrowPayoutStatus.PENDING,
+        releasedAt: new Date('2026-01-01'),
+        payoutAccount: null,
+        job: {
+          title: 'Obra',
+          client: { id: 'c1', email: 'c@x.com', fullName: 'Cliente' },
+          professional: {
+            id: 'pp-1',
+            user: { id: 'u1', email: 'p@x.com', fullName: 'Pro' },
+          },
+        },
+      },
+    ]);
+    escrowRepository.countPendingManualPayouts.mockResolvedValue(1);
+    payoutAccounts.buildSnapshotForAccount.mockReturnValue({ masked: 'x' });
+
+    const res = await makeService(payoutCfgManual).listPendingManualPayouts({
+      page: 2,
+      limit: 5,
+    } as never);
+
+    expect(escrowRepository.listPendingManualPayouts).toHaveBeenCalledWith({
+      skip: 5,
+      take: 5,
+    });
+    expect(res.total).toBe(1);
+    expect(res.items[0]?.client?.email).toBe('c@x.com');
+    expect(res.items[0]?.destinationSnapshot).toBeNull();
+  });
+
+  it('listPendingManualPayouts mapea snapshot y relaciones opcionales', async () => {
+    escrowRepository.listPendingManualPayouts.mockResolvedValue([
+      {
+        id: 'esc-2',
+        jobId: 'job-2',
+        amountCents: 200,
+        commissionCents: 20,
+        netAmountCents: 180,
+        providerReference: null,
+        payoutStatus: EscrowPayoutStatus.PENDING,
+        releasedAt: null,
+        payoutAccount: {
+          id: 'acc-1',
+          method: PayoutMethod.MERCADO_PAGO,
+          identifierType: PayoutIdentifierType.MP_CVU,
+          transferIdentifier: '1234567890123456789012',
+          mpAlias: null,
+          accountHolderName: null,
+          bank: null,
+        },
+        job: {
+          title: 'Sin partes',
+          client: null,
+          professional: { id: 'pp-2', user: null },
+        },
+      },
+    ]);
+    escrowRepository.countPendingManualPayouts.mockResolvedValue(1);
+    payoutAccounts.buildSnapshotForAccount.mockReturnValue({ masked: 'acc' });
+
+    const res = await makeService(payoutCfgManual).listPendingManualPayouts({
+      page: 1,
+      limit: 10,
+    } as never);
+
+    expect(res.items[0]?.destinationSnapshot).toEqual({ masked: 'acc' });
+    expect(res.items[0]?.client).toBeNull();
+    expect(res.items[0]?.professional).toBeNull();
+    expect(res.items[0]?.releasedAt).toBeNull();
+    expect(payoutAccounts.buildSnapshotForAccount).toHaveBeenCalled();
+  });
+
+  it('presignManualPayoutReceipt genera URL', async () => {
+    const escrowId = '550e8400-e29b-41d4-a716-446655440000';
+    escrowRepository.findWithPayoutAccount.mockResolvedValue({
+      id: escrowId,
+      status: EscrowStatus.RELEASED,
+      payoutStatus: EscrowPayoutStatus.PENDING,
+    });
+    storage.generatePresignedPutUrl.mockResolvedValue({
+      uploadUrl: 'https://upload',
+      key: buildPayoutReceiptKey(escrowId, 'pdf'),
+    });
+
+    const res = await makeService(payoutCfgManual).presignManualPayoutReceipt(
+      'job-1',
+      { contentType: 'application/pdf', fileExtension: 'pdf' } as never,
+    );
+
+    expect(res.uploadUrl).toBe('https://upload');
+    expect(res.receiptStorageKey).toContain(escrowId);
+  });
+
+  it('presignManualPayoutReceipt rechaza extensión inválida', async () => {
+    escrowRepository.findWithPayoutAccount.mockResolvedValue({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      status: EscrowStatus.RELEASED,
+      payoutStatus: EscrowPayoutStatus.PENDING,
+    });
+    await expect(
+      makeService(payoutCfgManual).presignManualPayoutReceipt('job-1', {} as never),
+    ).rejects.toMatchObject({ response: { code: 'PAYOUT_RECEIPT_INVALID_KEY' } });
+  });
+
+  it('confirmManualPayout exige receiptStorageKey', async () => {
+    await expect(
+      makeService(payoutCfgManual).confirmManualPayout('job-1', 'admin', {} as never),
+    ).rejects.toMatchObject({ response: { code: 'PAYOUT_RECEIPT_REQUIRED' } });
+  });
+
+  it('confirmManualPayout rechaza escrow no confirmable si payout ya SUCCEEDED', async () => {
+    escrowRepository.findWithPayoutAccount.mockResolvedValue({
+      id: 'esc-1',
+      status: EscrowStatus.RELEASED,
+      payoutStatus: EscrowPayoutStatus.SUCCEEDED,
+    });
+    await expect(
+      makeService(payoutCfgManual).confirmManualPayout('job-1', 'admin', {
+        receiptStorageKey: 'k',
+      } as never),
+    ).rejects.toMatchObject({ response: { code: 'PAYOUT_NOT_CONFIRMABLE' } });
+  });
+
+  it('confirmManualPayout rechaza key inválida', async () => {
+    escrowRepository.findWithPayoutAccount.mockResolvedValue({
+      id: 'esc-1',
+      status: EscrowStatus.RELEASED,
+      payoutStatus: EscrowPayoutStatus.PENDING,
+    });
+    await expect(
+      makeService(payoutCfgManual).confirmManualPayout('job-1', 'admin', {
+        receiptStorageKey: 'bad-key',
+      } as never),
+    ).rejects.toMatchObject({ response: { code: 'PAYOUT_RECEIPT_INVALID_KEY' } });
+  });
+
+  it('confirmManualPayout rechaza sin profesional en job', async () => {
+    const escrowId = '550e8400-e29b-41d4-a716-446655440000';
+    escrowRepository.findWithPayoutAccount.mockResolvedValue({
+      id: escrowId,
+      status: EscrowStatus.RELEASED,
+      payoutStatus: EscrowPayoutStatus.PENDING,
+      payoutAccountId: 'acc-1',
+      amountCents: 100,
+      netAmountCents: 90,
+    });
+    prisma.job.findUnique.mockResolvedValue({ professionalId: null });
+    await expect(
+      makeService(payoutCfgManual).confirmManualPayout('job-1', 'admin', {
+        receiptStorageKey: buildPayoutReceiptKey(escrowId, 'pdf'),
+      } as never),
+    ).rejects.toMatchObject({ response: { code: 'PAYOUT_ACCOUNT_NOT_FOUND' } });
+  });
+
+  it('confirmManualPayout rechaza cuenta inactiva', async () => {
+    const escrowId = '550e8400-e29b-41d4-a716-446655440000';
+    escrowRepository.findWithPayoutAccount.mockResolvedValue({
+      id: escrowId,
+      status: EscrowStatus.RELEASED,
+      payoutStatus: EscrowPayoutStatus.PENDING,
+      payoutAccountId: 'acc-1',
+      amountCents: 100,
+      netAmountCents: 90,
+    });
+    prisma.job.findUnique.mockResolvedValue({ professionalId: 'pp-1' });
+    payoutRepository.findById.mockResolvedValue({ id: 'acc-1', isActive: false });
+    await expect(
+      makeService(payoutCfgManual).confirmManualPayout('job-1', 'admin', {
+        receiptStorageKey: buildPayoutReceiptKey(escrowId, 'pdf'),
+      } as never),
+    ).rejects.toMatchObject({ response: { code: 'PAYOUT_ACCOUNT_NOT_FOUND' } });
+  });
+
+  it('confirmManualPayout rechaza max intentos', async () => {
+    const escrowId = '550e8400-e29b-41d4-a716-446655440000';
+    escrowRepository.findWithPayoutAccount.mockResolvedValue({
+      id: escrowId,
+      status: EscrowStatus.RELEASED,
+      payoutStatus: EscrowPayoutStatus.PENDING,
+      payoutAccountId: 'acc-1',
+      amountCents: 100,
+      netAmountCents: 90,
+    });
+    prisma.job.findUnique.mockResolvedValue({ professionalId: 'pp-1' });
+    payoutRepository.findById.mockResolvedValue({ id: 'acc-1', isActive: true });
+    escrowRepository.countPayoutAttempts.mockResolvedValue(5);
+    storage.assertObjectExists.mockResolvedValue(undefined);
+    await expect(
+      makeService(payoutCfgManual).confirmManualPayout('job-1', 'admin', {
+        receiptStorageKey: buildPayoutReceiptKey(escrowId, 'pdf'),
+      } as never),
+    ).rejects.toMatchObject({ response: { code: 'PAYOUT_MAX_ATTEMPTS' } });
+  });
+
+  it('presign y confirm rechazan escrow no encontrado', async () => {
+    escrowRepository.findWithPayoutAccount.mockResolvedValue(null);
+    await expect(
+      makeService(payoutCfgManual).presignManualPayoutReceipt('job-1', {} as never),
+    ).rejects.toMatchObject({ response: { code: 'ESCROW_NOT_FOUND' } });
+  });
+
+  it('confirmManualPayout resuelve cuenta si escrow sin payoutAccountId', async () => {
+    const escrowId = '550e8400-e29b-41d4-a716-446655440000';
+    escrowRepository.findWithPayoutAccount.mockResolvedValue({
+      id: escrowId,
+      status: EscrowStatus.RELEASED,
+      payoutStatus: EscrowPayoutStatus.PENDING,
+      payoutAccountId: null,
+      amountCents: 100,
+      netAmountCents: 90,
+    });
+    prisma.job.findUnique.mockResolvedValue({ professionalId: 'pp-1' });
+    payoutAccounts.resolvePayoutAccountId.mockResolvedValue('acc-resolved');
+    payoutRepository.findById.mockResolvedValue({
+      id: 'acc-resolved',
+      isActive: true,
+      method: PayoutMethod.MERCADO_PAGO,
+      identifierType: PayoutIdentifierType.MP_CVU,
+      transferIdentifier: '1234567890123456789012',
+      mpAlias: null,
+      accountHolderName: null,
+      bank: null,
+    });
+    escrowRepository.countPayoutAttempts.mockResolvedValue(0);
+    payoutAccounts.buildSnapshotForAccount.mockReturnValue({});
+    storage.assertObjectExists.mockResolvedValue(undefined);
+    escrowRepository.createPayoutAttempt.mockResolvedValue({ id: 'att-r' });
+    escrowRepository.completePayoutAttempt.mockResolvedValue({
+      id: 'att-r',
+      attemptNumber: 1,
+      status: 'SUCCEEDED',
+      providerReference: null,
+      receiptStorageKey: buildPayoutReceiptKey(escrowId, 'pdf'),
+      completedAt: new Date(),
+    });
+    const key = buildPayoutReceiptKey(escrowId, 'pdf');
+    await makeService(payoutCfgManual).confirmManualPayout('job-1', 'admin', {
+      receiptStorageKey: key,
+    } as never);
+    expect(payoutAccounts.resolvePayoutAccountId).toHaveBeenCalledWith('pp-1');
+  });
+
   it('confirmManualPayout exige comprobante en storage', async () => {
     const escrowId = '550e8400-e29b-41d4-a716-446655440000';
     escrowRepository.findWithPayoutAccount.mockResolvedValue({
@@ -487,5 +756,60 @@ describe('EscrowPayoutService', () => {
     );
     expect(storage.assertObjectExists).toHaveBeenCalledWith(key);
     expect(result.payoutStatus).toBe(EscrowPayoutStatus.SUCCEEDED);
+  });
+
+  it('confirmManualPayout omite providerReference vacío y completedAt null', async () => {
+    const escrowId = '550e8400-e29b-41d4-a716-446655440000';
+    escrowRepository.findWithPayoutAccount.mockResolvedValue({
+      id: escrowId,
+      status: EscrowStatus.RELEASED,
+      payoutStatus: EscrowPayoutStatus.PENDING,
+      payoutAccountId: 'acc-1',
+      amountCents: 100,
+      netAmountCents: 90,
+    });
+    prisma.job.findUnique.mockResolvedValue({ professionalId: 'pp-1' });
+    payoutRepository.findById.mockResolvedValue({
+      id: 'acc-1',
+      isActive: true,
+      method: PayoutMethod.MERCADO_PAGO,
+      identifierType: PayoutIdentifierType.MP_CVU,
+      transferIdentifier: '1234567890123456789012',
+      mpAlias: null,
+      accountHolderName: null,
+      bank: null,
+    });
+    escrowRepository.countPayoutAttempts.mockResolvedValue(0);
+    payoutAccounts.buildSnapshotForAccount.mockReturnValue({});
+    storage.assertObjectExists.mockResolvedValue(undefined);
+    escrowRepository.createPayoutAttempt.mockResolvedValue({ id: 'att-x' });
+    escrowRepository.completePayoutAttempt.mockResolvedValue({
+      id: 'att-x',
+      attemptNumber: 1,
+      status: 'SUCCEEDED',
+      providerReference: null,
+      receiptStorageKey: buildPayoutReceiptKey(escrowId, 'pdf'),
+      completedAt: null,
+    });
+    const key = buildPayoutReceiptKey(escrowId, 'pdf');
+    const result = await makeService(payoutCfgManual).confirmManualPayout(
+      'job-1',
+      'admin-1',
+      {
+        receiptStorageKey: key,
+        providerReference: '   ',
+        note: '  nota admin  ',
+      },
+    );
+    expect(result.attempt.completedAt).toBeNull();
+    expect(escrowRepository.completePayoutAttempt).toHaveBeenCalledWith(
+      'att-x',
+      escrowId,
+      expect.objectContaining({
+        providerReference: undefined,
+        adminPayoutNote: 'nota admin',
+      }),
+      'admin-1',
+    );
   });
 });

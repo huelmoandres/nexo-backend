@@ -131,6 +131,60 @@ export class NotificationsService {
     this.logPushEmailStub('subscription.grace_reminder', input.userId);
   }
 
+  async notifyDgiVerificationVerified(input: {
+    userId: string;
+    trustProfileId: string;
+    razonSocial?: string | null;
+  }): Promise<void> {
+    const detail = input.razonSocial
+      ? ` Razón social: ${input.razonSocial}.`
+      : '';
+    await this.createNotification({
+      userId: input.userId,
+      type: NotificationType.DGI_VERIFICATION_VERIFIED,
+      title: 'Constancia DGI verificada',
+      message: `Tu constancia DGI fue verificada correctamente.${detail}`,
+      relatedEntityType: 'TrustProfile',
+      relatedEntityId: input.trustProfileId,
+    });
+    this.logPushEmailStub('dgi.verification.verified', input.userId);
+  }
+
+  async notifyDgiVerificationRejected(input: {
+    userId: string;
+    trustProfileId: string;
+    reason?: string | null;
+  }): Promise<void> {
+    const detail = input.reason
+      ? ` Motivo: ${input.reason.slice(0, 200)}.`
+      : '';
+    await this.createNotification({
+      userId: input.userId,
+      type: NotificationType.DGI_VERIFICATION_REJECTED,
+      title: 'Verificación DGI rechazada',
+      message: `No pudimos validar tu constancia DGI.${detail} Podés subir un nuevo PDF.`,
+      relatedEntityType: 'TrustProfile',
+      relatedEntityId: input.trustProfileId,
+    });
+    this.logPushEmailStub('dgi.verification.rejected', input.userId);
+  }
+
+  async notifyDgiVerificationManualReview(input: {
+    userId: string;
+    trustProfileId: string;
+  }): Promise<void> {
+    await this.createNotification({
+      userId: input.userId,
+      type: NotificationType.DGI_VERIFICATION_MANUAL_REVIEW,
+      title: 'Constancia DGI en revisión',
+      message:
+        'Recibimos tu constancia. Un administrador la revisará en breve.',
+      relatedEntityType: 'TrustProfile',
+      relatedEntityId: input.trustProfileId,
+    });
+    this.logPushEmailStub('dgi.verification.manual_review', input.userId);
+  }
+
   async notifySubscriptionDowngraded(input: {
     userId: string;
     subscriptionId: string;

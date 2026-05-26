@@ -1,9 +1,11 @@
 # AGENTS.md — Nexos Backend (HRProgrammers)
 
-**Última revisión:** 2026-05-12  
+**Última revisión:** 2026-05-22  
 **Audiencia:** agentes de IA y desarrolladores que trabajan con Cursor / automatización.
 
-Este documento es la **entrada principal** para trabajar en el repositorio. Complementa [`.cursorrules`](.cursorrules) y el [Harness Index](.harness/INDEX.md).
+Si abriste el workspace con **backend + frontend** en la misma carpeta padre, leé primero [../AGENTS.md](../AGENTS.md) (mapa de ambos repos).
+
+Este documento es la **entrada principal** para trabajar en el repositorio backend. Complementa [`.cursorrules`](.cursorrules) y el [Harness Index](.harness/INDEX.md).
 
 ---
 

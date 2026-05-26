@@ -22,6 +22,18 @@ export class GeoResolveCreatedDto {
   neighborhood!: boolean;
 }
 
+/** Nombres que Google devolvió antes de matchear catálogo (debug / transparencia). */
+export class GeoResolveParsedDto {
+  @ApiPropertyOptional({ nullable: true })
+  stateName!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  cityName!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  neighborhoodName!: string | null;
+}
+
 export class GeoResolveResponseDto {
   @ApiProperty()
   resolved!: boolean;
@@ -39,6 +51,14 @@ export class GeoResolveResponseDto {
   geo!: GeoResolvedIdsDto | null;
 
   @ApiPropertyOptional({
+    type: GeoResolveParsedDto,
+    nullable: true,
+    description:
+      'Componentes parseados de Google (state/city/neighborhood) antes del match al catálogo.',
+  })
+  parsed!: GeoResolveParsedDto | null;
+
+  @ApiPropertyOptional({
     enum: [
       'NOT_FOUND',
       'OUTSIDE_URUGUAY',
@@ -53,4 +73,10 @@ export class GeoResolveResponseDto {
 
   @ApiPropertyOptional({ nullable: true })
   source!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Place ID de Google usado en el resolve (si aplica).',
+  })
+  placeId!: string | null;
 }

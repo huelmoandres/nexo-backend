@@ -10,6 +10,7 @@ import {
   VerificationSubjectType,
   type Company,
   type Prisma,
+  type User,
 } from '@prisma/client';
 import { CATALOG_PLAN_IDS } from '@common/types/plan-entitlements.schema';
 import { PrismaService } from '@prisma/prisma.service';
@@ -108,6 +109,30 @@ export class UsersRepository {
   async findCompanyByAdminId(adminId: string): Promise<Company | null> {
     return this.prisma.company.findFirst({
       where: { adminId, deletedAt: null },
+    });
+  }
+
+  async findUserByEmail(email: string): Promise<User | null> {
+    return this.prisma.user.findFirst({
+      where: {
+        email: { equals: email.trim(), mode: 'insensitive' },
+        deletedAt: null,
+      },
+    });
+  }
+
+  async linkUserAsCompanyEmployee(input: {
+    userId: string;
+    companyId: string;
+    fullName: string;
+  }): Promise<User> {
+    return this.prisma.user.update({
+      where: { id: input.userId },
+      data: {
+        role: Role.COMPANY_EMPLOYEE,
+        companyId: input.companyId,
+        fullName: input.fullName.trim(),
+      },
     });
   }
 
@@ -674,5 +699,118 @@ export class UsersRepository {
       dgiVerificationMethod: profile.dgiVerificationMethod,
       dgiVerifiedAt: profile.dgiVerifiedAt,
     };
+  }
+
+  /** Motivo de rechazo del documento RUT_PROOF (para GET status). */
+  async getRutProofRejectionReason(
+    trustProfileId: string,
+  ): Promise<string | null> {
+    const doc = await this.prisma.verificationDocument.findFirst({
+      where: {
+        trustProfileId,
+        documentType: VerificationDocumentType.RUT_PROOF,
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { rejectionReason: true },
+    });
+    return doc?.rejectionReason ?? null;
+  }
+
+  /** Sujetos en PROCESSING cuyo updatedAt es anterior al cutoff. */
+  async findStaleDgiProcessingSubjects(cutoff: Date): Promise<
+    Array<{
+      subjectType: VerificationSubjectType;
+      subjectId: string;
+      trustProfileId: string;
+      userId: string;
+    }>
+  > {
+    const companies = await this.prisma.company.findMany({
+      where: {
+        deletedAt: null,
+        dgiVerificationStatus: DgiVerificationStatus.PROCESSING,
+        updatedAt: { lt: cutoff },
+      },
+      select: { id: true, adminId: true },
+    });
+    const profiles = await this.prisma.professionalProfile.findMany({
+      where: {
+        deletedAt: null,
+        dgiVerificationStatus: DgiVerificationStatus.PROCESSING,
+        updatedAt: { lt: cutoff },
+      },
+      select: { id: true, userId: true },
+    });
+
+    const companyRows = await Promise.all(
+      companies.map(async (c) => {
+        const trust = await this.prisma.trustProfile.findFirst({
+          where: { companyId: c.id },
+          select: { id: true },
+        });
+        if (!trust) {
+          return null;
+        }
+        return {
+          subjectType: VerificationSubjectType.COMPANY,
+          subjectId: c.id,
+          trustProfileId: trust.id,
+          userId: c.adminId,
+        };
+      }),
+    );
+
+    const profileRows = await Promise.all(
+      profiles.map(async (p) => {
+        const trust = await this.prisma.trustProfile.findFirst({
+          where: { professionalProfileId: p.id },
+          select: { id: true },
+        });
+        if (!trust) {
+          return null;
+        }
+        return {
+          subjectType: VerificationSubjectType.PROFESSIONAL,
+          subjectId: p.id,
+          trustProfileId: trust.id,
+          userId: p.userId,
+        };
+      }),
+    );
+
+    return [...companyRows, ...profileRows].filter(
+      (r): r is NonNullable<typeof r> => r !== null,
+    );
+  }
+
+  /** Keys de constancias DGI referenciadas en DB (para cleanup huérfanos). */
+  async listReferencedVerificationDocKeys(): Promise<Set<string>> {
+    const keys = new Set<string>();
+    const companies = await this.prisma.company.findMany({
+      where: { dgiVerificationDocKey: { not: null } },
+      select: { dgiVerificationDocKey: true },
+    });
+    for (const c of companies) {
+      if (c.dgiVerificationDocKey) {
+        keys.add(c.dgiVerificationDocKey);
+      }
+    }
+    const profiles = await this.prisma.professionalProfile.findMany({
+      where: { dgiVerificationDocKey: { not: null } },
+      select: { dgiVerificationDocKey: true },
+    });
+    for (const p of profiles) {
+      if (p.dgiVerificationDocKey) {
+        keys.add(p.dgiVerificationDocKey);
+      }
+    }
+    const docs = await this.prisma.verificationDocument.findMany({
+      where: { documentType: VerificationDocumentType.RUT_PROOF },
+      select: { storageKey: true },
+    });
+    for (const d of docs) {
+      keys.add(d.storageKey);
+    }
+    return keys;
   }
 }

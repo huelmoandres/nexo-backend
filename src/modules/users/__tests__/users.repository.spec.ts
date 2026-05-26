@@ -9,7 +9,7 @@ describe('UsersRepository', () => {
     const company = companyFactory.build({
       id: 'c1',
       name: 'ACME',
-      rut: '214567890013',
+      rut: '214567890018',
       adminId: 'u1',
     });
 
@@ -32,7 +32,7 @@ describe('UsersRepository', () => {
     const result = await repo.createCompanyWithAudit({
       userId: 'u1',
       name: 'ACME',
-      rut: '214567890013',
+      rut: '214567890018',
       meta: { ipAddress: '127.0.0.1' },
     });
 
@@ -78,7 +78,7 @@ describe('UsersRepository', () => {
     await repo.createCompanyWithAudit({
       userId: 'u2',
       name: 'Co',
-      rut: '214567890013',
+      rut: '214567890018',
       meta: {},
       promoteRoleToCompanyAdmin: true,
     });

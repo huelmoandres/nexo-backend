@@ -33,7 +33,7 @@ Content-Type: application/json
   "categoryIds": [
     "740d5519-da6a-4066-bde0-7e9cb9f06bc2"
   ],
-  "rut": "214567890013"
+  "rut": "214567890018"
 }
 
 ###
@@ -46,7 +46,7 @@ Content-Type: application/json
 
 {
   "name": "ACME Servicios Uruguay S.A.",
-  "rut": "214567890013"
+  "rut": "214567890018"
 }
 
 ###

@@ -9,4 +9,10 @@ export class GeoEntitySummaryDto {
 
   @ApiProperty()
   slug!: string;
+
+  @ApiProperty({ required: false, nullable: true })
+  latitude?: number | null;
+
+  @ApiProperty({ required: false, nullable: true })
+  longitude?: number | null;
 }

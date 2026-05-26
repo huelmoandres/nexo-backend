@@ -170,6 +170,62 @@ describe('EscrowService', () => {
     expect(repository.release).not.toHaveBeenCalled();
   });
 
+  it('processSilentAcceptance en gateway ejecuta payout si job cerrado', async () => {
+    const tx = {
+      job: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'job-1',
+          status: JobStatus.COMPLETED,
+          clientId: 'c1',
+        }),
+        update: vi.fn(),
+      },
+      escrowTransaction: {
+        findUnique: vi.fn().mockResolvedValue({ status: 'HELD' }),
+      },
+    };
+    prisma.$transaction.mockImplementation((fn: (t: typeof tx) => unknown) =>
+      fn(tx),
+    );
+    prisma.job.findUnique.mockResolvedValue({
+      id: 'job-1',
+      status: JobStatus.CLOSED,
+      clientId: 'c1',
+    });
+    await makeSvc({ mode: 'gateway', maxPayoutAttempts: 5 }).processSilentAcceptance(
+      'job-1',
+    );
+    expect(escrowPayout.executePayoutForJob).toHaveBeenCalled();
+  });
+
+  it('processSilentAcceptance gateway no ejecuta payout si job no cerrado', async () => {
+    const tx = {
+      job: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'job-1',
+          status: JobStatus.COMPLETED,
+          clientId: 'c1',
+        }),
+        update: vi.fn(),
+      },
+      escrowTransaction: {
+        findUnique: vi.fn().mockResolvedValue({ status: 'HELD' }),
+      },
+    };
+    prisma.$transaction.mockImplementation((fn: (t: typeof tx) => unknown) =>
+      fn(tx),
+    );
+    prisma.job.findUnique.mockResolvedValue({
+      id: 'job-1',
+      status: JobStatus.COMPLETED,
+      clientId: 'c1',
+    });
+    await makeSvc({ mode: 'gateway', maxPayoutAttempts: 5 }).processSilentAcceptance(
+      'job-1',
+    );
+    expect(escrowPayout.executePayoutForJob).not.toHaveBeenCalled();
+  });
+
   it('processSilentAcceptance no-op', async () => {
     const tx = {
       job: { findUnique: vi.fn().mockResolvedValue(null), update: vi.fn() },

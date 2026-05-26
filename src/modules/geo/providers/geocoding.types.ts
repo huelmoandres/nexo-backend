@@ -17,4 +17,5 @@ export interface GeocodingResult {
 export interface IGeocodingProvider {
   reverseGeocode(lat: number, lng: number): Promise<GeocodingResult | null>;
   forwardGeocode(address: string): Promise<GeocodingResult | null>;
+  geocodePlaceId(placeId: string): Promise<GeocodingResult | null>;
 }

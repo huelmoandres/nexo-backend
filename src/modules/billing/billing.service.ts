@@ -101,6 +101,12 @@ export class BillingService {
         'mercadopago not configured',
       );
     }
+    if (
+      dto.plan !== SubscriptionPlan.PRO &&
+      dto.plan !== SubscriptionPlan.BUSINESS
+    ) {
+      throw problemException('BILLING_PLAN_NOT_AVAILABLE');
+    }
     const subject = await this.resolveSubject(supabaseUid);
     const existing = await this.findSubscriptionForSubject(subject);
     const now = new Date();
@@ -237,17 +243,17 @@ export class BillingService {
       .toLowerCase();
     const isIpnLegacy = Boolean(queryTopic?.trim());
     const resourceId = isIpnLegacy
-      ? (queryId?.trim() ?? '')
-      : (queryDataId?.trim() ??
-        (body.data?.id != null ? String(body.data.id) : '') ??
-        queryId?.trim() ??
+      ? (queryId?.trim() || '')
+      : (queryDataId?.trim() ||
+        (body.data?.id != null ? String(body.data.id) : '') ||
+        queryId?.trim() ||
         '');
     if (!resourceId) {
       throw problemException('BILLING_WEBHOOK_INVALID');
     }
     if (!isIpnLegacy) {
       const signatureDataId =
-        queryDataId?.trim() ??
+        queryDataId?.trim() ||
         (body.data?.id != null ? String(body.data.id) : '');
       if (
         !signatureDataId ||

@@ -199,9 +199,6 @@ export class EscrowPayoutService {
       throw problemException('PAYOUT_RECEIPT_REQUIRED');
     }
     const escrow = await this.requireEscrowForManualConfirm(jobId);
-    if (escrow.payoutStatus === EscrowPayoutStatus.SUCCEEDED) {
-      throw problemException('PAYOUT_ALREADY_SUCCEEDED');
-    }
     try {
       assertPayoutReceiptKeyForEscrow(dto.receiptStorageKey, escrow.id);
     } catch {

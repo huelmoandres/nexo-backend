@@ -16,7 +16,7 @@ describe('RutRegistrationService', () => {
 
   it('resolveRut normaliza RUT válido', () => {
     const svc = new RutRegistrationService(makeRepo() as never);
-    expect(svc.resolveRut('000000000000')).toBe('000000000000');
+    expect(svc.resolveRut('214567890018')).toBe('214567890018');
   });
 
   it('resolveRut lanza RUT_INVALID si DGI falla', () => {
@@ -31,7 +31,7 @@ describe('RutRegistrationService', () => {
 
   it('resolveRequiredRut devuelve RUT normalizado válido', () => {
     const svc = new RutRegistrationService(makeRepo() as never);
-    expect(svc.resolveRequiredRut('000000000000')).toBe('000000000000');
+    expect(svc.resolveRequiredRut('214567890018')).toBe('214567890018');
   });
 
   it('assertRutAvailable lanza RUT_ALREADY_REGISTERED', async () => {
@@ -40,7 +40,7 @@ describe('RutRegistrationService', () => {
     });
     const svc = new RutRegistrationService(repo as never);
 
-    await expect(svc.assertRutAvailable('000000000000')).rejects.toBeInstanceOf(
+    await expect(svc.assertRutAvailable('214567890018')).rejects.toBeInstanceOf(
       ConflictException,
     );
   });
@@ -52,7 +52,7 @@ describe('RutRegistrationService', () => {
     const svc = new RutRegistrationService(repo as never);
 
     await expect(
-      svc.assertRutAvailable('000000000000'),
+      svc.assertRutAvailable('214567890018'),
     ).resolves.toBeUndefined();
   });
 });

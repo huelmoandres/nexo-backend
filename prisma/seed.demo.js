@@ -9,8 +9,11 @@
  * Coordenadas: Montevideo — barrio Pocitos (WGS84), acorde al catálogo `montevideo` / `pocitos`.
  */
 
+/** IDs fijos del catálogo (migración `20260521100000_plan_definitions`). */
+const CATALOG_PLAN_ID_FREE = 'a0000000-0000-4000-8000-000000000001';
+
 /** RUT válido DGI (documentación API). */
-const DEMO_COMPANY_RUT = '214567890013';
+const DEMO_COMPANY_RUT = '214567890018';
 
 /** Cuenta de cobro MP para E2E Postman / accept job (22 dígitos CVU válido). */
 const DEMO_PRO_PAYOUT_LABEL = 'Demo cobro MP';
@@ -122,13 +125,20 @@ async function ensureDemoProfessional(prisma, geoIds, categoryIds) {
         neighborhoodId: geoIds.neighborhoodId,
         kycStatus: 'VERIFIED',
         isAvailable: true,
-        categories: {
-          create: categoryIds.map((categoryId) => ({
-            category: { connect: { id: categoryId } },
-          })),
-        },
+        subscriptionPlan: 'FREE',
+        planDefinitionId: CATALOG_PLAN_ID_FREE,
       },
     });
+
+    if (categoryIds.length > 0) {
+      await tx.professionalCategory.createMany({
+        data: categoryIds.map((categoryId) => ({
+          professionalId: profile.id,
+          categoryId,
+        })),
+        skipDuplicates: true,
+      });
+    }
 
     await tx.$executeRawUnsafe(
       `INSERT INTO "ServiceArea" (
@@ -287,6 +297,8 @@ async function ensureDemoCompany(prisma, geoIds) {
         name: DEMO.companyAdmin.companyName,
         rut: DEMO_COMPANY_RUT,
         adminId: adminUser.id,
+        subscriptionPlan: 'FREE',
+        planDefinitionId: CATALOG_PLAN_ID_FREE,
         billingCountryId: geoIds.countryId,
         billingStateId: geoIds.stateId,
         billingCityId: geoIds.cityId,

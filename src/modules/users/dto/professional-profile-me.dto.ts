@@ -17,7 +17,7 @@ export class ProfessionalProfileMeDto {
   experienceYears?: number | null;
 
   @ApiPropertyOptional({
-    example: '214567890013',
+    example: '214567890018',
     description: 'RUT uruguayo normalizado (12 dígitos), si fue declarado.',
   })
   rut?: string | null;

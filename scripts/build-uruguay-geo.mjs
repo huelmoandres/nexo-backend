@@ -97,6 +97,7 @@ const MVD_BARRIOS = [
   'Peñarol',
   'Piedras Blancas',
   'Pocitos',
+  'Pocitos Nuevo',
   'Prado',
   'Punta Carretas',
   'Punta Gorda',
@@ -110,6 +111,20 @@ const MVD_BARRIOS = [
   'Villa Española',
   'Villa Muñoz',
   'Villa del Cerro',
+  'Santiago Vázquez',
+  'Pueblo ABC',
+  'Perez Castellanos',
+  'Pereira',
+  'Parque Miramar',
+  'Nuevo Ellauri',
+  'Manga Toledo',
+  'La Figurita',
+  'Jacinto Vera',
+  'Cruz de Montevideo',
+  'Casa de Torres',
+  'Brazo Oriental',
+  'Brazo Norte',
+  'Bañados de Carrasco',
 ];
 
 function slugify(name) {
@@ -121,6 +136,61 @@ function slugify(name) {
     .replace(/^-|-$/g, '');
 }
 
+/** Slugs de barrios de la capital; GeoNames los importa como PPL → no deben ser ciudad. */
+const MVD_BARRIO_SLUGS = new Set(MVD_BARRIOS.map((b) => slugify(b)));
+
+/** Lista única preservando orden (evita barrios duplicados en el JSON). */
+const MVD_BARRIOS_UNIQUE = [...new Set(MVD_BARRIOS)];
+
+/**
+ * Barrios de la ciudad Rocha (capital del depto), no del departamento entero.
+ * Lista parcial v1 (fuentes: Intendencia / turismorocha). Los 59 oficiales:
+ * https://sig.rocha.gub.uy/ckan/dataset/barrios-de-rocha (shapefile/KML).
+ */
+const ROCHA_CIUDAD_BARRIOS = [
+  'La Estiva',
+  'Lavalleja',
+  'Cecilio Costa',
+  'Londres',
+  'Merigo',
+  'General Artigas',
+  'Loreley',
+  'Progreso',
+  'Pérez',
+  'De León',
+  'El Molino',
+  'Bella Vista',
+  'Fomento',
+  'Jardines de Rocha',
+  'Carlitos',
+  'Barrio Brenner',
+  'Barrio La Alegría',
+  'Centro',
+];
+
+const ROCHA_CIUDAD_BARRIOS_UNIQUE = [...new Set(ROCHA_CIUDAD_BARRIOS)];
+
+/** deptSlug + citySlug → barrios estáticos en seed (null = solo placeholder Centro). */
+function seedBarriosForCity(deptSlug, citySlug) {
+  if (deptSlug === 'montevideo' && citySlug === 'montevideo') {
+    return MVD_BARRIOS_UNIQUE;
+  }
+  if (deptSlug === 'rocha' && citySlug === 'rocha') {
+    return ROCHA_CIUDAD_BARRIOS_UNIQUE;
+  }
+  return null;
+}
+
+function pushSeedNeighborhoods(neighborhoods, names, usedNbSlugs) {
+  for (const b of names) {
+    neighborhoods.push({
+      name: b,
+      slug: uniqueSlug(slugify(b), usedNbSlugs),
+      source: 'SEED',
+    });
+  }
+}
+
 function uniqueSlug(base, used) {
   let slug = base;
   let n = 2;
@@ -130,6 +200,13 @@ function uniqueSlug(base, used) {
   }
   used.add(slug);
   return slug;
+}
+
+/** En depto Montevideo, GeoNames registra barrios como poblaciones (PPL). */
+function isMontevideoBarrioAsCity(city, deptSlug) {
+  if (deptSlug !== 'montevideo') return false;
+  if (city.slug === 'montevideo') return false;
+  return MVD_BARRIO_SLUGS.has(slugify(city.name));
 }
 
 function parseUyTxt(content) {
@@ -186,18 +263,17 @@ function build() {
     const cities = [];
 
     for (const city of cityMap.values()) {
+      if (isMontevideoBarrioAsCity(city, dept.slug)) {
+        continue;
+      }
+
       const slug = uniqueSlug(city.slug || slugify(city.name), usedCitySlugs);
       const neighborhoods = [];
       const usedNbSlugs = new Set();
 
-      if (dept.slug === 'montevideo' && city.slug === 'montevideo') {
-        for (const b of MVD_BARRIOS) {
-          neighborhoods.push({
-            name: b,
-            slug: uniqueSlug(slugify(b), usedNbSlugs),
-            source: 'SEED',
-          });
-        }
+      const seedBarrios = seedBarriosForCity(dept.slug, city.slug);
+      if (seedBarrios) {
+        pushSeedNeighborhoods(neighborhoods, seedBarrios, usedNbSlugs);
       } else {
         neighborhoods.push({
           name: 'Centro',
@@ -215,6 +291,23 @@ function build() {
         source: city.source,
         neighborhoods,
       });
+    }
+
+    if (dept.slug === 'montevideo') {
+      const hasMontevideoCity = cities.some((c) => c.slug === 'montevideo');
+      if (!hasMontevideoCity) {
+        const usedNb = new Set();
+        const neighborhoods = [];
+        pushSeedNeighborhoods(neighborhoods, MVD_BARRIOS_UNIQUE, usedNb);
+        cities.unshift({
+          name: 'Montevideo',
+          slug: uniqueSlug('montevideo', usedCitySlugs),
+          latitude: -34.90328,
+          longitude: -56.18816,
+          source: 'SEED',
+          neighborhoods,
+        });
+      }
     }
 
     if (cities.length === 0) {

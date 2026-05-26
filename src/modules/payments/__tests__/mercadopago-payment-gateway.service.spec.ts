@@ -273,6 +273,34 @@ describe('MercadoPagoPaymentGatewayService', () => {
     });
   });
 
+  it('createPaymentLink incluye default_installments cuando está configurado', async () => {
+    const withDefault = new MercadoPagoPaymentGatewayService(
+      { ...cfg, mercadoPagoDefaultInstallments: 1 } as never,
+      mockFallback,
+    );
+    await withDefault.createPaymentLink({ jobId: 'j', amountCents: 100 });
+    expect(preferenceCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          payment_methods: { installments: 12, default_installments: 1 },
+        }),
+      }),
+    );
+  });
+
+  it('resolveApprovedPaymentFromMerchantOrder usa defaults de MP', async () => {
+    merchantOrderGet.mockResolvedValueOnce({
+      payments: [{ id: 42, status: 'approved' }],
+    });
+    const resolved = await gw.resolveApprovedPaymentFromMerchantOrder('mo-1');
+    expect(resolved).toEqual({
+      status: 'approved',
+      providerReference: '42',
+      amountCents: 0,
+      externalReference: undefined,
+    });
+  });
+
   it('resolveApprovedPaymentFromMerchantOrder null si no hay approved', async () => {
     merchantOrderGet.mockResolvedValueOnce({
       external_reference: 'job-uuid',

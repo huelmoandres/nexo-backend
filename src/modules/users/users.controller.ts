@@ -25,7 +25,9 @@ import { Role } from '@prisma/client';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './guards/roles.guard';
 import { CompanyCreatedResponseDto } from './dto/company-created-response.dto';
+import { CompanyEmployeeCreatedResponseDto } from './dto/company-employee-created-response.dto';
 import { CreateCompanyDto } from './dto/create-company.dto';
+import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { CreateProfessionalProfileDto } from './dto/create-professional-profile.dto';
 import { PresignDocumentDto } from './dto/presign-document.dto';
 import { PresignDocumentResponseDto } from './dto/presign-document-response.dto';
@@ -82,7 +84,7 @@ export class UsersController {
         company: {
           id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
           name: 'ACME Uruguay S.A.',
-          rut: '214567890013',
+          rut: '214567890018',
         },
         professionalProfile: {
           id: 'b2c3d4e5-f6a7-8901-bcde-f12345678901',
@@ -131,7 +133,7 @@ export class UsersController {
     examples: {
       default: {
         summary: 'Empresa válida',
-        value: { name: 'ACME Uruguay S.A.', rut: '214567890013' },
+        value: { name: 'ACME Uruguay S.A.', rut: '214567890018' },
       },
     },
   })
@@ -143,7 +145,7 @@ export class UsersController {
         company: {
           id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
           name: 'ACME Uruguay S.A.',
-          rut: '214567890013',
+          rut: '214567890018',
         },
       },
     },
@@ -172,6 +174,24 @@ export class UsersController {
       ipAddress: request.ip,
       userAgent: request.get('user-agent') ?? undefined,
     });
+  }
+
+  @Post('company/employees')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.COMPANY_ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Vincular operador con cuenta Nexos existente',
+    description:
+      'El email debe pertenecer a un usuario CLIENT sin empresa ni perfil profesional.',
+  })
+  @ApiBody({ type: CreateEmployeeDto })
+  @ApiResponse({ status: 201, type: CompanyEmployeeCreatedResponseDto })
+  async createCompanyEmployee(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateEmployeeDto,
+  ): Promise<CompanyEmployeeCreatedResponseDto> {
+    return this.usersService.createCompanyEmployee(user.sub, dto);
   }
 
   @Post('professional-profile')

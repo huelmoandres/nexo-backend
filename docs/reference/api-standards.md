@@ -120,6 +120,8 @@ Estos slugs son la **fuente de verdad**. Cualquier otro nombre de error para el 
 }
 ```
 
+**Cliente web:** cuando `code === VALIDATION_ERROR` y existe `errors`, mostrar el primer `constraints[0]` por campo (no solo el mensaje genérico del catálogo). En el frontend: `getMutationErrorResult` / `parseFieldErrors` en `@nexos/api`.
+
 ## 2.2 Slugs canónicos — Usuarios y perfiles
 
 | `code` | HTTP | Cuándo usar |

@@ -6,8 +6,18 @@ describe('GeoRepository', () => {
   const makeRepo = () => {
     const prisma = {
       country: { findFirst: vi.fn() },
-      state: { findMany: vi.fn(), findFirst: vi.fn(), upsert: vi.fn() },
-      city: { findMany: vi.fn(), findFirst: vi.fn(), upsert: vi.fn() },
+      state: {
+        findMany: vi.fn(),
+        findFirst: vi.fn(),
+        findUnique: vi.fn(),
+        upsert: vi.fn(),
+      },
+      city: {
+        findMany: vi.fn(),
+        findFirst: vi.fn(),
+        findUnique: vi.fn(),
+        upsert: vi.fn(),
+      },
       neighborhood: { findMany: vi.fn(), findFirst: vi.fn(), upsert: vi.fn() },
       $queryRaw: vi.fn(),
     };
@@ -87,6 +97,96 @@ describe('GeoRepository', () => {
     expect(prisma.state.upsert).toHaveBeenCalled();
     expect(prisma.city.upsert).toHaveBeenCalled();
     expect(prisma.neighborhood.upsert).toHaveBeenCalled();
+  });
+
+  it('findStateById y findCityById', async () => {
+    const { repo, prisma } = makeRepo();
+    prisma.state.findUnique = vi.fn().mockResolvedValue({ id: 's1' });
+    prisma.city.findUnique = vi.fn().mockResolvedValue({ id: 'ci1' });
+    await repo.findStateById('s1');
+    await repo.findCityById('ci1');
+    expect(prisma.state.findUnique).toHaveBeenCalled();
+    expect(prisma.city.findUnique).toHaveBeenCalled();
+  });
+
+  it('findStateByCountryAndParsedName por slug', async () => {
+    const { repo, prisma } = makeRepo();
+    prisma.state.findFirst.mockResolvedValue({
+      id: 's1',
+      name: 'Montevideo',
+      slug: 'montevideo',
+    });
+    const found = await repo.findStateByCountryAndParsedName('c1', 'Montevideo');
+    expect(found?.id).toBe('s1');
+    expect(prisma.state.findMany).not.toHaveBeenCalled();
+  });
+
+  it('findStateByCountryAndParsedName por nombre', async () => {
+    const { repo, prisma } = makeRepo();
+    prisma.state.findFirst.mockResolvedValue(null);
+    prisma.state.findMany.mockResolvedValue([
+      { id: 's2', name: 'Canelones', slug: 'canelones' },
+    ]);
+    const found = await repo.findStateByCountryAndParsedName('c1', 'Canelones');
+    expect(found?.id).toBe('s2');
+  });
+
+  it('findStateByCountryAndParsedName retorna null si no hay match', async () => {
+    const { repo, prisma } = makeRepo();
+    prisma.state.findFirst.mockResolvedValue(null);
+    prisma.state.findMany.mockResolvedValue([]);
+    const found = await repo.findStateByCountryAndParsedName('c1', 'Inexistente');
+    expect(found).toBeNull();
+  });
+
+  it('findNeighborhoodByCityAndParsedName por slug', async () => {
+    const { repo, prisma } = makeRepo();
+    prisma.neighborhood.findFirst.mockResolvedValue({ id: 'n1', name: 'Pocitos' });
+    const found = await repo.findNeighborhoodByCityAndParsedName('ci1', 'Pocitos');
+    expect(found?.id).toBe('n1');
+  });
+
+  it('findCityByStateAndParsedName por slug', async () => {
+    const { repo, prisma } = makeRepo();
+    prisma.city.findFirst.mockResolvedValue({ id: 'ci1', name: 'Montevideo' });
+    const found = await repo.findCityByStateAndParsedName('s1', 'Montevideo');
+    expect(found?.id).toBe('ci1');
+  });
+
+  it('findCityByStateAndParsedName por nombre normalizado', async () => {
+    const { repo, prisma } = makeRepo();
+    prisma.city.findFirst.mockResolvedValue(null);
+    prisma.city.findMany.mockResolvedValue([
+      { id: 'ci2', name: 'Ciudad Vieja', slug: 'ciudad-vieja' },
+    ]);
+    const found = await repo.findCityByStateAndParsedName('s1', 'Ciudad Vieja');
+    expect(found?.id).toBe('ci2');
+  });
+
+  it('findCityByStateAndParsedName retorna null si no hay match', async () => {
+    const { repo, prisma } = makeRepo();
+    prisma.city.findFirst.mockResolvedValue(null);
+    prisma.city.findMany.mockResolvedValue([]);
+    const found = await repo.findCityByStateAndParsedName('s1', 'Inexistente');
+    expect(found).toBeNull();
+  });
+
+  it('findNeighborhoodByCityAndParsedName por nombre normalizado', async () => {
+    const { repo, prisma } = makeRepo();
+    prisma.neighborhood.findFirst.mockResolvedValue(null);
+    prisma.neighborhood.findMany.mockResolvedValue([
+      { id: 'n2', name: 'Pocitos', slug: 'pocitos' },
+    ]);
+    const found = await repo.findNeighborhoodByCityAndParsedName('ci1', 'Pocitos');
+    expect(found?.id).toBe('n2');
+  });
+
+  it('findNeighborhoodByCityAndParsedName retorna null si no hay match', async () => {
+    const { repo, prisma } = makeRepo();
+    prisma.neighborhood.findFirst.mockResolvedValue(null);
+    prisma.neighborhood.findMany.mockResolvedValue([]);
+    const found = await repo.findNeighborhoodByCityAndParsedName('ci1', 'X');
+    expect(found).toBeNull();
   });
 
   it('searchByName combina y limita resultados', async () => {

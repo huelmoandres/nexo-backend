@@ -8,6 +8,28 @@ import type { GeoEntitySummaryDto } from './dto/geo-entity-summary.dto';
 import type { GeoTreeNodeDto } from './dto/geo-tree-node.dto';
 import { GeoRepository } from './geo.repository';
 
+function toOptionalCoord(value: unknown): number | null {
+  if (value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toEntitySummary(entity: {
+  id: string;
+  name: string;
+  slug: string;
+  latitude?: unknown;
+  longitude?: unknown;
+}): GeoEntitySummaryDto {
+  return {
+    id: entity.id,
+    name: entity.name,
+    slug: entity.slug,
+    latitude: toOptionalCoord(entity.latitude),
+    longitude: toOptionalCoord(entity.longitude),
+  };
+}
+
 @Injectable()
 export class GeoService {
   constructor(
@@ -45,22 +67,18 @@ export class GeoService {
   async listStates(): Promise<GeoEntitySummaryDto[]> {
     const country = await this.requireCountry();
     const states = await this.geoRepository.findStatesByCountryId(country.id);
-    return states.map((s) => ({ id: s.id, name: s.name, slug: s.slug }));
+    return states.map(toEntitySummary);
   }
 
   async listCities(stateId: string): Promise<GeoEntitySummaryDto[]> {
     const cities = await this.geoRepository.findCitiesByStateId(stateId);
-    return cities.map((c) => ({ id: c.id, name: c.name, slug: c.slug }));
+    return cities.map(toEntitySummary);
   }
 
   async listNeighborhoods(cityId: string): Promise<GeoEntitySummaryDto[]> {
     const neighborhoods =
       await this.geoRepository.findNeighborhoodsByCityId(cityId);
-    return neighborhoods.map((n) => ({
-      id: n.id,
-      name: n.name,
-      slug: n.slug,
-    }));
+    return neighborhoods.map(toEntitySummary);
   }
 
   async search(

@@ -6,7 +6,7 @@ Ejecutar antes de merge de cambios en `entitlements` o límites de zonas.
 
 - [ ] `npm run test` — specs en `src/modules/entitlements/__tests__/` y `plan-entitlements.schema.spec.ts`
 - [ ] `npm run test:e2e` — `admin-plans.e2e-spec.ts`
-- [ ] `npm run test:cov:strict` — 100% en archivos no excluidos del módulo
+- [ ] `npm run test:cov` — 100% en archivos no excluidos del módulo
 
 ## Checklist manual
 

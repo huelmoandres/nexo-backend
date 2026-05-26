@@ -33,8 +33,17 @@ describe('GeoResolveService', () => {
   const makeRepo = (overrides: Record<string, unknown> = {}) => ({
     findCountryByIso: vi.fn().mockResolvedValue(country),
     findStateByCountryAndSlug: vi.fn().mockResolvedValue(state),
+    findStateByCountryAndParsedName: vi.fn().mockResolvedValue(state),
+    findStateById: vi.fn().mockResolvedValue(state),
     findCityByStateAndSlug: vi.fn().mockResolvedValue(city),
+    findCityByStateAndParsedName: vi.fn().mockResolvedValue(city),
+    findCityById: vi.fn().mockResolvedValue({ ...city, state }),
     findNeighborhoodByCityAndSlug: vi.fn().mockResolvedValue(null),
+    findNeighborhoodByCityAndParsedName: vi.fn().mockResolvedValue(null),
+    findNeighborhoodsByCityId: vi.fn().mockResolvedValue([
+      { id: 'n-centro', name: 'Centro', slug: 'centro' },
+      { id: 'n-pocitos', name: 'Pocitos', slug: 'pocitos' },
+    ]),
     upsertNeighborhood: vi.fn().mockResolvedValue({
       id: 'n1',
       name: 'Pocitos',
@@ -48,6 +57,7 @@ describe('GeoResolveService', () => {
   const makeGeocoding = (overrides: Record<string, unknown> = {}) => ({
     forwardGeocode: vi.fn().mockResolvedValue(geocoded),
     reverseGeocode: vi.fn().mockResolvedValue(geocoded),
+    geocodePlaceId: vi.fn().mockResolvedValue(geocoded),
     ...overrides,
   });
 
@@ -57,6 +67,12 @@ describe('GeoResolveService', () => {
     resolveCachePrefix: 'geo:resolve:',
     resolveCacheTtlSeconds: 604800,
     countryIsoCode: 'UY',
+    uruguayBounds: {
+      minLat: -35.2,
+      maxLat: -30.05,
+      minLng: -57.85,
+      maxLng: -53.07,
+    },
   });
 
   const makeService = (
@@ -120,9 +136,9 @@ describe('GeoResolveService', () => {
     expect(result.reason).toBe('NOT_FOUND');
   });
 
-  it('no upsert barrio si ya existe en catálogo', async () => {
+  it('no upsertea barrio si ya existe en catálogo', async () => {
     const { service, repo } = makeService({
-      findNeighborhoodByCityAndSlug: vi.fn().mockResolvedValue({
+      findNeighborhoodByCityAndParsedName: vi.fn().mockResolvedValue({
         id: 'n-existing',
         name: 'Pocitos',
         slug: 'pocitos',
@@ -134,13 +150,15 @@ describe('GeoResolveService', () => {
     expect(result.geo?.neighborhoodId).toBe('n-existing');
   });
 
-  it('resolved true con forward geocode y crea barrio', async () => {
+  it('resolved true con forward geocode y crea barrio si no está en catálogo', async () => {
     const { service, repo, redis } = makeService();
     const result = await service.resolve({
       addressLine: 'Pocitos, Montevideo',
     });
     expect(result.resolved).toBe(true);
     expect(result.geo?.stateId).toBe('s1');
+    expect(result.parsed?.neighborhoodName).toBe('Pocitos');
+    expect(repo.findNeighborhoodByCityAndParsedName).toHaveBeenCalled();
     expect(repo.upsertNeighborhood).toHaveBeenCalled();
     expect(redis.del).toHaveBeenCalledWith('geo:tree:uruguay');
   });
@@ -149,7 +167,67 @@ describe('GeoResolveService', () => {
     const { service, geocoding } = makeService();
     await service.resolve({ latitude: -34.9, longitude: -56.16 });
     expect(geocoding.forwardGeocode).not.toHaveBeenCalled();
+    expect(geocoding.geocodePlaceId).not.toHaveBeenCalled();
     expect(geocoding.reverseGeocode).toHaveBeenCalledWith(-34.9, -56.16);
+  });
+
+  it('con placeId ignora stateId/cityId previos de la UI (Rivera vs Rocha)', async () => {
+    const riveraState = { id: 's-rivera', name: 'Rivera', slug: 'rivera' };
+    const riveraCity = {
+      id: 'ci-rivera',
+      name: 'Rivera',
+      slug: 'rivera',
+      state: riveraState,
+    };
+    const riveraGeocoded = {
+      latitude: -31.0,
+      longitude: -55.55,
+      formattedAddress: 'Florencio Sánchez, 40000 Rivera, Departamento de Rivera, Uruguay',
+      placeId: 'ChIJ_rivera',
+      components: [
+        {
+          longName: 'Departamento de Rivera',
+          shortName: 'Rivera',
+          types: ['administrative_area_level_1'],
+        },
+        { longName: 'Rivera', shortName: 'Rivera', types: ['locality'] },
+        { longName: 'Uruguay', shortName: 'UY', types: ['country'] },
+      ],
+    };
+    const { service, repo } = makeService(
+      {
+        findStateByCountryAndParsedName: vi.fn().mockResolvedValue(riveraState),
+        findCityByStateAndParsedName: vi.fn().mockResolvedValue(riveraCity),
+        findCityById: vi.fn().mockResolvedValue({
+          id: 'ci-rocha',
+          name: 'Rocha',
+          slug: 'rocha',
+          state: { id: 's-rocha', name: 'Rocha', slug: 'rocha' },
+        }),
+      },
+      { geocodePlaceId: vi.fn().mockResolvedValue(riveraGeocoded) },
+    );
+    const result = await service.resolve({
+      placeId: 'ChIJ_rivera',
+      stateId: 's-rocha',
+      cityId: 'ci-rocha',
+    });
+    expect(result.resolved).toBe(true);
+    expect(result.geo?.stateId).toBe('s-rivera');
+    expect(result.geo?.cityId).toBe('ci-rivera');
+    expect(repo.findCityById).not.toHaveBeenCalled();
+  });
+
+  it('prioriza geocodePlaceId sobre addressLine', async () => {
+    const { service, geocoding } = makeService();
+    const result = await service.resolve({
+      placeId: 'ChIJ_test_pocitos',
+      addressLine: 'otra dirección',
+    });
+    expect(geocoding.geocodePlaceId).toHaveBeenCalledWith('ChIJ_test_pocitos');
+    expect(geocoding.forwardGeocode).not.toHaveBeenCalled();
+    expect(result.resolved).toBe(true);
+    expect(result.placeId).toBe('ChIJ_test_pocitos');
   });
 
   it('NOT_FOUND solo con GPS deja formattedAddress null', async () => {
@@ -188,8 +266,7 @@ describe('GeoResolveService', () => {
 
   it('INCOMPLETE_COMPONENTS incluye coordenadas de Google en respuesta', async () => {
     const { service } = makeService({
-      findStateByCountryAndSlug: vi.fn().mockResolvedValue(null),
-      upsertState: vi.fn().mockResolvedValue(null),
+      findStateByCountryAndParsedName: vi.fn().mockResolvedValue(null),
     });
     const incomplete = {
       ...geocoded,
@@ -206,23 +283,21 @@ describe('GeoResolveService', () => {
     expect(result.longitude).toBe(-56.16);
   });
 
-  it('INCOMPLETE_COMPONENTS si no hay departamento', async () => {
-    const { service } = makeService({
-      findStateByCountryAndSlug: vi.fn().mockResolvedValue(null),
-      upsertState: vi.fn(),
-    });
+  it('INCOMPLETE_COMPONENTS si no hay departamento en catálogo', async () => {
     const incomplete = {
       ...geocoded,
       components: geocoded.components.filter(
         (c) => !c.types.includes('administrative_area_level_1'),
       ),
     };
-    const result = await makeService(
-      {},
+    const { service, repo } = makeService(
+      { findStateByCountryAndParsedName: vi.fn().mockResolvedValue(null) },
       { forwardGeocode: vi.fn().mockResolvedValue(incomplete) },
-    ).service.resolve({ addressLine: 'x' });
+    );
+    const result = await service.resolve({ addressLine: 'x' });
     expect(result.resolved).toBe(false);
     expect(result.reason).toBe('INCOMPLETE_COMPONENTS');
+    expect(repo.upsertState).not.toHaveBeenCalled();
   });
 
   it('parsea city desde administrative_area_level_3', async () => {
@@ -243,7 +318,7 @@ describe('GeoResolveService', () => {
     };
     const { service } = makeService(
       {
-        findCityByStateAndSlug: vi.fn().mockResolvedValue(city),
+        findCityByStateAndParsedName: vi.fn().mockResolvedValue(city),
       },
       { forwardGeocode: vi.fn().mockResolvedValue(level3) },
     );
@@ -252,7 +327,7 @@ describe('GeoResolveService', () => {
     expect(result.geo?.cityId).toBe('ci1');
   });
 
-  it('parsea city desde administrative_area_level_2 y barrio sublocality', async () => {
+  it('resolved true sin cityId si la localidad no está en catálogo', async () => {
     const alt = {
       ...geocoded,
       components: [
@@ -275,23 +350,21 @@ describe('GeoResolveService', () => {
     };
     const { service, repo } = makeService(
       {
-        findStateByCountryAndSlug: vi.fn().mockResolvedValue({
+        findStateByCountryAndParsedName: vi.fn().mockResolvedValue({
           id: 's2',
           name: 'Canelones',
           slug: 'canelones',
         }),
-        findCityByStateAndSlug: vi.fn().mockResolvedValue(null),
-        upsertCity: vi.fn().mockResolvedValue({
-          id: 'ci2',
-          name: 'Ciudad Costa',
-          slug: 'ciudad-costa',
-        }),
+        findCityByStateAndParsedName: vi.fn().mockResolvedValue(null),
       },
       { forwardGeocode: vi.fn().mockResolvedValue(alt) },
     );
     const result = await service.resolve({ addressLine: 'Shangrila' });
     expect(result.resolved).toBe(true);
-    expect(repo.upsertCity).toHaveBeenCalled();
+    expect(result.geo?.cityId).toBeNull();
+    expect(repo.upsertCity).not.toHaveBeenCalled();
+    expect(repo.upsertNeighborhood).not.toHaveBeenCalled();
+    expect(result.geo?.neighborhoodId).toBeNull();
   });
 
   it('resolved true sin barrio si no hay neighborhood en components', async () => {
@@ -363,12 +436,10 @@ describe('GeoResolveService', () => {
     expect(result.reason).toBe('NOT_FOUND');
   });
 
-  it('upsert state y city cuando no existen', async () => {
+  it('no upsertea state ni city cuando no existen en catálogo', async () => {
     const { service, repo } = makeService({
-      findStateByCountryAndSlug: vi.fn().mockResolvedValue(null),
-      findCityByStateAndSlug: vi.fn().mockResolvedValue(null),
-      upsertState: vi.fn().mockResolvedValue(state),
-      upsertCity: vi.fn().mockResolvedValue(city),
+      findStateByCountryAndParsedName: vi.fn().mockResolvedValue(null),
+      findCityByStateAndParsedName: vi.fn().mockResolvedValue(null),
       findNeighborhoodByCityAndSlug: vi.fn().mockResolvedValue({
         id: 'n1',
         name: 'Pocitos',
@@ -376,11 +447,39 @@ describe('GeoResolveService', () => {
       }),
     });
     const result = await service.resolve({ addressLine: 'Pocitos' });
-    expect(result.resolved).toBe(true);
-    expect(result.created.city).toBe(true);
-    expect(repo.upsertState).toHaveBeenCalled();
-    expect(repo.upsertCity).toHaveBeenCalled();
+    expect(result.resolved).toBe(false);
+    expect(result.reason).toBe('INCOMPLETE_COMPONENTS');
+    expect(repo.upsertState).not.toHaveBeenCalled();
+    expect(repo.upsertCity).not.toHaveBeenCalled();
     expect(repo.upsertNeighborhood).not.toHaveBeenCalled();
+  });
+
+  it('matchea Departamento de Montevideo contra catálogo Montevideo', async () => {
+    const deptMontevideo = {
+      ...geocoded,
+      components: [
+        {
+          longName: 'Departamento de Montevideo',
+          shortName: 'Departamento de Montevideo',
+          types: ['administrative_area_level_1'],
+        },
+        { longName: 'Montevideo', shortName: 'MV', types: ['locality'] },
+      ],
+    };
+    const { service, repo } = makeService(
+      {},
+      { forwardGeocode: vi.fn().mockResolvedValue(deptMontevideo) },
+    );
+    const result = await service.resolve({
+      addressLine: 'Rafael Pastoriza 1547, Montevideo',
+    });
+    expect(result.resolved).toBe(true);
+    expect(repo.findStateByCountryAndParsedName).toHaveBeenCalledWith(
+      'c1',
+      'Departamento de Montevideo',
+    );
+    expect(repo.upsertState).not.toHaveBeenCalled();
+    expect(repo.upsertCity).not.toHaveBeenCalled();
   });
 
   it('usa geocoded si preferCoordinates sin longitud completa', async () => {
@@ -472,5 +571,277 @@ describe('GeoResolveService', () => {
     );
     const result = await service.resolve({ addressLine: 'x' });
     expect(result.resolved).toBe(false);
+  });
+
+  it('OUTSIDE_URUGUAY si coords están fuera del bbox', async () => {
+    const { service, geocoding } = makeService();
+    const result = await service.resolve({
+      latitude: -34.6,
+      longitude: -58.38,
+    });
+    expect(result.resolved).toBe(false);
+    expect(result.reason).toBe('OUTSIDE_URUGUAY');
+    expect(geocoding.reverseGeocode).not.toHaveBeenCalled();
+  });
+
+  it('matchea La Estiva como barrio de ciudad Rocha (capital)', async () => {
+    const estivaGeocoded = {
+      latitude: -34.37,
+      longitude: -54.33,
+      formattedAddress: 'La Estiva, Rocha',
+      placeId: 'place-estiva',
+      components: [
+        {
+          longName: 'Rocha',
+          shortName: 'Rocha',
+          types: ['administrative_area_level_1'],
+        },
+        { longName: 'Rocha', shortName: 'Rocha', types: ['locality'] },
+        {
+          longName: 'La Estiva',
+          shortName: 'La Estiva',
+          types: ['neighborhood', 'political'],
+        },
+        { longName: 'Uruguay', shortName: 'UY', types: ['country'] },
+      ],
+    };
+    const rochaState = { id: 's-rocha', name: 'Rocha', slug: 'rocha' };
+    const rochaCity = {
+      id: 'ci-rocha',
+      name: 'Rocha',
+      slug: 'rocha',
+      state: rochaState,
+    };
+    const { service, repo } = makeService(
+      {
+        findStateByCountryAndParsedName: vi.fn().mockResolvedValue(rochaState),
+        findCityByStateAndParsedName: vi.fn().mockResolvedValue(rochaCity),
+        findCityById: vi.fn().mockResolvedValue(rochaCity),
+        findNeighborhoodByCityAndParsedName: vi.fn().mockResolvedValue({
+          id: 'n-estiva',
+          name: 'La Estiva',
+          slug: 'la-estiva',
+        }),
+        findNeighborhoodsByCityId: vi.fn().mockResolvedValue([
+          { id: 'n-estiva', name: 'La Estiva', slug: 'la-estiva' },
+          { id: 'n-centro', name: 'Centro', slug: 'centro' },
+        ]),
+      },
+      { reverseGeocode: vi.fn().mockResolvedValue(estivaGeocoded) },
+    );
+    const result = await service.resolve({
+      latitude: -34.37,
+      longitude: -54.33,
+      preferCoordinates: true,
+    });
+    expect(result.resolved).toBe(true);
+    expect(result.geo?.cityId).toBe('ci-rocha');
+    expect(result.geo?.neighborhoodId).toBe('n-estiva');
+    expect(repo.upsertNeighborhood).not.toHaveBeenCalled();
+  });
+
+  it('no crea barrio si Google repite el nombre de la ciudad (ej. La Paloma, Rocha)', async () => {
+    const laPalomaGeocoded = {
+      latitude: -34.662,
+      longitude: -54.156,
+      formattedAddress: 'La Paloma, Rocha',
+      placeId: 'place-lp',
+      components: [
+        {
+          longName: 'Rocha',
+          shortName: 'Rocha',
+          types: ['administrative_area_level_1'],
+        },
+        { longName: 'La Paloma', shortName: 'La Paloma', types: ['locality'] },
+        {
+          longName: 'La Paloma',
+          shortName: 'La Paloma',
+          types: ['neighborhood', 'political'],
+        },
+        { longName: 'Uruguay', shortName: 'UY', types: ['country'] },
+      ],
+    };
+    const rochaState = { id: 's-rocha', name: 'Rocha', slug: 'rocha' };
+    const laPalomaCity = {
+      id: 'ci-lp',
+      name: 'La Paloma',
+      slug: 'la-paloma',
+      state: rochaState,
+    };
+    const { service, repo } = makeService(
+      {
+        findStateByCountryAndParsedName: vi.fn().mockResolvedValue(rochaState),
+        findCityByStateAndParsedName: vi.fn().mockResolvedValue(laPalomaCity),
+        findCityById: vi.fn().mockResolvedValue(laPalomaCity),
+        findNeighborhoodsByCityId: vi.fn().mockResolvedValue([
+          { id: 'n-centro', name: 'Centro', slug: 'centro' },
+        ]),
+      },
+      { reverseGeocode: vi.fn().mockResolvedValue(laPalomaGeocoded) },
+    );
+    const result = await service.resolve({
+      latitude: -34.662,
+      longitude: -54.156,
+      preferCoordinates: true,
+    });
+    expect(result.resolved).toBe(true);
+    expect(result.geo?.cityId).toBe('ci-lp');
+    expect(result.parsed?.neighborhoodName).toBe('La Paloma');
+    expect(repo.upsertNeighborhood).not.toHaveBeenCalled();
+    expect(result.geo?.neighborhoodId).toBeNull();
+  });
+
+  it('resolved false si geocoding devuelve coordenadas fuera de Uruguay', async () => {
+    const outsideUy = {
+      ...geocoded,
+      latitude: -34.9,
+      longitude: -50,
+    };
+    const { service, geocoding } = makeService(
+      {},
+      { reverseGeocode: vi.fn().mockResolvedValue(outsideUy) },
+    );
+    const result = await service.resolve({ latitude: -34.9, longitude: -56.16 });
+    expect(result.resolved).toBe(false);
+    expect(result.reason).toBe('OUTSIDE_URUGUAY');
+    expect(geocoding.reverseGeocode).toHaveBeenCalled();
+  });
+
+  it('no upsertea barrio si la ciudad solo tiene un barrio en catálogo', async () => {
+    const { service, repo } = makeService({
+      findNeighborhoodsByCityId: vi.fn().mockResolvedValue([
+        { id: 'n-only', name: 'Centro', slug: 'centro' },
+      ]),
+    });
+    const result = await service.resolve({ addressLine: 'Pocitos' });
+    expect(result.geo?.neighborhoodId).toBeNull();
+    expect(repo.upsertNeighborhood).not.toHaveBeenCalled();
+  });
+
+  it('aplica stateId hint cuando no hay cityId previo', async () => {
+    const tacuarembo = {
+      id: 's-tac',
+      name: 'Tacuarembó',
+      slug: 'tacuarembo',
+      countryId: 'c1',
+    };
+    const { service, repo } = makeService({
+      findStateById: vi.fn().mockResolvedValue(tacuarembo),
+      findStateByCountryAndParsedName: vi.fn().mockResolvedValue(null),
+      findCityByStateAndParsedName: vi.fn().mockResolvedValue(city),
+    });
+    const result = await service.resolve({
+      latitude: -34.9,
+      longitude: -56.16,
+      stateId: 's-tac',
+    });
+    expect(result.resolved).toBe(true);
+    expect(result.geo?.stateId).toBe('s-tac');
+    expect(repo.findStateById).toHaveBeenCalledWith('s-tac');
+  });
+
+  it('aplica cityId hint cuando el país coincide', async () => {
+    const hintedCity = {
+      id: 'ci-hint',
+      name: 'Salto',
+      slug: 'salto',
+      state: { id: 's-salto', name: 'Salto', slug: 'salto', countryId: 'c1' },
+    };
+    const { service, repo } = makeService({
+      findCityById: vi.fn().mockResolvedValue(hintedCity),
+      findStateById: vi.fn().mockResolvedValue(hintedCity.state),
+    });
+    const result = await service.resolve({
+      latitude: -34.9,
+      longitude: -56.16,
+      cityId: 'ci-hint',
+      stateId: 's-salto',
+    });
+    expect(result.geo?.cityId).toBe('ci-hint');
+    expect(result.geo?.stateId).toBe('s-salto');
+    expect(repo.findCityById).toHaveBeenCalledWith('ci-hint');
+  });
+
+  it('ignora stateId hint de otro país', async () => {
+    const foreignState = {
+      id: 's-ar',
+      name: 'Buenos Aires',
+      slug: 'buenos-aires',
+      countryId: 'c-ar',
+    };
+    const { service, repo } = makeService({
+      findStateById: vi.fn().mockResolvedValue(foreignState),
+    });
+    const result = await service.resolve({
+      latitude: -34.9,
+      longitude: -56.16,
+      stateId: 's-ar',
+    });
+    expect(result.geo?.stateId).toBe('s1');
+    expect(repo.findStateById).toHaveBeenCalledWith('s-ar');
+  });
+
+  it('ignora cityId hint de otro país', async () => {
+    const foreignCity = {
+      id: 'ci-ar',
+      name: 'Buenos Aires',
+      slug: 'buenos-aires',
+      state: { id: 's-ar', name: 'BA', slug: 'ba', countryId: 'c-ar' },
+    };
+    const { service, repo } = makeService({
+      findCityById: vi.fn().mockResolvedValue(foreignCity),
+      findStateByCountryAndParsedName: vi.fn().mockResolvedValue(state),
+      findCityByStateAndParsedName: vi.fn().mockResolvedValue(city),
+    });
+    const result = await service.resolve({
+      latitude: -34.9,
+      longitude: -56.16,
+      cityId: 'ci-ar',
+    });
+    expect(result.geo?.cityId).toBe('ci1');
+    expect(repo.findCityById).toHaveBeenCalledWith('ci-ar');
+  });
+
+  it('descarta neighborhood IM sectional en parseComponents', async () => {
+    const imSectional = {
+      ...geocoded,
+      components: [
+        {
+          longName: 'Montevideo',
+          shortName: 'MO',
+          types: ['administrative_area_level_1'],
+        },
+        { longName: 'Montevideo', shortName: 'MV', types: ['locality'] },
+        { longName: 'CH', shortName: 'CH', types: ['neighborhood'] },
+      ],
+    };
+    const { service } = makeService(
+      {},
+      { forwardGeocode: vi.fn().mockResolvedValue(imSectional) },
+    );
+    const result = await service.resolve({ addressLine: 'CH, Montevideo' });
+    expect(result.parsed?.neighborhoodName).toBeNull();
+    expect(result.geo?.neighborhoodId).toBeNull();
+  });
+
+  it('crea barrio desde Google aunque no haya hint del cliente', async () => {
+    const noBarrio = {
+      ...geocoded,
+      components: geocoded.components.filter(
+        (c) => !c.types.includes('neighborhood'),
+      ),
+    };
+    const { service, repo } = makeService(
+      {},
+      { forwardGeocode: vi.fn().mockResolvedValue(noBarrio) },
+    );
+    const result = await service.resolve({
+      addressLine: 'Francisco de los Santos 208, Rocha',
+      cityId: 'ci1',
+    });
+    expect(result.resolved).toBe(true);
+    expect(result.created.neighborhood).toBe(false);
+    expect(repo.upsertNeighborhood).not.toHaveBeenCalled();
+    expect(result.geo?.neighborhoodId).toBeNull();
   });
 });

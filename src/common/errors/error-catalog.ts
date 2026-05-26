@@ -158,6 +158,16 @@ export const ERRORS = {
     title: 'Rol no compatible con registro de empresa',
     slug: 'company-onboarding-role-conflict',
   },
+  EMPLOYEE_NOT_REGISTERED: {
+    status: 404,
+    title: 'Operador sin cuenta Nexos',
+    slug: 'employee-not-registered',
+  },
+  EMPLOYEE_LINK_CONFLICT: {
+    status: 409,
+    title: 'No se puede vincular operador',
+    slug: 'employee-link-conflict',
+  },
   DGI_VERIFICATION_NO_RUT: {
     status: 400,
     title: 'RUT requerido para verificación DGI',

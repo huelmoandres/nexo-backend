@@ -143,10 +143,10 @@ export class PaymentsService {
     // IPN legacy (notification_url): ?id=&topic= — MP no valida HMAC con secret.
     const isIpnLegacy = Boolean(queryTopic?.trim());
     const resourceId = isIpnLegacy
-      ? (queryId?.trim() ?? '')
-      : (queryDataId?.trim() ??
-        (body.data?.id != null ? String(body.data.id) : '') ??
-        queryId?.trim() ??
+      ? (queryId?.trim() || '')
+      : (queryDataId?.trim() ||
+        (body.data?.id != null ? String(body.data.id) : '') ||
+        queryId?.trim() ||
         '');
     if (!resourceId) {
       this.logger.warn(
@@ -161,7 +161,7 @@ export class PaymentsService {
       );
     } else {
       const signatureDataId =
-        queryDataId?.trim() ??
+        queryDataId?.trim() ||
         (body.data?.id != null ? String(body.data.id) : '');
       if (
         !signatureDataId ||

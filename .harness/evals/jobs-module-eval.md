@@ -6,7 +6,7 @@ Ejecutar antes de merge de `jobs`, `escrow` o cambios en modelo `Job`.
 
 - [ ] `npm run test` — `src/modules/jobs/__tests__/`
 - [ ] `npm run test:e2e` — `jobs.e2e-spec.ts`
-- [ ] `npm run test:cov:strict`
+- [ ] `npm run test:cov`
 
 ## Postman
 

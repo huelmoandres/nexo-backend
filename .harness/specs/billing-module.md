@@ -76,6 +76,6 @@ Prefijo global: `/api`.
 
 ## 8. Tests
 
-- Unit: 100% en `src/modules/billing/**` (`test:cov:strict`).
+- Unit: 100% en `src/modules/billing/**` (`test:cov`).
 - Fixtures webhook: `test/fixtures/mp-subscription-webhooks/` (capturas sandbox reales).
 - E2E CI: `billing.repository.e2e-spec.ts` (sin webhook simulado como criterio de merge).

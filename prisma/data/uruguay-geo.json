@@ -7854,86 +7854,11 @@
           ]
         },
         {
-          "name": "Villa Muñoz",
-          "slug": "villa-munoz",
-          "latitude": -34.88333,
-          "longitude": -56.18333,
-          "externalId": "3439593",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Villa Española",
-          "slug": "villa-espanola",
-          "latitude": -34.88333,
-          "longitude": -56.15,
-          "externalId": "3439594",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Villa Dolores",
-          "slug": "villa-dolores",
-          "latitude": -34.9,
-          "longitude": -56.15,
-          "externalId": "3439596",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Villa del Cerro",
-          "slug": "villa-del-cerro",
-          "latitude": -34.89441,
-          "longitude": -56.25292,
-          "externalId": "3439597",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
           "name": "Victoria",
           "slug": "victoria",
           "latitude": -34.85945,
           "longitude": -56.2391,
           "externalId": "3439608",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Unión",
-          "slug": "union",
-          "latitude": -34.87056,
-          "longitude": -56.13361,
-          "externalId": "3439708",
           "source": "GEONAMES",
           "neighborhoods": [
             {
@@ -7974,66 +7899,6 @@
           ]
         },
         {
-          "name": "Sayago",
-          "slug": "sayago",
-          "latitude": -34.83333,
-          "longitude": -56.23333,
-          "externalId": "3440102",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Santiago Vázquez",
-          "slug": "santiago-vazquez",
-          "latitude": -34.79028,
-          "longitude": -56.35,
-          "externalId": "3440541",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Reducto",
-          "slug": "reducto",
-          "latitude": -34.88333,
-          "longitude": -56.18333,
-          "externalId": "3440844",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Punta Carretas",
-          "slug": "punta-carretas",
-          "latitude": -34.92278,
-          "longitude": -56.15972,
-          "externalId": "3440942",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
           "name": "Pueblo Ferrocarril",
           "slug": "pueblo-ferrocarril",
           "latitude": -34.8,
@@ -8049,101 +7914,11 @@
           ]
         },
         {
-          "name": "Conciliación",
-          "slug": "conciliacion",
-          "latitude": -34.83333,
-          "longitude": -56.23333,
-          "externalId": "3440958",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Pocitos",
-          "slug": "pocitos",
-          "latitude": -34.90972,
-          "longitude": -56.15222,
-          "externalId": "3441011",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Piedras Blancas",
-          "slug": "piedras-blancas",
-          "latitude": -34.82861,
-          "longitude": -56.13944,
-          "externalId": "3441122",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Peñarol",
-          "slug": "penarol",
-          "latitude": -34.81667,
-          "longitude": -56.18333,
-          "externalId": "3441205",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Paso Molino",
-          "slug": "paso-molino",
-          "latitude": -34.85706,
-          "longitude": -56.21919,
-          "externalId": "3441262",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
           "name": "Pajas Blancas",
           "slug": "pajas-blancas",
           "latitude": -34.80167,
           "longitude": -56.33417,
           "externalId": "3480825",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Nuevo París",
-          "slug": "nuevo-paris",
-          "latitude": -34.85,
-          "longitude": -56.23333,
-          "externalId": "3441475",
           "source": "GEONAMES",
           "neighborhoods": [
             {
@@ -8397,6 +8172,11 @@
               "source": "SEED"
             },
             {
+              "name": "Pocitos Nuevo",
+              "slug": "pocitos-nuevo",
+              "source": "SEED"
+            },
+            {
               "name": "Prado",
               "slug": "prado",
               "source": "SEED"
@@ -8460,35 +8240,75 @@
               "name": "Villa del Cerro",
               "slug": "villa-del-cerro",
               "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Maroñas",
-          "slug": "maronas",
-          "latitude": -34.85,
-          "longitude": -56.11667,
-          "externalId": "3441797",
-          "source": "GEONAMES",
-          "neighborhoods": [
+            },
             {
-              "name": "Centro",
-              "slug": "centro",
+              "name": "Santiago Vázquez",
+              "slug": "santiago-vazquez",
               "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Manga",
-          "slug": "manga",
-          "latitude": -34.81667,
-          "longitude": -56.1,
-          "externalId": "3441853",
-          "source": "GEONAMES",
-          "neighborhoods": [
+            },
             {
-              "name": "Centro",
-              "slug": "centro",
+              "name": "Pueblo ABC",
+              "slug": "pueblo-abc",
+              "source": "SEED"
+            },
+            {
+              "name": "Perez Castellanos",
+              "slug": "perez-castellanos",
+              "source": "SEED"
+            },
+            {
+              "name": "Pereira",
+              "slug": "pereira",
+              "source": "SEED"
+            },
+            {
+              "name": "Parque Miramar",
+              "slug": "parque-miramar",
+              "source": "SEED"
+            },
+            {
+              "name": "Nuevo Ellauri",
+              "slug": "nuevo-ellauri",
+              "source": "SEED"
+            },
+            {
+              "name": "Manga Toledo",
+              "slug": "manga-toledo",
+              "source": "SEED"
+            },
+            {
+              "name": "La Figurita",
+              "slug": "la-figurita",
+              "source": "SEED"
+            },
+            {
+              "name": "Jacinto Vera",
+              "slug": "jacinto-vera",
+              "source": "SEED"
+            },
+            {
+              "name": "Cruz de Montevideo",
+              "slug": "cruz-de-montevideo",
+              "source": "SEED"
+            },
+            {
+              "name": "Casa de Torres",
+              "slug": "casa-de-torres",
+              "source": "SEED"
+            },
+            {
+              "name": "Brazo Oriental",
+              "slug": "brazo-oriental",
+              "source": "SEED"
+            },
+            {
+              "name": "Brazo Norte",
+              "slug": "brazo-norte",
+              "source": "SEED"
+            },
+            {
+              "name": "Bañados de Carrasco",
+              "slug": "banados-de-carrasco",
               "source": "SEED"
             }
           ]
@@ -8499,66 +8319,6 @@
           "latitude": -34.9,
           "longitude": -56.1,
           "externalId": "3442010",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Ituzaingó",
-          "slug": "ituzaingo",
-          "latitude": -34.85,
-          "longitude": -56.11667,
-          "externalId": "3442248",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Flor de Maroñas",
-          "slug": "flor-de-maronas",
-          "latitude": -34.85,
-          "longitude": -56.11667,
-          "externalId": "3442598",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Cordón",
-          "slug": "cordon",
-          "latitude": -34.905,
-          "longitude": -56.16833,
-          "externalId": "3442926",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Colón",
-          "slug": "colon",
-          "latitude": -34.8,
-          "longitude": -56.23333,
-          "externalId": "3443030",
           "source": "GEONAMES",
           "neighborhoods": [
             {
@@ -8584,146 +8344,11 @@
           ]
         },
         {
-          "name": "Cerrito",
-          "slug": "cerrito",
-          "latitude": -34.57019,
-          "longitude": -56.08143,
-          "externalId": "3443207",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Centro",
-          "slug": "centro",
-          "latitude": -34.90528,
-          "longitude": -56.19444,
-          "externalId": "3443220",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Capurro",
-          "slug": "capurro",
-          "latitude": -34.87048,
-          "longitude": -56.21618,
-          "externalId": "3443376",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Buceo",
-          "slug": "buceo",
-          "latitude": -34.9,
-          "longitude": -56.13333,
-          "externalId": "3443533",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Belvedere",
-          "slug": "belvedere",
-          "latitude": -34.85,
-          "longitude": -56.21667,
-          "externalId": "3443622",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Bella Vista",
-          "slug": "bella-vista",
-          "latitude": -34.87743,
-          "longitude": -56.20052,
-          "externalId": "3443628",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Bella Italia",
-          "slug": "bella-italia",
-          "latitude": -34.83333,
-          "longitude": -56.11667,
-          "externalId": "3443632",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
           "name": "Arroyo Seco",
           "slug": "arroyo-seco",
           "latitude": -34.88333,
           "longitude": -56.2,
           "externalId": "3443763",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Cordon",
-          "slug": "cordon-2",
-          "latitude": -34.9,
-          "longitude": -56.18333,
-          "externalId": "3443936",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Ciudad Vieja",
-          "slug": "ciudad-vieja",
-          "latitude": -34.90833,
-          "longitude": -56.20833,
-          "externalId": "3473789",
           "source": "GEONAMES",
           "neighborhoods": [
             {
@@ -8779,81 +8404,6 @@
           ]
         },
         {
-          "name": "Carrasco",
-          "slug": "carrasco",
-          "latitude": -34.88528,
-          "longitude": -56.06056,
-          "externalId": "3480823",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Malvin",
-          "slug": "malvin",
-          "latitude": -34.89121,
-          "longitude": -56.09943,
-          "externalId": "7914030",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Punta Gorda",
-          "slug": "punta-gorda",
-          "latitude": -34.89265,
-          "longitude": -56.08175,
-          "externalId": "7914084",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Tres Cruces",
-          "slug": "tres-cruces",
-          "latitude": -34.89621,
-          "longitude": -56.16803,
-          "externalId": "8521752",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Malvín Norte",
-          "slug": "malvin-norte",
-          "latitude": -34.881,
-          "longitude": -56.1168,
-          "externalId": "9072748",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
           "name": "Las Canteras",
           "slug": "las-canteras",
           "latitude": -34.8714,
@@ -8869,281 +8419,11 @@
           ]
         },
         {
-          "name": "Aguada",
-          "slug": "aguada",
-          "latitude": -34.89142,
-          "longitude": -56.18889,
-          "externalId": "10097999",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Aires Puros",
-          "slug": "aires-puros",
-          "latitude": -34.85153,
-          "longitude": -56.18846,
-          "externalId": "10098009",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Atahualpa",
-          "slug": "atahualpa",
-          "latitude": -34.86474,
-          "longitude": -56.1897,
-          "externalId": "10098015",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Barrio Sur",
-          "slug": "barrio-sur",
-          "latitude": -34.91219,
-          "longitude": -56.18876,
-          "externalId": "10098021",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
           "name": "Bolívar",
           "slug": "bolivar",
           "latitude": -34.869,
           "longitude": -56.15726,
           "externalId": "10098029",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Brazo Oriental",
-          "slug": "brazo-oriental",
-          "latitude": -34.86414,
-          "longitude": -56.1761,
-          "externalId": "10098033",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Carrasco Norte",
-          "slug": "carrasco-norte",
-          "latitude": -34.87467,
-          "longitude": -56.06692,
-          "externalId": "10098077",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Jacinto Vera",
-          "slug": "jacinto-vera",
-          "latitude": -34.87454,
-          "longitude": -56.16983,
-          "externalId": "10098107",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "La Blanqueada",
-          "slug": "la-blanqueada",
-          "latitude": -34.88737,
-          "longitude": -56.15359,
-          "externalId": "10098114",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "La Comercial",
-          "slug": "la-comercial",
-          "latitude": -34.88718,
-          "longitude": -56.16803,
-          "externalId": "10098117",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "La Teja",
-          "slug": "la-teja",
-          "latitude": -34.86477,
-          "longitude": -56.23404,
-          "externalId": "10098122",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Lezica",
-          "slug": "lezica",
-          "latitude": -34.79062,
-          "longitude": -56.25476,
-          "externalId": "10098127",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Melilla",
-          "slug": "melilla",
-          "latitude": -34.75769,
-          "longitude": -56.29068,
-          "externalId": "10098131",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Palermo",
-          "slug": "palermo",
-          "latitude": -34.91016,
-          "longitude": -56.17842,
-          "externalId": "10098139",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Parque Batlle",
-          "slug": "parque-batlle",
-          "latitude": -34.89427,
-          "longitude": -56.14546,
-          "externalId": "10098141",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Parque Rodó",
-          "slug": "parque-rodo",
-          "latitude": -34.91136,
-          "longitude": -56.16677,
-          "externalId": "10098238",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Paso de la Arena",
-          "slug": "paso-de-la-arena",
-          "latitude": -34.82099,
-          "longitude": -56.31231,
-          "externalId": "10098244",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Pocitos Nuevo",
-          "slug": "pocitos-nuevo",
-          "latitude": -34.9074,
-          "longitude": -56.13986,
-          "externalId": "10098249",
-          "source": "GEONAMES",
-          "neighborhoods": [
-            {
-              "name": "Centro",
-              "slug": "centro",
-              "source": "SEED"
-            }
-          ]
-        },
-        {
-          "name": "Prado",
-          "slug": "prado",
-          "latitude": -34.86403,
-          "longitude": -56.20275,
-          "externalId": "10098254",
           "source": "GEONAMES",
           "neighborhoods": [
             {
@@ -11338,6 +10618,91 @@
           "externalId": "3440777",
           "source": "GEONAMES",
           "neighborhoods": [
+            {
+              "name": "La Estiva",
+              "slug": "la-estiva",
+              "source": "SEED"
+            },
+            {
+              "name": "Lavalleja",
+              "slug": "lavalleja",
+              "source": "SEED"
+            },
+            {
+              "name": "Cecilio Costa",
+              "slug": "cecilio-costa",
+              "source": "SEED"
+            },
+            {
+              "name": "Londres",
+              "slug": "londres",
+              "source": "SEED"
+            },
+            {
+              "name": "Merigo",
+              "slug": "merigo",
+              "source": "SEED"
+            },
+            {
+              "name": "General Artigas",
+              "slug": "general-artigas",
+              "source": "SEED"
+            },
+            {
+              "name": "Loreley",
+              "slug": "loreley",
+              "source": "SEED"
+            },
+            {
+              "name": "Progreso",
+              "slug": "progreso",
+              "source": "SEED"
+            },
+            {
+              "name": "Pérez",
+              "slug": "perez",
+              "source": "SEED"
+            },
+            {
+              "name": "De León",
+              "slug": "de-leon",
+              "source": "SEED"
+            },
+            {
+              "name": "El Molino",
+              "slug": "el-molino",
+              "source": "SEED"
+            },
+            {
+              "name": "Bella Vista",
+              "slug": "bella-vista",
+              "source": "SEED"
+            },
+            {
+              "name": "Fomento",
+              "slug": "fomento",
+              "source": "SEED"
+            },
+            {
+              "name": "Jardines de Rocha",
+              "slug": "jardines-de-rocha",
+              "source": "SEED"
+            },
+            {
+              "name": "Carlitos",
+              "slug": "carlitos",
+              "source": "SEED"
+            },
+            {
+              "name": "Barrio Brenner",
+              "slug": "barrio-brenner",
+              "source": "SEED"
+            },
+            {
+              "name": "Barrio La Alegría",
+              "slug": "barrio-la-alegria",
+              "source": "SEED"
+            },
             {
               "name": "Centro",
               "slug": "centro",
@@ -16414,8 +15779,8 @@
     }
   ],
   "meta": {
-    "generatedAt": "2026-05-20T16:41:30.042Z",
-    "cityCount": 1064,
-    "neighborhoodCount": 1123
+    "generatedAt": "2026-05-25T15:01:51.042Z",
+    "cityCount": 1011,
+    "neighborhoodCount": 1102
   }
 }

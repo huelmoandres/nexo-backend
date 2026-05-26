@@ -58,6 +58,12 @@ describe('GeoService', () => {
     resolveCachePrefix: 'geo:resolve:',
     resolveCacheTtlSeconds: 604800,
     countryIsoCode: 'UY',
+    uruguayBounds: {
+      minLat: -35.2,
+      maxLat: -30.0,
+      minLng: -58.5,
+      maxLng: -53.0,
+    },
   });
 
   const makeService = (repoOverrides = {}, redisOverrides = {}) => {
@@ -171,13 +177,29 @@ describe('GeoService', () => {
     );
   });
 
+  it('listCities mapea coordenadas finitas e inválidas', async () => {
+    const { service, repo } = makeService();
+    repo.findCitiesByStateId.mockResolvedValueOnce([
+      {
+        id: 'ci2',
+        name: 'X',
+        slug: 'x',
+        latitude: 'bad',
+        longitude: 10,
+      },
+    ]);
+    expect(await service.listCities('s1')).toEqual([
+      expect.objectContaining({ latitude: null, longitude: 10 }),
+    ]);
+  });
+
   it('listCities y listNeighborhoods mapean resumen', async () => {
     const { service } = makeService();
     expect(await service.listCities('s1')).toEqual([
-      { id: 'ci1', name: 'Montevideo', slug: 'montevideo' },
+      { id: 'ci1', name: 'Montevideo', slug: 'montevideo', latitude: null, longitude: null },
     ]);
     expect(await service.listNeighborhoods('ci1')).toEqual([
-      { id: 'n1', name: 'Pocitos', slug: 'pocitos' },
+      { id: 'n1', name: 'Pocitos', slug: 'pocitos', latitude: null, longitude: null },
     ]);
   });
 

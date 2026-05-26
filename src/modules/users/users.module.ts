@@ -6,10 +6,13 @@ import { GeoModule } from '@modules/geo/geo.module';
 import { AuthorizationModule } from '@modules/authorization/authorization.module';
 import { EntitlementsModule } from '@modules/entitlements/entitlements.module';
 import { StorageModule } from '@modules/storage/storage.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { dgiConfig } from '@config/dgi.config';
 import { AdminVerificationController } from './admin-verification.controller';
 import { DgiVerificationController } from './dgi-verification.controller';
 import { RolesGuard } from './guards/roles.guard';
+import { DgiMaintenanceBootstrap } from './queues/dgi-maintenance.bootstrap';
+import { DgiMaintenanceProcessor } from './queues/dgi-maintenance.processor';
 import { DgiVerifyProcessor } from './queues/dgi-verify.processor';
 import { DgiWebScraperProvider } from './providers/dgi-web-scraper.provider';
 import { DGI_RUT_LOOKUP_TOKEN } from './providers/dgi-rut-lookup.provider';
@@ -20,7 +23,7 @@ import { UsersProfileService } from './services/users-profile.service';
 import { UsersController } from './users.controller';
 import { UsersRepository } from './users.repository';
 import { UsersService } from './users.service';
-import { DGI_VERIFY_QUEUE } from './users-dgi.constants';
+import { DGI_MAINTENANCE_QUEUE, DGI_VERIFY_QUEUE } from './users-dgi.constants';
 
 @Module({
   imports: [
@@ -29,8 +32,10 @@ import { DGI_VERIFY_QUEUE } from './users-dgi.constants';
     AuthorizationModule,
     EntitlementsModule,
     StorageModule,
+    NotificationsModule,
     ConfigModule.forFeature(dgiConfig),
     BullModule.registerQueue({ name: DGI_VERIFY_QUEUE }),
+    BullModule.registerQueue({ name: DGI_MAINTENANCE_QUEUE }),
   ],
   controllers: [
     UsersController,
@@ -45,6 +50,8 @@ import { DGI_VERIFY_QUEUE } from './users-dgi.constants';
     UsersCompanyService,
     DgiVerificationService,
     DgiVerifyProcessor,
+    DgiMaintenanceProcessor,
+    DgiMaintenanceBootstrap,
     DgiWebScraperProvider,
     {
       provide: DGI_RUT_LOOKUP_TOKEN,

@@ -15,6 +15,8 @@ describe('EscrowRepository', () => {
       findUniqueOrThrow: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
     },
     payoutAttempt: {
       count: vi.fn(),
@@ -147,6 +149,22 @@ describe('EscrowRepository', () => {
     );
   });
 
+  it('release con setPayoutPending marca payout PENDING', async () => {
+    prisma.escrowTransaction.findUniqueOrThrow.mockResolvedValue({
+      status: EscrowStatus.HELD,
+    });
+    prisma.escrowTransaction.update.mockResolvedValue({ id: 'e1' });
+    await repo.release('job-1', 'u1', undefined, { setPayoutPending: true });
+    expect(prisma.escrowTransaction.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: EscrowStatus.RELEASED,
+          payoutStatus: EscrowPayoutStatus.PENDING,
+        }),
+      }),
+    );
+  });
+
   it('createPayoutAttempt y complete SUCCEEDED', async () => {
     prisma.payoutAttempt.create.mockResolvedValue({ id: 'att-1' });
     prisma.payoutAttempt.update.mockResolvedValue({ id: 'att-1' });
@@ -174,6 +192,15 @@ describe('EscrowRepository', () => {
         data: { payoutStatus: EscrowPayoutStatus.SUCCEEDED },
       }),
     );
+  });
+
+  it('listPendingManualPayouts y countPendingManualPayouts', async () => {
+    prisma.escrowTransaction.findMany = vi.fn().mockResolvedValue([]);
+    prisma.escrowTransaction.count = vi.fn().mockResolvedValue(2);
+    await repo.listPendingManualPayouts({ skip: 0, take: 10 });
+    await repo.countPendingManualPayouts();
+    expect(prisma.escrowTransaction.findMany).toHaveBeenCalled();
+    expect(prisma.escrowTransaction.count).toHaveBeenCalled();
   });
 
   it('completePayoutAttempt FAILED', async () => {

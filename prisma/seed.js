@@ -1,5 +1,5 @@
 /**
- * Orquestador de seeds: geo → categorías → demo → stress (opcional) → backfill trust/identity.
+ * Orquestador de seeds: geo → categorías → monedas → bancos → demo → stress (opcional) → backfill trust/identity.
  *
  * Variables:
  * - `SEED_DEMO=0` — omite escenarios demo.
@@ -17,6 +17,8 @@ require('dotenv/config');
 const { createSeedPrisma } = require('./lib/seed-prisma.js');
 const { runSeedGeo } = require('./seed.geo.js');
 const { runSeedCategories } = require('./seed.categories.js');
+const { runSeedCurrencies } = require('./seed.currencies.js');
+const { runSeedBanks } = require('./seed.banks.js');
 const { runSeedDemo } = require('./seed.demo.js');
 const { runSeedStress } = require('./seed.stress.js');
 const { runTrustIdentityBackfill } = require('./backfill.trust-identity.js');
@@ -29,6 +31,12 @@ async function main() {
 
     console.info('[seed] Capa 1 — categorías…');
     await runSeedCategories(prisma);
+
+    console.info('[seed] Capa 1 — monedas y tasas…');
+    await runSeedCurrencies(prisma);
+
+    console.info('[seed] Capa 1 — bancos (payout)…');
+    await runSeedBanks(prisma);
 
     if (process.env.SEED_DEMO !== '0') {
       console.info('[seed] Capa 2 — demo…');

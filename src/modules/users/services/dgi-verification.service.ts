@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
@@ -18,6 +19,7 @@ import {
 import { buildProblem } from '@common/errors/problem.factory';
 import { usersConfig } from '@config/users.config';
 import { dgiConfig } from '@config/dgi.config';
+import { NotificationsService } from '@modules/notifications/notifications.service';
 import { STORAGE_SERVICE_TOKEN } from '@modules/storage/storage.constants';
 import type { IStorageService } from '@modules/storage/interfaces/storage.service.interface';
 import {
@@ -33,15 +35,19 @@ import type { VerificationSubmitResponseDto } from '../dto/verification-submit-r
 import type { AdminReviewVerificationDto } from '../dto/admin-review-verification.dto';
 import type { PendingVerificationItemDto } from '../dto/pending-verification-item.dto';
 import { UsersRepository } from '../users.repository';
+import type { DgiVerificationSubjectRow } from '../users.repository';
 import { DGI_VERIFY_JOB, DGI_VERIFY_QUEUE } from '../users-dgi.constants';
 import type { DgiVerifyJobData } from '../queues/dgi-verify.processor';
 
 @Injectable()
 export class DgiVerificationService {
+  private readonly logger = new Logger(DgiVerificationService.name);
+
   constructor(
     private readonly usersRepository: UsersRepository,
     @Inject(STORAGE_SERVICE_TOKEN)
     private readonly storage: IStorageService,
+    private readonly notifications: NotificationsService,
     @Inject(usersConfig.KEY)
     private readonly usersCfg: ConfigType<typeof usersConfig>,
     @Inject(dgiConfig.KEY)
@@ -103,6 +109,25 @@ export class DgiVerificationService {
       dto.storageKey,
       this.usersCfg.kycBucket,
     );
+
+    if (
+      subject.dgiVerificationDocKey &&
+      subject.dgiVerificationDocKey !== dto.storageKey
+    ) {
+      try {
+        await this.storage.deleteObjectAsSystem(
+          subject.dgiVerificationDocKey,
+          this.usersCfg.kycBucket,
+          'dgi-resubmit-replace',
+        );
+      } catch (err: unknown) {
+        this.logger.warn({
+          op: 'dgi.resubmit.deletePreviousFailed',
+          key: subject.dgiVerificationDocKey,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
     await this.usersRepository.markDgiVerificationProcessing({
       subjectType: subject.subjectType,
@@ -199,14 +224,20 @@ export class DgiVerificationService {
         documentStatus: VerificationDocumentStatus.APPROVED,
         reviewedBy: reviewerUserId,
       });
-      return {
-        status: DgiVerificationStatus.VERIFIED_AUTO,
-        method: 'ADMIN_MANUAL',
-        dgiRazonSocial: subject.dgiRazonSocial,
-        verifiedAt: new Date(),
-      };
+      await this.notifications.notifyDgiVerificationVerified({
+        userId: subject.userId,
+        trustProfileId: subject.trustProfileId,
+        razonSocial: subject.dgiRazonSocial,
+      });
+      return this.mapStatus({
+        ...subject,
+        dgiVerificationStatus: DgiVerificationStatus.VERIFIED_AUTO,
+        dgiVerificationMethod: 'ADMIN_MANUAL',
+        dgiVerifiedAt: new Date(),
+      });
     }
 
+    const rejectionReason = dto.reason ?? 'Rechazado por administrador';
     await this.usersRepository.applyDgiVerificationResult({
       subjectType: subject.subjectType,
       subjectId: subject.subjectId,
@@ -214,20 +245,26 @@ export class DgiVerificationService {
       status: DgiVerificationStatus.REJECTED,
       method: 'ADMIN_MANUAL',
       documentStatus: VerificationDocumentStatus.REJECTED,
-      rejectionReason: dto.reason ?? 'Rechazado por administrador',
+      rejectionReason,
       reviewedBy: reviewerUserId,
     });
-    return {
-      status: DgiVerificationStatus.REJECTED,
-      method: 'ADMIN_MANUAL',
-      verifiedAt: null,
-    };
+    await this.notifications.notifyDgiVerificationRejected({
+      userId: subject.userId,
+      trustProfileId: subject.trustProfileId,
+      reason: rejectionReason,
+    });
+    return this.mapStatus({
+      ...subject,
+      dgiVerificationStatus: DgiVerificationStatus.REJECTED,
+      dgiVerificationMethod: 'ADMIN_MANUAL',
+      dgiVerifiedAt: null,
+    });
   }
 
   private async resolveSubjectForUser(
     supabaseUid: string,
     subjectType: VerificationSubjectType,
-  ) {
+  ): Promise<DgiVerificationSubjectRow> {
     const subject = await this.usersRepository.findDgiVerificationSubject({
       supabaseUid,
       subjectType,
@@ -273,18 +310,29 @@ export class DgiVerificationService {
     }
   }
 
-  private mapStatus(subject: {
-    dgiVerificationStatus: DgiVerificationStatus;
-    dgiRazonSocial: string | null;
-    dgiVerificationMethod: string | null;
-    dgiVerifiedAt: Date | null;
-  }): VerificationStatusResponseDto {
-    return {
+  private async mapStatus(
+    subject: Pick<
+      DgiVerificationSubjectRow,
+      | 'dgiVerificationStatus'
+      | 'dgiRazonSocial'
+      | 'dgiVerificationMethod'
+      | 'dgiVerifiedAt'
+      | 'trustProfileId'
+    >,
+  ): Promise<VerificationStatusResponseDto> {
+    const dto: VerificationStatusResponseDto = {
       status: subject.dgiVerificationStatus,
       method: subject.dgiVerificationMethod,
       dgiRazonSocial: subject.dgiRazonSocial,
       verifiedAt: subject.dgiVerifiedAt,
     };
+    if (subject.dgiVerificationStatus === DgiVerificationStatus.REJECTED) {
+      dto.rejectionReason =
+        await this.usersRepository.getRutProofRejectionReason(
+          subject.trustProfileId,
+        );
+    }
+    return dto;
   }
 }
 

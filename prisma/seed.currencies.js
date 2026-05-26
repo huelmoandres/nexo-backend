@@ -12,8 +12,10 @@ const USD_ID = 'c0000000-0000-4000-8000-000000000002';
 const SAMPLE_SELL_MICROS = 39_850_000;
 const SAMPLE_BUY_MICROS = 39_500_000;
 
-async function main() {
-  const prisma = createSeedPrisma();
+/**
+ * @param {import('@prisma/client').PrismaClient} prisma
+ */
+async function runSeedCurrencies(prisma) {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
@@ -66,11 +68,23 @@ async function main() {
     },
   });
 
-  console.log('Currencies and sample exchange rate seeded.');
-  await prisma.$disconnect();
+  console.info('Currencies and sample exchange rate seeded.');
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+async function main() {
+  const prisma = createSeedPrisma();
+  try {
+    await runSeedCurrencies(prisma);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+if (require.main === module) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
+
+module.exports = { runSeedCurrencies };

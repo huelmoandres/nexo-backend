@@ -17,7 +17,7 @@ import { Role } from '@prisma/client';
 const subjectBase = {
   subjectId: 'c1',
   userId: 'u1',
-  rut: '214567890013',
+  rut: '214567890018',
   trustProfileId: 't1',
   dgiRazonSocial: null,
   dgiVerificationDocKey: null,
@@ -32,19 +32,27 @@ describe('DgiVerificationService', () => {
     listPendingManualDgiVerifications: vi.fn(),
     findDgiSubjectById: vi.fn(),
     applyDgiVerificationResult: vi.fn(),
+    getRutProofRejectionReason: vi.fn().mockResolvedValue(null),
   };
   const storage = {
     assertObjectExists: vi.fn(),
+    deleteObjectAsSystem: vi.fn().mockResolvedValue(undefined),
     generatePresignedPutUrl: vi.fn().mockResolvedValue({
       uploadUrl: 'https://upload',
       key: 'users/u1/verification/x.pdf',
     }),
+  };
+  const notifications = {
+    notifyDgiVerificationVerified: vi.fn(),
+    notifyDgiVerificationRejected: vi.fn(),
+    notifyDgiVerificationManualReview: vi.fn(),
   };
   const verifyQueue = { add: vi.fn() };
 
   const service = new DgiVerificationService(
     usersRepository as never,
     storage as never,
+    notifications as never,
     usersConfig() as never,
     dgiConfig() as never,
     verifyQueue as never,
@@ -123,6 +131,7 @@ describe('DgiVerificationService', () => {
     const svc = new DgiVerificationService(
       usersRepository as never,
       storage as never,
+      notifications as never,
       usersConfig() as never,
       cfg as never,
       verifyQueue as never,
@@ -201,6 +210,87 @@ describe('DgiVerificationService', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  it('getVerificationStatus incluye rejectionReason cuando REJECTED', async () => {
+    usersRepository.findDgiVerificationSubject.mockResolvedValue({
+      ...subjectBase,
+      subjectType: VerificationSubjectType.PROFESSIONAL,
+      dgiVerificationStatus: DgiVerificationStatus.REJECTED,
+    });
+    usersRepository.getRutProofRejectionReason.mockResolvedValue(
+      'RUT no coincide',
+    );
+
+    const res = await service.getVerificationStatus(
+      'sub',
+      VerificationSubjectType.PROFESSIONAL,
+    );
+
+    expect(res.rejectionReason).toBe('RUT no coincide');
+    expect(usersRepository.getRutProofRejectionReason).toHaveBeenCalledWith(
+      't1',
+    );
+  });
+
+  it('submit continúa si falla borrar PDF anterior', async () => {
+    usersRepository.findDgiVerificationSubject.mockResolvedValue({
+      ...subjectBase,
+      subjectType: VerificationSubjectType.PROFESSIONAL,
+      dgiVerificationStatus: DgiVerificationStatus.REJECTED,
+      dgiVerificationDocKey:
+        'users/u1/verification/00000000-0000-4000-8000-000000000001.pdf',
+    });
+    storage.deleteObjectAsSystem.mockRejectedValueOnce(new Error('r2 down'));
+
+    await expect(
+      service.submitVerification('sub', {
+        subjectType: VerificationSubjectType.PROFESSIONAL,
+        storageKey:
+          'users/u1/verification/00000000-0000-4000-8000-000000000002.pdf',
+      }),
+    ).resolves.toMatchObject({ status: DgiVerificationStatus.PROCESSING });
+  });
+
+  it('submit continúa si falla borrar PDF con error no-Error', async () => {
+    usersRepository.findDgiVerificationSubject.mockResolvedValue({
+      ...subjectBase,
+      subjectType: VerificationSubjectType.PROFESSIONAL,
+      dgiVerificationStatus: DgiVerificationStatus.REJECTED,
+      dgiVerificationDocKey:
+        'users/u1/verification/00000000-0000-4000-8000-000000000001.pdf',
+    });
+    storage.deleteObjectAsSystem.mockRejectedValueOnce('r2-string');
+
+    await expect(
+      service.submitVerification('sub', {
+        subjectType: VerificationSubjectType.PROFESSIONAL,
+        storageKey:
+          'users/u1/verification/00000000-0000-4000-8000-000000000002.pdf',
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('submit borra PDF anterior al reenviar con nueva key', async () => {
+    usersRepository.findDgiVerificationSubject.mockResolvedValue({
+      ...subjectBase,
+      subjectType: VerificationSubjectType.PROFESSIONAL,
+      dgiVerificationStatus: DgiVerificationStatus.REJECTED,
+      dgiVerificationDocKey:
+        'users/u1/verification/00000000-0000-4000-8000-000000000001.pdf',
+    });
+
+    await service.submitVerification('sub', {
+      subjectType: VerificationSubjectType.PROFESSIONAL,
+      storageKey:
+        'users/u1/verification/00000000-0000-4000-8000-000000000002.pdf',
+    });
+
+    expect(storage.deleteObjectAsSystem).toHaveBeenCalledWith(
+      'users/u1/verification/00000000-0000-4000-8000-000000000001.pdf',
+      expect.any(String),
+      'dgi-resubmit-replace',
+    );
+  });
+
   it('getVerificationStatus mapea campos del sujeto', async () => {
     const verifiedAt = new Date('2026-01-01');
     usersRepository.findDgiVerificationSubject.mockResolvedValue({
@@ -231,7 +321,7 @@ describe('DgiVerificationService', () => {
       {
         subjectType: VerificationSubjectType.COMPANY,
         subjectId: 'c1',
-        rut: '214567890013',
+        rut: '214567890018',
         dgiRazonSocial: 'ACME',
         dgiVerificationDocKey: 'k1',
         updatedAt,

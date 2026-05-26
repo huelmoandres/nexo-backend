@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
@@ -139,5 +140,181 @@ describe('UsersCompanyService', () => {
       name: 'ACME',
       rut: '000000000000',
     });
+  });
+
+  it('createEmployee rechaza admin inexistente', async () => {
+    const repo = { findBySupabaseUidForMe: vi.fn().mockResolvedValue(null) };
+    await expect(
+      makeService(repo).createEmployee('sub', {
+        email: 'x@test.com',
+        fullName: 'X',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('createEmployee rechaza rol distinto de COMPANY_ADMIN', async () => {
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue({
+        id: 'u1',
+        role: Role.CLIENT,
+        ownedCompany: { id: 'c1' },
+      }),
+    };
+    await expect(
+      makeService(repo).createEmployee('sub', {
+        email: 'x@test.com',
+        fullName: 'X',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('createEmployee rechaza sin empresa', async () => {
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue({
+        id: 'u1',
+        role: Role.COMPANY_ADMIN,
+        ownedCompany: null,
+      }),
+    };
+    await expect(
+      makeService(repo).createEmployee('sub', {
+        email: 'x@test.com',
+        fullName: 'X',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('createEmployee rechaza email no registrado', async () => {
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue({
+        id: 'admin1',
+        role: Role.COMPANY_ADMIN,
+        ownedCompany: { id: 'c1', name: 'ACME', rut: '0' },
+      }),
+      findUserByEmail: vi.fn().mockResolvedValue(null),
+    };
+    await expect(
+      makeService(repo).createEmployee('sub', {
+        email: 'x@test.com',
+        fullName: 'X',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('createEmployee rechaza auto-vinculación', async () => {
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue({
+        id: 'admin1',
+        role: Role.COMPANY_ADMIN,
+        ownedCompany: { id: 'c1', name: 'ACME', rut: '0' },
+      }),
+      findUserByEmail: vi.fn().mockResolvedValue({
+        id: 'admin1',
+        role: Role.CLIENT,
+        companyId: null,
+      }),
+    };
+    await expect(
+      makeService(repo).createEmployee('sub', {
+        email: 'admin@test.com',
+        fullName: 'X',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('createEmployee rechaza usuario con empresa o rol distinto', async () => {
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue({
+        id: 'admin1',
+        role: Role.COMPANY_ADMIN,
+        ownedCompany: { id: 'c1', name: 'ACME', rut: '0' },
+      }),
+      findUserByEmail: vi.fn().mockResolvedValue({
+        id: 'e1',
+        role: Role.COMPANY_EMPLOYEE,
+        companyId: 'c2',
+      }),
+    };
+    await expect(
+      makeService(repo).createEmployee('sub', {
+        email: 'e@test.com',
+        fullName: 'X',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('createEmployee rechaza si tiene perfil profesional', async () => {
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue({
+        id: 'admin1',
+        role: Role.COMPANY_ADMIN,
+        ownedCompany: { id: 'c1', name: 'ACME', rut: '0' },
+      }),
+      findUserByEmail: vi.fn().mockResolvedValue({
+        id: 'e1',
+        role: Role.CLIENT,
+        companyId: null,
+        supabaseUid: 'sub-e',
+      }),
+      hasProfessionalProfile: vi.fn().mockResolvedValue(true),
+    };
+    await expect(
+      makeService(repo).createEmployee('sub', {
+        email: 'e@test.com',
+        fullName: 'X',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('createCompany rechaza rol distinto de CLIENT', async () => {
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue({
+        ...baseUser,
+        role: Role.COMPANY_EMPLOYEE,
+      }),
+    };
+    await expect(
+      makeService(repo).createCompany('sub', { name: 'ACME', rut: '0' }, {}),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('createEmployee vincula CLIENT existente', async () => {
+    const authz = makeAuthz();
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue({
+        id: 'admin1',
+        role: Role.COMPANY_ADMIN,
+        ownedCompany: { id: 'c1', name: 'ACME', rut: '000000000000' },
+      }),
+      findUserByEmail: vi.fn().mockResolvedValue({
+        id: 'emp1',
+        email: 'op@test.com',
+        fullName: 'Op',
+        role: Role.CLIENT,
+        companyId: null,
+        supabaseUid: 'sub-emp',
+      }),
+      hasProfessionalProfile: vi.fn().mockResolvedValue(false),
+      linkUserAsCompanyEmployee: vi.fn().mockResolvedValue({
+        id: 'emp1',
+        email: 'op@test.com',
+        fullName: 'Juan Op',
+        role: Role.COMPANY_EMPLOYEE,
+      }),
+    };
+    const service = makeService(repo, makeRutRegistration(), authz);
+
+    const result = await service.createEmployee('sub-admin', {
+      email: 'op@test.com',
+      fullName: 'Juan Op',
+    });
+
+    expect(repo.linkUserAsCompanyEmployee).toHaveBeenCalledWith({
+      userId: 'emp1',
+      companyId: 'c1',
+      fullName: 'Juan Op',
+    });
+    expect(authz.invalidateRoleCache).toHaveBeenCalledWith('sub-emp');
+    expect(result.employee.role).toBe(Role.COMPANY_EMPLOYEE);
   });
 });

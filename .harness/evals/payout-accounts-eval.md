@@ -1,7 +1,7 @@
 # Eval: Payout Accounts
 
 - [x] Spec y `docs/explanation/payments-psp.md` antes del código
-- [x] `npm run test:cov:strict` — 100% global (incluye payout, escrow payout, jobs)
+- [x] `npm run test:cov` — 100% global (incluye payout, escrow payout, jobs)
 - [x] Gate accept sin primary / sin cuentas
 - [x] Payout fallido + retry crea `attemptNumber` 2 (unit `escrow-payout.service.spec.ts`)
 - [x] `destinationSnapshot` inmutable en intentos (append-only `PayoutAttempt`)

@@ -154,10 +154,13 @@ async function runSeedStress(prisma) {
           neighborhoodId,
           kycStatus: 'UNVERIFIED',
           isAvailable: true,
-          categories: {
-            create: [{ category: { connect: { id: categoryId } } }],
-          },
+          subscriptionPlan: 'FREE',
+          planDefinitionId: 'a0000000-0000-4000-8000-000000000001',
         },
+      });
+
+      await tx.professionalCategory.create({
+        data: { professionalId: profile.id, categoryId },
       });
 
       await tx.$executeRawUnsafe(

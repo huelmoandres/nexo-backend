@@ -92,6 +92,10 @@ describe('BillingService', () => {
     expect(
       result.plans.find((p) => p.code === SubscriptionPlan.PRO)?.amountUsdCents,
     ).toBe(500);
+    expect(
+      result.plans.find((p) => p.code === SubscriptionPlan.BUSINESS)
+        ?.amountUsdCents,
+    ).toBe(5000);
   });
 
   it('subscribe creates TRIALING subscription', async () => {
@@ -160,6 +164,19 @@ describe('BillingService', () => {
     expect(dto.id).toBe('sub-1');
   });
 
+  it('getSubscription serializes null period dates', async () => {
+    const row = billingSubscriptionFactory.build({
+      trialEndsAt: null,
+      currentPeriodEnd: null,
+      graceEndsAt: null,
+    });
+    billingRepo.findByProfessionalProfileId.mockResolvedValue(row);
+    const dto = await service.getSubscription('uid');
+    expect(dto.trialEndsAt).toBeNull();
+    expect(dto.currentPeriodEnd).toBeNull();
+    expect(dto.graceEndsAt).toBeNull();
+  });
+
   it('subscribe creates MP plan when env ids empty', async () => {
     const noPlanCfg = {
       ...cfg,
@@ -211,6 +228,20 @@ describe('BillingService', () => {
     await expect(service.cancelSubscription('uid')).rejects.toMatchObject({
       response: { code: 'BILLING_CANCEL_FAILED' },
     });
+  });
+
+  it('cancel MP error no-Error y sin detail en producción', async () => {
+    const row = billingSubscriptionFactory.build({
+      status: SubscriptionBillingStatus.ACTIVE,
+      mpPreapprovalId: 'mp-1',
+    });
+    billingRepo.findByProfessionalProfileId.mockResolvedValue(row);
+    vi.mocked(mpClient.cancelPreapproval).mockRejectedValue('mp-string');
+    vi.stubEnv('NODE_ENV', 'production');
+    await expect(service.cancelSubscription('uid')).rejects.toMatchObject({
+      response: { code: 'BILLING_CANCEL_FAILED' },
+    });
+    vi.unstubAllEnvs();
   });
 
   it('webhook IPN legacy ACK without signature', async () => {
@@ -551,6 +582,15 @@ describe('BillingService', () => {
     await expect(
       service.subscribe('uid', { plan: SubscriptionPlan.PRO }),
     ).rejects.toMatchObject({ response: { code: 'BILLING_SUBSCRIBE_FAILED' } });
+
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.mocked(mpClient.createPreapproval).mockRejectedValue(new Error('MP down'));
+    await expect(
+      service.subscribe('uid', { plan: SubscriptionPlan.PRO }),
+    ).rejects.toMatchObject({
+      response: { code: 'BILLING_SUBSCRIBE_FAILED' },
+    });
+    vi.unstubAllEnvs();
   });
 
   it('subscribe rejects when provider is not mercadopago', async () => {
@@ -826,6 +866,37 @@ describe('BillingService', () => {
     expect(billingRepo.update).not.toHaveBeenCalled();
   });
 
+  it('webhook HMAC usa body.data.id si queryDataId está en blanco', async () => {
+    const dataId = '888';
+    const requestId = 'req-blank-q';
+    const ts = '1704908012';
+    const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
+    const v1 = createHmac('sha256', payCfg.mercadoPagoWebhookSecret)
+      .update(manifest)
+      .digest('hex');
+    await service.handleMercadoPagoSubscriptionWebhook(
+      {
+        'x-signature': `ts=${ts},v1=${v1}`,
+        'x-request-id': requestId,
+      },
+      { type: 'unknown_type', data: { id: dataId } },
+      undefined,
+      '   ',
+    );
+    expect(mpClient.getPreapproval).not.toHaveBeenCalled();
+  });
+
+  it('webhook rechaza firma con resourceId desde queryId y sin signatureDataId', async () => {
+    await expect(
+      service.handleMercadoPagoSubscriptionWebhook(
+        { 'x-signature': 'x', 'x-request-id': 'r' },
+        {},
+        'only-query-id',
+        undefined,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'BILLING_WEBHOOK_INVALID' } });
+  });
+
   it('webhook validates HMAC using body.data.id', async () => {
     const dataId = '777';
     const requestId = 'req-billing';
@@ -891,6 +962,244 @@ describe('BillingService', () => {
       notifications.notifySubscriptionGraceReminder,
     ).not.toHaveBeenCalled();
     expect(billingRepo.update).not.toHaveBeenCalled();
+  });
+
+  it('dunning grace reminder skips notification when userId missing', async () => {
+    const pastDue = billingSubscriptionFactory.build({
+      professionalProfileId: 'prof-no-user',
+      status: SubscriptionBillingStatus.PAST_DUE,
+      dunningReminderSent: 2,
+      graceEndsAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+    });
+    billingRepo.listPastDueForDunning.mockResolvedValue([pastDue]);
+    billingRepo.listGraceExpired.mockResolvedValue([]);
+    billingRepo.listCanceledPastPeriodEnd.mockResolvedValue([]);
+    prisma.professionalProfile.findUnique.mockResolvedValue(null);
+    await service.processDunningJob();
+    expect(billingRepo.update).toHaveBeenCalledWith(
+      pastDue.id,
+      expect.objectContaining({ dunningReminderSent: 3 }),
+    );
+    expect(
+      notifications.notifySubscriptionGraceReminder,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('payment webhook refunded enters past due', async () => {
+    const row = billingSubscriptionFactory.build({
+      externalReference: 'subscription:professional:prof-1',
+      status: SubscriptionBillingStatus.ACTIVE,
+    });
+    billingRepo.findByExternalReference.mockResolvedValue(row);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          status: 'refunded',
+          external_reference: row.externalReference,
+        }),
+      }),
+    );
+    await service.handleMercadoPagoSubscriptionWebhook(
+      {},
+      { type: 'payment' },
+      'pay-refund',
+      undefined,
+      'payment',
+    );
+    expect(billingRepo.update).toHaveBeenCalledWith(
+      row.id,
+      expect.objectContaining({ status: SubscriptionBillingStatus.PAST_DUE }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('webhook HMAC usa body.data.id cuando falta query data id', async () => {
+    const dataId = '888';
+    const requestId = 'req-body-id';
+    const ts = '1704908010';
+    const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
+    const v1 = createHmac('sha256', payCfg.mercadoPagoWebhookSecret)
+      .update(manifest)
+      .digest('hex');
+    const result = await service.handleMercadoPagoSubscriptionWebhook(
+      {
+        'x-signature': `ts=${ts},v1=${v1}`,
+        'x-request-id': requestId,
+      },
+      { type: 'unknown_type', data: { id: dataId } },
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('sync preapproval canceled spelling actualiza fila', async () => {
+    const row = billingSubscriptionFactory.build({
+      externalReference: 'subscription:professional:prof-1',
+      status: SubscriptionBillingStatus.ACTIVE,
+    });
+    billingRepo.findByExternalReference.mockResolvedValue(row);
+    vi.mocked(mpClient.getPreapproval).mockResolvedValue({
+      id: 'canceled-us',
+      status: 'canceled',
+      externalReference: row.externalReference,
+    });
+    await service.handleMercadoPagoSubscriptionWebhook(
+      {},
+      { type: 'subscription_preapproval' },
+      'canceled-us',
+      undefined,
+      'subscription_preapproval',
+    );
+    expect(billingRepo.update).toHaveBeenCalledWith(
+      row.id,
+      expect.objectContaining({
+        status: SubscriptionBillingStatus.CANCELED,
+        cancelAtPeriodEnd: true,
+      }),
+    );
+  });
+
+  it('sync preapproval paused status no-op', async () => {
+    const row = billingSubscriptionFactory.build({
+      externalReference: 'subscription:professional:prof-1',
+    });
+    billingRepo.findByExternalReference.mockResolvedValue(row);
+    vi.mocked(mpClient.getPreapproval).mockResolvedValue({
+      id: 'paused-1',
+      status: 'paused',
+      externalReference: row.externalReference,
+    });
+    await service.handleMercadoPagoSubscriptionWebhook(
+      {},
+      { type: 'subscription_preapproval' },
+      'paused-1',
+      undefined,
+      'subscription_preapproval',
+    );
+    expect(billingRepo.update).not.toHaveBeenCalled();
+  });
+
+  it('activateFromPayment without subject skips profile sync', async () => {
+    const row = billingSubscriptionFactory.build({
+      professionalProfileId: null,
+      companyId: null,
+      externalReference: 'subscription:professional:orphan-prof',
+    });
+    billingRepo.findByExternalReference.mockResolvedValue(row);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          status: 'approved',
+          external_reference: row.externalReference,
+        }),
+      }),
+    );
+    await service.handleMercadoPagoSubscriptionWebhook(
+      {},
+      { type: 'payment' },
+      'pay-orphan',
+      undefined,
+      'payment',
+    );
+    expect(prisma.professionalProfile.update).not.toHaveBeenCalled();
+    expect(prisma.company.update).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('sync preapproval con status desconocido no actualiza', async () => {
+    const row = billingSubscriptionFactory.build({
+      externalReference: 'subscription:professional:prof-1',
+      status: SubscriptionBillingStatus.ACTIVE,
+    });
+    const dataId = 'pre-unknown';
+    const requestId = 'req-expired';
+    const ts = '1704908011';
+    const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
+    const v1 = createHmac('sha256', payCfg.mercadoPagoWebhookSecret)
+      .update(manifest)
+      .digest('hex');
+    vi.mocked(mpClient.getPreapproval).mockResolvedValue({
+      id: dataId,
+      status: 'expired',
+      externalReference: row.externalReference,
+    });
+    billingRepo.findByExternalReference.mockResolvedValue(row);
+    await service.handleMercadoPagoSubscriptionWebhook(
+      {
+        'x-signature': `ts=${ts},v1=${v1}`,
+        'x-request-id': requestId,
+      },
+      { type: 'subscription_preapproval', data: { id: dataId } },
+      undefined,
+      dataId,
+    );
+    expect(billingRepo.update).not.toHaveBeenCalled();
+  });
+
+  it('webhook subscription rechaza IPN sin queryId', async () => {
+    await expect(
+      service.handleMercadoPagoSubscriptionWebhook(
+        {},
+        { type: 'payment' },
+        '   ',
+        undefined,
+        'payment',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'BILLING_WEBHOOK_INVALID' } });
+  });
+
+  it('payment webhook ignora status intermedio con fila existente', async () => {
+    const row = billingSubscriptionFactory.build({
+      externalReference: 'subscription:professional:prof-1',
+    });
+    billingRepo.findByExternalReference.mockResolvedValue(row);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          status: 'in_process',
+          external_reference: row.externalReference,
+        }),
+      }),
+    );
+    await service.handleMercadoPagoSubscriptionWebhook(
+      {},
+      { type: 'payment' },
+      'pay-pending',
+      undefined,
+      'payment',
+    );
+    expect(billingRepo.update).not.toHaveBeenCalled();
+    expect(notifications.notifySubscriptionPaymentFailed).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('webhook subscription IPN legacy usa queryId', async () => {
+    vi.mocked(mpClient.getPreapproval).mockResolvedValue({
+      id: 'pre-q',
+      status: 'pending',
+      externalReference: 'subscription:professional:prof-1',
+    });
+    billingRepo.findByExternalReference.mockResolvedValue(
+      billingSubscriptionFactory.build({
+        externalReference: 'subscription:professional:prof-1',
+      }),
+    );
+    await service.handleMercadoPagoSubscriptionWebhook(
+      {},
+      { type: 'subscription_preapproval' },
+      'pre-q',
+      undefined,
+      'subscription_preapproval',
+    );
+    expect(mpClient.getPreapproval).toHaveBeenCalledWith('pre-q');
   });
 
   it('activateFromPayment syncs company profile', async () => {

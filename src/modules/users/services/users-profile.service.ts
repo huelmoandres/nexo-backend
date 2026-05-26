@@ -324,6 +324,15 @@ export class UsersProfileService {
       );
     }
 
+    if (!stateId || !cityId) {
+      throw new BadRequestException(
+        buildProblem(
+          'PROFESSIONAL_LOCATION_UNRESOLVED',
+          'No se pudo determinar departamento y ciudad en el catálogo. Usá una dirección o coordenadas dentro de Uruguay.',
+        ),
+      );
+    }
+
     return {
       latitude,
       longitude,

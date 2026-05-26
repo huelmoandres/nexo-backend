@@ -14,7 +14,7 @@ describe('DgiWebScraperProvider', () => {
         ok: true,
         text: async () =>
           `<html><body>
-            RUC 214567890013
+            RUC 214567890018
             Razón social ACME Test S.A.
             Estado del CVA Habilitado
           </body></html>`,
@@ -31,7 +31,7 @@ describe('DgiWebScraperProvider', () => {
     const result = await provider.lookup(
       'https://www.efactura.dgi.gub.uy/consultaQR/cnt',
     );
-    expect(result.rut).toBe('214567890013');
+    expect(result.rut).toBe('214567890018');
     expect(result.activo).toBe(true);
     expect(result.razonSocial.length).toBeGreaterThan(0);
   });
@@ -62,7 +62,7 @@ describe('DgiWebScraperProvider', () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       text: async () =>
-        '<html><body>RUC 214567890013 Estado vigente en DGI</body></html>',
+        '<html><body>RUC 214567890018 Estado vigente en DGI</body></html>',
     } as Response);
 
     const result = await provider.lookup(
@@ -75,7 +75,7 @@ describe('DgiWebScraperProvider', () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       text: async () =>
-        '<html><body>RUC 214567890013 Razón social ACME Estado cancelado</body></html>',
+        '<html><body>RUC 214567890018 Razón social ACME Estado cancelado</body></html>',
     } as Response);
 
     const result = await provider.lookup(
@@ -137,13 +137,13 @@ describe('DgiWebScraperProvider', () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       text: async () =>
-        `<table><tr><th>RUC</th><td>21 456 789 0013</td></tr></table>`,
+        `<table><tr><th>RUC</th><td>21 456 789 0018</td></tr></table>`,
     } as Response);
 
     const result = await provider.lookup(
       'https://www.efactura.dgi.gub.uy/consultaQR/cnt',
     );
-    expect(result.rut).toBe('214567890013');
+    expect(result.rut).toBe('214567890018');
   });
 
   it('extrae razón social desde tabla HTML', async () => {
@@ -151,7 +151,7 @@ describe('DgiWebScraperProvider', () => {
       ok: true,
       text: async () =>
         `<table>
-          <tr><th>RUC</th><td>214567890013</td></tr>
+          <tr><th>RUC</th><td>214567890018</td></tr>
           <tr><th>Razón social</th><td>Empresa Tabla S.A.</td></tr>
           <tr><th>Estado</th><td>Habilitado</td></tr>
         </table>`,
@@ -166,7 +166,7 @@ describe('DgiWebScraperProvider', () => {
   it('devuelve denominación por defecto si no hay razón social', async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
-      text: async () => 'RUC 214567890013 sin denominación explícita',
+      text: async () => 'RUC 214567890018 sin denominación explícita',
     } as Response);
 
     const result = await provider.lookup(
@@ -179,7 +179,7 @@ describe('DgiWebScraperProvider', () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       text: async () =>
-        'RUC 214567890013 Razón social ACME Regex S.A. Domicilio Montevideo',
+        'RUC 214567890018 Razón social ACME Regex S.A. Domicilio Montevideo',
     } as Response);
 
     const result = await provider.lookup(

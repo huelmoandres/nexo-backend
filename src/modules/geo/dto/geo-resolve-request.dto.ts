@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -13,8 +14,18 @@ import {
 
 export class GeoResolveRequestDto {
   @ApiPropertyOptional({
+    example: 'ChIJxxxx',
+    description:
+      'Place ID de Google Places (Autocomplete). Prioritario sobre addressLine.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  placeId?: string;
+
+  @ApiPropertyOptional({
     example: 'Av. Brasil 2880, Pocitos, Montevideo',
-    description: 'Dirección libre; prioritaria para forward geocode.',
+    description: 'Dirección libre; forward geocode si no hay placeId.',
   })
   @IsOptional()
   @IsString()
@@ -44,4 +55,28 @@ export class GeoResolveRequestDto {
   @IsOptional()
   @IsBoolean()
   preferCoordinates?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Departamento ya elegido en UI (contexto para resolve).',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  stateId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Ciudad ya elegida en UI (contexto para resolve).',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  cityId?: string;
+
+  @ApiPropertyOptional({
+    example: 'La Estiva',
+    description: 'Barrio libre cuando no está en catálogo; se upsertea si hay cityId.',
+    maxLength: 120,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  neighborhoodName?: string;
 }

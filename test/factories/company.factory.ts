@@ -10,7 +10,7 @@ import {
  * Factory para entidades Company de Prisma.
  *
  * Uso en tests unitarios (objeto plano, sin DB):
- *   const company = companyFactory.build({ rut: '214567890013' });
+ *   const company = companyFactory.build({ rut: '214567890018' });
  *
  * Uso en tests de integración (persiste en DB):
  *   const company = await companyFactory.create({}, { transient: { prisma } });
@@ -22,7 +22,7 @@ export const companyFactory = Factory.define<
   const company: Company = {
     id: faker.string.uuid(),
     name: faker.company.name(),
-    rut: '214567890013',
+    rut: '214567890018',
     adminId: faker.string.uuid(),
     subscriptionPlan: 'FREE',
     planDefinitionId: 'a0000000-0000-4000-8000-000000000001',

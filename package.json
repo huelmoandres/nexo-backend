@@ -7,18 +7,17 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
-    "lint:ci": "eslint \"{src,apps,libs,test}/**/*.ts\" --max-warnings=0",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "lint:ci": "eslint \"{src,apps,libs,test}/**/*.ts\" --max-warnings=0",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "test": "vitest run --config src/config/vitest.config.ts",
     "test:watch": "vitest --config src/config/vitest.config.ts",
     "test:cov": "vitest run --config src/config/vitest.config.ts --coverage",
-    "test:cov:strict": "vitest run --config src/config/vitest.config.ts --coverage",
     "test:cov:billing": "vitest run --config src/config/vitest.billing.config.ts --coverage",
     "test:e2e": "vitest run --config src/config/vitest.e2e.config.ts",
     "test:all": "npm run test && npm run test:e2e",
@@ -27,21 +26,20 @@
     "db:migrate:deploy": "prisma migrate deploy --config prisma/prisma.config.ts",
     "db:migrate:status": "prisma migrate status --config prisma/prisma.config.ts",
     "db:migrate:reset": "prisma migrate reset --config prisma/prisma.config.ts",
-    "db:push": "prisma db push --config prisma/prisma.config.ts",
     "db:studio": "prisma studio --config prisma/prisma.config.ts",
     "db:seed": "node prisma/seed.js",
     "db:seed:geo": "node prisma/seed.geo.js",
-    "geo:build": "node scripts/build-uruguay-geo.mjs",
-    "categories:build": "node scripts/build-categories-json.mjs",
     "db:seed:categories": "node prisma/seed.categories.js",
-    "db:seed:demo": "node prisma/seed.demo.js",
     "db:seed:currencies": "node prisma/seed.currencies.js",
     "db:seed:banks": "node prisma/seed.banks.js",
-    "db:seed:all": "npm run db:seed && npm run db:seed:geo && npm run db:seed:categories && npm run db:seed:currencies && npm run db:seed:banks && npm run db:seed:demo",
+    "db:seed:demo": "node prisma/seed.demo.js",
     "db:seed:stress": "SEED_STRESS=1 STRESS_PRO_COUNT=500 node prisma/seed.js",
     "db:backfill:trust-identity": "node prisma/backfill.trust-identity.js",
+    "geo:build": "node scripts/build-uruguay-geo.mjs",
+    "geo:import-rocha-barrios": "node scripts/import-rocha-barrios.mjs",
+    "categories:build": "node scripts/build-categories-json.mjs",
     "architecture:check": "node scripts/architecture-check.mjs",
-    "quality:check": "npx tsc --noEmit && npm run lint && npm run architecture:check && npm run test:cov:strict && npm run test:e2e",
+    "quality:check": "npx tsc --noEmit && npm run lint:ci && npm run format:check && npm run architecture:check && npm run test:cov && npm run test:e2e",
     "prepare": "husky"
   },
   "dependencies": {
@@ -137,5 +135,8 @@
   },
   "prisma": {
     "seed": "node prisma/seed.js"
+  },
+  "overrides": {
+    "pdfjs-dist": "5.4.296"
   }
 }

@@ -15,8 +15,10 @@ const BANKS = [
   { code: 'HSBC', name: 'HSBC Uruguay', bcuPrefix: '157' },
 ];
 
-async function main() {
-  const prisma = createSeedPrisma();
+/**
+ * @param {import('@prisma/client').PrismaClient} prisma
+ */
+async function runSeedBanks(prisma) {
   for (const bank of BANKS) {
     await prisma.bank.upsert({
       where: { code: bank.code },
@@ -24,11 +26,23 @@ async function main() {
       update: { name: bank.name, bcuPrefix: bank.bcuPrefix, isActive: true },
     });
   }
-  console.log(`Seeded ${BANKS.length} banks`);
-  await prisma.$disconnect();
+  console.info(`Seeded ${BANKS.length} banks`);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+async function main() {
+  const prisma = createSeedPrisma();
+  try {
+    await runSeedBanks(prisma);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+if (require.main === module) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
+
+module.exports = { runSeedBanks };

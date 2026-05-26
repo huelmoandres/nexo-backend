@@ -297,7 +297,7 @@ describe('UsersProfileService', () => {
 
   it('createProfessionalProfile valida RUT opcional cuando se provee', async () => {
     const rutRegistration = makeRutRegistration();
-    rutRegistration.resolveRut.mockReturnValue('214567890013');
+    rutRegistration.resolveRut.mockReturnValue('214567890018');
     const repo = {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue(baseUser),
       hasProfessionalProfile: vi.fn().mockResolvedValue(false),
@@ -317,11 +317,11 @@ describe('UsersProfileService', () => {
       latitude: -34.9,
       longitude: -56.2,
       categoryIds: ['cat1'],
-      rut: '214567890013',
+      rut: '214567890018',
     });
 
     expect(rutRegistration.assertRutAvailable).toHaveBeenCalledWith(
-      '214567890013',
+      '214567890018',
     );
   });
 
@@ -554,7 +554,7 @@ describe('UsersProfileService', () => {
     });
   });
 
-  it('createProfessionalProfile usa geo resolve cuando cityId en respuesta es null', async () => {
+  it('createProfessionalProfile lanza UNRESOLVED si resolve devuelve state sin cityId', async () => {
     const geoResolveService = {
       resolve: vi.fn().mockResolvedValue({
         resolved: true,
@@ -571,20 +571,10 @@ describe('UsersProfileService', () => {
         source: 'google',
       }),
     };
-    const createProfessionalProfileWithPostgis = vi.fn().mockResolvedValue({
-      id: 'p1',
-      experienceYears: 2,
-      stateId: 'state-1',
-      cityId: null,
-      neighborhoodId: null,
-      categories: [],
-    });
     const repo = {
       findBySupabaseUidForMe: vi.fn().mockResolvedValue(baseUser),
       hasProfessionalProfile: vi.fn().mockResolvedValue(false),
       countCategoriesByIds: vi.fn().mockResolvedValue(1),
-      createProfessionalProfileWithPostgis,
-      getProfileCoordinates: vi.fn().mockResolvedValue(null),
     };
     const service = createService(
       repo,
@@ -594,15 +584,13 @@ describe('UsersProfileService', () => {
       geoResolveService,
     );
 
-    await service.createProfessionalProfile('sub', {
-      experienceYears: 2,
-      addressLine: 'Montevideo',
-      categoryIds: ['cat1'],
-    });
-
-    expect(createProfessionalProfileWithPostgis).toHaveBeenCalledWith(
-      expect.objectContaining({ cityId: undefined, stateId: 'state-1' }),
-    );
+    await expect(
+      service.createProfessionalProfile('sub', {
+        experienceYears: 2,
+        addressLine: 'Montevideo',
+        categoryIds: ['cat1'],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('createProfessionalProfile respeta IDs geo explícitos del DTO', async () => {
@@ -639,6 +627,41 @@ describe('UsersProfileService', () => {
         cityId: 'custom-city',
       }),
     );
+  });
+
+  it('createProfessionalProfile lanza PROFESSIONAL_LOCATION_UNRESOLVED sin stateId/cityId tras resolve', async () => {
+    const geoResolveService = {
+      resolve: vi.fn().mockResolvedValue({
+        resolved: true,
+        latitude: -34.9,
+        longitude: -56.15,
+        formattedAddress: 'Calle X',
+        geo: { stateId: null, cityId: null, countryId: 'c1', neighborhoodId: null },
+        created: { city: false, neighborhood: false },
+        source: 'google',
+      }),
+    };
+    const repo = {
+      findBySupabaseUidForMe: vi.fn().mockResolvedValue(baseUser),
+      hasProfessionalProfile: vi.fn().mockResolvedValue(false),
+      countCategoriesByIds: vi.fn().mockResolvedValue(1),
+    };
+    const service = createService(
+      repo,
+      {},
+      makeRutRegistration(),
+      makeAuthz(),
+      geoResolveService,
+    );
+
+    await expect(
+      service.createProfessionalProfile('sub', {
+        experienceYears: 2,
+        latitude: -34.9,
+        longitude: -56.15,
+        categoryIds: ['cat1'],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('createProfessionalProfile lanza PROFESSIONAL_LOCATION_UNRESOLVED', async () => {

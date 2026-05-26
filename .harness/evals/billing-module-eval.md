@@ -6,7 +6,7 @@
 
 - [ ] `npm run test` — `src/modules/billing/**/__tests__/*.spec.ts`
 - [ ] `npm run test:e2e` — `billing.repository.e2e-spec.ts`
-- [ ] `npm run test:cov:strict` — 100% en `src/modules/billing/**`
+- [ ] `npm run test:cov` — 100% en `src/modules/billing/**`
 
 ## Manual (sandbox + ngrok) — obligatorio para webhooks
 

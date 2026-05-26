@@ -374,6 +374,7 @@ describe('PaymentsService', () => {
     paymentGateway.createPaymentLink.mockRejectedValueOnce(
       new Error('mp down'),
     );
+    paymentGateway.createPaymentLink.mockRejectedValueOnce('mp-string');
     prisma.job.findUnique.mockResolvedValue({
       id: 'j1',
       clientId: 'c1',
@@ -388,6 +389,31 @@ describe('PaymentsService', () => {
     ).rejects.toMatchObject({
       response: { code: 'PAYMENT_CHECKOUT_FAILED' },
     });
+    await expect(
+      makeSvc().createJobCheckout('uid', 'j1'),
+    ).rejects.toMatchObject({
+      response: { code: 'PAYMENT_CHECKOUT_FAILED' },
+    });
+  });
+
+  it('createJobCheckout sin detail en producción', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    paymentGateway.createPaymentLink.mockRejectedValueOnce(new Error('mp down'));
+    prisma.job.findUnique.mockResolvedValue({
+      id: 'j1',
+      clientId: 'c1',
+      status: JobStatus.ACCEPTED,
+      title: 'T',
+      totalAmountCents: 100,
+      currency: { code: 'UYU' },
+      escrowTransaction: { status: EscrowStatus.PENDING },
+    });
+    await expect(
+      makeSvc().createJobCheckout('uid', 'j1'),
+    ).rejects.toMatchObject({
+      response: { code: 'PAYMENT_CHECKOUT_FAILED' },
+    });
+    vi.unstubAllEnvs();
   });
 
   it('handleMercadoPagoWebhook fondea desde merchant_order approved', async () => {
@@ -628,6 +654,306 @@ describe('PaymentsService', () => {
         { data: { id: '1' } },
       ),
     ).rejects.toMatchObject({ response: { code: 'PAYMENT_AMOUNT_MISMATCH' } });
+  });
+
+  it('handleMercadoPagoWebhook merchant_order Error ACK 200', async () => {
+    const mpGateway = {
+      verifyWebhookFromHeaders: vi.fn().mockReturnValue(true),
+      resolveApprovedPaymentFromMerchantOrder: vi
+        .fn()
+        .mockRejectedValue(new Error('mp-order')),
+      getPaymentStatus: vi.fn(),
+    };
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      mpGateway as never,
+      { provider: 'mercadopago' } as never,
+    );
+    await expect(
+      svc.handleMercadoPagoWebhook(
+        { 'x-signature': 'x', 'x-request-id': 'r' },
+        {},
+        '41155643036',
+        undefined,
+        'merchant_order',
+      ),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it('handleMercadoPagoWebhook merchant_order error no-Error ACK 200', async () => {
+    const mpGateway = {
+      verifyWebhookFromHeaders: vi.fn().mockReturnValue(true),
+      resolveApprovedPaymentFromMerchantOrder: vi
+        .fn()
+        .mockRejectedValue('mp-down'),
+      getPaymentStatus: vi.fn(),
+    };
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      mpGateway as never,
+      { provider: 'mercadopago' } as never,
+    );
+    await expect(
+      svc.handleMercadoPagoWebhook(
+        { 'x-signature': 'x', 'x-request-id': 'r' },
+        {},
+        '41155643036',
+        undefined,
+        'merchant_order',
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(escrowService.fundEscrow).not.toHaveBeenCalled();
+  });
+
+  it('handleMercadoPagoWebhook firma usa body.data.id', async () => {
+    const mpGateway = {
+      verifyWebhookFromHeaders: vi.fn().mockReturnValue(true),
+      getPaymentStatus: vi.fn().mockResolvedValue({
+        status: 'pending',
+        providerReference: 'p',
+        amountCents: 100,
+        externalReference: 'j-pending',
+      }),
+      resolveApprovedPaymentFromMerchantOrder: vi.fn(),
+    };
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      mpGateway as never,
+      { provider: 'mercadopago' } as never,
+    );
+    await svc.handleMercadoPagoWebhook(
+      { 'x-signature': 'x', 'x-request-id': 'r' },
+      { data: { id: 'body-pay-1' } },
+      undefined,
+      undefined,
+    );
+    expect(mpGateway.verifyWebhookFromHeaders).toHaveBeenCalledWith(
+      expect.anything(),
+      'body-pay-1',
+    );
+  });
+
+  it('handleMercadoPagoWebhook IPN legacy rechaza sin queryId', async () => {
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      { verifyWebhookFromHeaders: vi.fn() } as never,
+      { provider: 'mercadopago' } as never,
+    );
+    await expect(
+      svc.handleMercadoPagoWebhook(
+        {},
+        { type: 'payment' },
+        '  ',
+        undefined,
+        'payment',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'PAYMENT_WEBHOOK_INVALID' } });
+  });
+
+  it('handleMercadoPagoWebhook usa body.data.id para firma', async () => {
+    const mpGateway = {
+      verifyWebhookFromHeaders: vi.fn().mockReturnValue(true),
+      getPaymentStatus: vi.fn().mockResolvedValue({
+        status: 'pending',
+        providerReference: 'body-id',
+        amountCents: 100,
+        externalReference: 'j-body',
+      }),
+      resolveApprovedPaymentFromMerchantOrder: vi.fn(),
+    };
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      mpGateway as never,
+      { provider: 'mercadopago' } as never,
+    );
+    await svc.handleMercadoPagoWebhook(
+      { 'x-signature': 'x', 'x-request-id': 'r' },
+      { data: { id: 42 } },
+      undefined,
+      undefined,
+    );
+    expect(mpGateway.verifyWebhookFromHeaders).toHaveBeenCalledWith(
+      expect.anything(),
+      '42',
+    );
+  });
+
+  it('handleMercadoPagoWebhook IPN legacy usa queryId', async () => {
+    const mpGateway = {
+      verifyWebhookFromHeaders: vi.fn(),
+      getPaymentStatus: vi.fn().mockResolvedValue({
+        status: 'pending',
+        providerReference: 'ipn-1',
+        amountCents: 100,
+        externalReference: 'j-ipn',
+      }),
+      resolveApprovedPaymentFromMerchantOrder: vi.fn(),
+    };
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      mpGateway as never,
+      { provider: 'mercadopago' } as never,
+    );
+    await expect(
+      svc.handleMercadoPagoWebhook(
+        {},
+        { type: 'payment' },
+        'ipn-pay-id',
+        undefined,
+        'payment',
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(mpGateway.verifyWebhookFromHeaders).not.toHaveBeenCalled();
+    expect(mpGateway.getPaymentStatus).toHaveBeenCalledWith('ipn-pay-id');
+  });
+
+  it('handleMercadoPagoWebhook rechaza sin signatureDataId pero con queryId', async () => {
+    const mpGateway = {
+      verifyWebhookFromHeaders: vi.fn(),
+      getPaymentStatus: vi.fn(),
+      resolveApprovedPaymentFromMerchantOrder: vi.fn(),
+    };
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      mpGateway as never,
+      { provider: 'mercadopago' } as never,
+    );
+    await expect(
+      svc.handleMercadoPagoWebhook(
+        { 'x-signature': 'x', 'x-request-id': 'r' },
+        {},
+        'only-query-id',
+        undefined,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'PAYMENT_WEBHOOK_INVALID' } });
+    expect(mpGateway.verifyWebhookFromHeaders).not.toHaveBeenCalled();
+  });
+
+  it('handleMercadoPagoWebhook rechaza firma inválida con signatureDataId presente', async () => {
+    const mpGateway = {
+      verifyWebhookFromHeaders: vi.fn().mockReturnValue(false),
+      getPaymentStatus: vi.fn(),
+      resolveApprovedPaymentFromMerchantOrder: vi.fn(),
+    };
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      mpGateway as never,
+      { provider: 'mercadopago' } as never,
+    );
+    await expect(
+      svc.handleMercadoPagoWebhook(
+        { 'x-signature': 'bad', 'x-request-id': 'r' },
+        { data: { id: 'pay-bad' } },
+        undefined,
+        'pay-bad',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'PAYMENT_WEBHOOK_INVALID' } });
+    expect(mpGateway.verifyWebhookFromHeaders).toHaveBeenCalledWith(
+      expect.anything(),
+      'pay-bad',
+    );
+  });
+
+  it('handleMercadoPagoWebhook rechaza sin signatureDataId', async () => {
+    const mpGateway = {
+      verifyWebhookFromHeaders: vi.fn(),
+      getPaymentStatus: vi.fn(),
+    };
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      mpGateway as never,
+      { provider: 'mercadopago' } as never,
+    );
+    await expect(
+      svc.handleMercadoPagoWebhook(
+        { 'x-signature': 'x', 'x-request-id': 'r' },
+        {},
+        undefined,
+        undefined,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'PAYMENT_WEBHOOK_INVALID' } });
+    expect(mpGateway.verifyWebhookFromHeaders).not.toHaveBeenCalled();
+  });
+
+  it('handleMercadoPagoWebhook getPaymentStatus error no-Error ACK 200', async () => {
+    const mpGateway = {
+      verifyWebhookFromHeaders: vi.fn().mockReturnValue(true),
+      getPaymentStatus: vi.fn().mockRejectedValue('mp-string'),
+      resolveApprovedPaymentFromMerchantOrder: vi.fn(),
+    };
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      mpGateway as never,
+      { provider: 'mercadopago' } as never,
+    );
+    await expect(
+      svc.handleMercadoPagoWebhook(
+        { 'x-signature': 'x', 'x-request-id': 'r' },
+        { data: { id: '1' } },
+        undefined,
+        '1',
+      ),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it('handleMercadoPagoWebhook ignora external_reference de suscripción', async () => {
+    const mpGateway = {
+      verifyWebhookFromHeaders: vi.fn().mockReturnValue(true),
+      getPaymentStatus: vi.fn().mockResolvedValue({
+        status: 'approved',
+        providerReference: 'pay-sub',
+        amountCents: 100,
+        externalReference: 'subscription:professional:prof-1',
+      }),
+      resolveApprovedPaymentFromMerchantOrder: vi.fn(),
+    };
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      mpGateway as never,
+      { provider: 'mercadopago' } as never,
+    );
+    await expect(
+      svc.handleMercadoPagoWebhook(
+        { 'x-signature': 'x', 'x-request-id': 'r' },
+        { data: { id: '1' } },
+        undefined,
+        '1',
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(escrowService.fundEscrow).not.toHaveBeenCalled();
   });
 
   it('rechaza sin webhookSecret configurado en mock webhook', async () => {

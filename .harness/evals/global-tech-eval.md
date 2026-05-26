@@ -98,7 +98,7 @@ Ver `docs/reference/testing-guidelines.md` para el detalle completo.
 - [ ] Todo test que verifique un plazo temporal (48hs Escrow, deadline de Segunda Oportunidad, TTL de Redis) llama a `vi.useFakeTimers()` y `vi.setSystemTime(FIXED_NOW)` en su `beforeEach`. El `afterEach` llama a `vi.useRealTimers()`.
 - [ ] Existe al menos un archivo `__tests__/<nombre>.service.spec.ts` por cada Service implementado.
 - [ ] La cobertura global del backend cumple **>= 95%** en `lines`, `branches`, `functions` y `statements`.
-- [ ] `npm run test:cov:strict` pasa sin errores de umbral (95% global definido en `src/config/vitest.config.ts`).
+- [ ] `npm run test:cov` pasa sin errores de umbral (100% global definido en `src/config/vitest.config.ts`).
 
 ---
 
@@ -137,7 +137,7 @@ Este es el checklist final antes de solicitar revisión de PR. Un módulo no est
 
 ### Testing
 - [ ] Tests unitarios con Vitest pasando (`npm run test`).
-- [ ] Cobertura del módulo no degrada el umbral global de calidad (`npm run test:cov:strict`).
+- [ ] Cobertura del módulo no degrada el umbral global de calidad (`npm run test:cov`).
 - [ ] Ningún PR se acepta si baja de 95% en cualquier métrica global.
 - [ ] Lógica temporal testeada con `vi.useFakeTimers()` + `vi.setSystemTime()`.
 - [ ] Factories de `@test/factories` usadas — prohibidos objetos literales de Prisma en tests.
@@ -184,7 +184,7 @@ npm run test
 # Resultado esperado: todos los tests en verde, exit code 0
 
 # 7. Verificar cobertura mínima
-npm run test:cov:strict
+npm run test:cov
 # Resultado esperado: sin mensajes de "threshold not met" (95% global)
 
 # 8. Verificar quality gate completo

@@ -26,6 +26,7 @@
 | **users** | `POST /users/professional-profile` | JWT | `CLIENT`, `INDEPENDENT_PRO` (onboarding) | Alta FREE + zona Principal |
 | **users** | `POST /users/documents/presign` | JWT | `INDEPENDENT_PRO` | N/A |
 | **users** | `POST /users/company` | JWT | `CLIENT` (promueve a `COMPANY_ADMIN`) | Alta empresa FREE |
+| **users** | `POST /users/company/employees` | JWT | `COMPANY_ADMIN` | Vincula `CLIENT` existente |
 | **users/verification** | `POST presign`, `POST submit`, `GET status` | JWT | `INDEPENDENT_PRO`, `COMPANY_ADMIN` + assert subject | N/A |
 | **admin/verification** | `GET pending`, `POST review` | JWT | `SUPER_ADMIN` | N/A |
 | **admin** (plans) | `GET/PATCH plan-definitions`, assign/custom | JWT | `SUPER_ADMIN` | Admin catálogo |

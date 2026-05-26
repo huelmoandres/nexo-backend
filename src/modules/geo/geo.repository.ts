@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { GeoEntitySource, Prisma } from '@prisma/client';
 import { PrismaService } from '@prisma/prisma.service';
+import {
+  geoNameMatchSlugs,
+  normalizeGeoNameForCompare,
+} from './lib/geo-name-match';
 
 export interface GeoFlatRow {
   countryId: string;
@@ -29,6 +33,17 @@ export class GeoRepository {
     return this.prisma.state.findMany({
       where: { countryId },
       orderBy: { name: 'asc' },
+    });
+  }
+
+  async findStateById(stateId: string) {
+    return this.prisma.state.findUnique({ where: { id: stateId } });
+  }
+
+  async findCityById(cityId: string) {
+    return this.prisma.city.findUnique({
+      where: { id: cityId },
+      include: { state: true },
     });
   }
 
@@ -67,16 +82,56 @@ export class GeoRepository {
     });
   }
 
+  async findStateByCountryAndParsedName(countryId: string, parsedName: string) {
+    for (const slug of geoNameMatchSlugs(parsedName)) {
+      const found = await this.findStateByCountryAndSlug(countryId, slug);
+      if (found) return found;
+    }
+
+    const target = normalizeGeoNameForCompare(parsedName);
+    const states = await this.findStatesByCountryId(countryId);
+    return (
+      states.find((s) => normalizeGeoNameForCompare(s.name) === target) ?? null
+    );
+  }
+
   async findCityByStateAndSlug(stateId: string, slug: string) {
     return this.prisma.city.findFirst({
       where: { stateId, slug },
     });
   }
 
+  async findCityByStateAndParsedName(stateId: string, parsedName: string) {
+    for (const slug of geoNameMatchSlugs(parsedName)) {
+      const found = await this.findCityByStateAndSlug(stateId, slug);
+      if (found) return found;
+    }
+
+    const target = normalizeGeoNameForCompare(parsedName);
+    const cities = await this.findCitiesByStateId(stateId);
+    return (
+      cities.find((c) => normalizeGeoNameForCompare(c.name) === target) ?? null
+    );
+  }
+
   async findNeighborhoodByCityAndSlug(cityId: string, slug: string) {
     return this.prisma.neighborhood.findFirst({
       where: { cityId, slug },
     });
+  }
+
+  async findNeighborhoodByCityAndParsedName(cityId: string, parsedName: string) {
+    for (const slug of geoNameMatchSlugs(parsedName)) {
+      const found = await this.findNeighborhoodByCityAndSlug(cityId, slug);
+      if (found) return found;
+    }
+
+    const target = normalizeGeoNameForCompare(parsedName);
+    const neighborhoods = await this.findNeighborhoodsByCityId(cityId);
+    return (
+      neighborhoods.find((n) => normalizeGeoNameForCompare(n.name) === target) ??
+      null
+    );
   }
 
   async upsertState(input: {

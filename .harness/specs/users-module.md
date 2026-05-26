@@ -30,6 +30,12 @@ Además del `SupabaseGuard` global, este módulo requiere la creación de un `Ro
 - **Ruta:** `POST /users/company/employees`
 - **Protección:** `SupabaseGuard` + `@Roles(Role.COMPANY_ADMIN)`
 - **Propósito:** Permite a una empresa agregar operarios a su cuenta.
+- **Implementación (2026-05):** Vincula un usuario **ya registrado** (`CLIENT` sin empresa ni perfil pro) por email; no crea cuenta Supabase.
+
+### E. Backlog: preferencia “solo cliente” (onboarding UI)
+
+- Hoy el front guarda `clientOnlyOnboarding` en `@nexos/store` (`nexos:preferences`, Zustand persist).
+- **Pendiente:** campo o endpoint en `User` para que la elección sobreviva entre dispositivos y no dependa de `localStorage`.
 - **Validaciones y DTO (`CreateEmployeeDto`):**
   - `email`: string, `@IsEmail()`, obligatorio.
   - `fullName`: string, `@IsString()`, mínimo 3 caracteres, obligatorio.
@@ -44,12 +50,25 @@ Además del `SupabaseGuard` global, este módulo requiere la creación de un `Ro
 - **Ruta:** `POST /users/professional-profile`
 - **Protección:** `SupabaseGuard`
 - **Propósito:** Crear `ProfessionalProfile` y promover `CLIENT` → `INDEPENDENT_PRO` en la misma transacción.
-- **DTO (`CreateProfessionalProfileDto`):** `experienceYears`, `latitude`, `longitude`, `categoryIds` obligatorios; `bio`, `rut` opcionales. `rut` validado con `@IsRutUruguay` en HTTP; reglas de negocio en `RutRegistrationService`.
+- **DTO (`CreateProfessionalProfileDto`):** `experienceYears`, `categoryIds` obligatorios; `bio`, `rut` opcionales. Ubicación: **`addressLine` o par `latitude`+`longitude`** (si faltan ambos → `400 PROFESSIONAL_LOCATION_REQUIRED`). El servicio re-ejecuta `GeoResolveService` con `preferCoordinates: true` (pin del cliente prevalece). Tras resolve deben existir **coords** y **`stateId` + `cityId`** en catálogo UY; si falta alguno → `400 PROFESSIONAL_LOCATION_UNRESOLVED`. En el wizard, el cliente valida lo mismo antes del paso revisión (ver `auth-onboarding-ui.md`). `OUTSIDE_URUGUAY` aplica en `POST /geo/resolve` (`resolved: false`); el POST de perfil no expone ese código. `neighborhoodId` opcional. `rut` → `RutRegistrationService`.
+- **Post-condición geo:** `ProfessionalProfile` + zona `ServiceArea` “Principal” (PostGIS, radio 5 km).
 - **Reglas de rol (service):** `CLIENT` o `INDEPENDENT_PRO` sin perfil → OK; `COMPANY_ADMIN` / `COMPANY_EMPLOYEE` / `SUPER_ADMIN` → `409 PROFESSIONAL_ONBOARDING_ROLE_CONFLICT`.
-- **RUT:** Opcional; si viene, `RutRegistrationService` normaliza, valida DGI y `assertRutAvailable` (409 `RUT_ALREADY_REGISTERED` si existe en empresa u otro perfil).
+- **RUT:** Opcional; si viene, el DTO valida con `@IsRutUruguay()` (`VALIDATION_ERROR` + `errors[].field === 'rut'`). El frontend replica la regla en `@nexos/schemas` (`validateUruguayRut12`). Luego `RutRegistrationService` normaliza y `assertRutAvailable` (409 `RUT_ALREADY_REGISTERED` si existe en empresa u otro perfil).
+
+#### Validación RUT (12 dígitos, DGI)
+
+Implementación: `src/modules/users/utils/rut.validator.ts` (espejo en `nexos-frontend/packages/schemas/src/rut.ts`).
+
+- **Estructura** (`validateRutStructure12`): 12 dígitos; posiciones 1–2 en `01`–`21`; posiciones 3–8 ≠ `000000`; posiciones 9–10 = `00` (persona jurídica: sufijo `001` + DV).
+- **Dígito verificador** (módulo 11): pesos sobre los 11 primeros dígitos: `[4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]` (referencia DGI / [pFacturas GeneXus](https://efactura.puntoexe.com.uy/documentos/uruguay/algoritmos-de-d%C3%ADgito-verificador)). `rem === 1` → inválido; `rem === 0` → DV `0`; si no, DV = `11 - rem`.
+- **Ejemplos:** demo seed/API `214567890018`; regresión SAS válida `150745500016`. El antiguo ejemplo `214567890013` tenía DV incorrecto y no debe usarse.
 - **Post-condición:** `AuthorizationService.invalidateRoleCache(supabaseUid)` para que `@Roles` vea el rol nuevo de inmediato.
 
-### D. Endpoint: Subida de Documentos KYC (Sello Uruguay Pro)
+### D. Verificación DGI (constancia PDF)
+
+Flujo presign → PUT R2 → submit → job `dgi-verify`. Spec completa: [dgi-verification.md](dgi-verification.md) (estados, watchdog, cleanup, notificaciones, `rejectionReason` en status).
+
+### E. Endpoint: Subida de Documentos KYC (Sello Uruguay Pro)
 - **Ruta:** `POST /users/verification/kyc`
 - **Protección:** `SupabaseGuard`
 - **Propósito:** Iniciar el proceso de validación de Cédula/RUT.

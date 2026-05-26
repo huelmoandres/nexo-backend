@@ -25,12 +25,12 @@ describe('parseConstanciaFromPdfText', () => {
 
   it('extrae datos del texto del PDF con contenido', async () => {
     getText.mockResolvedValueOnce({
-      text: 'RUT: 214567890013\nRazón Social: ACME',
+      text: 'RUT: 214567890018\nRazón Social: ACME',
     });
 
     const result = await parseConstanciaFromPdfText(Buffer.from('pdf'));
 
-    expect(result.rut).toBe('214567890013');
+    expect(result.rut).toBe('214567890018');
     expect(result.razonSocial).toContain('ACME');
     expect(destroy).toHaveBeenCalled();
   });
@@ -38,17 +38,17 @@ describe('parseConstanciaFromPdfText', () => {
 
 describe('parseConstanciaFromPlainText', () => {
   it('extrae RUT con patrón RUT: desde regex principal', () => {
-    const result = parseConstanciaFromPlainText('RUT: 214567890013');
-    expect(result.rut).toBe('214567890013');
+    const result = parseConstanciaFromPlainText('RUT: 214567890018');
+    expect(result.rut).toBe('214567890018');
   });
 
   it('extrae RUT y razón social', () => {
     const text = `
-      RUT: 214567890013
+      RUT: 214567890018
       Razón Social: ACME Uruguay S.A.
     `;
     const result = parseConstanciaFromPlainText(text);
-    expect(result.rut).toBe('214567890013');
+    expect(result.rut).toBe('214567890018');
     expect(result.razonSocial).toContain('ACME');
   });
 
@@ -58,8 +58,8 @@ describe('parseConstanciaFromPlainText', () => {
   });
 
   it('toma único bloque de 12 dígitos como RUT', () => {
-    const result = parseConstanciaFromPlainText('contribuyente 214567890013');
-    expect(result.rut).toBe('214567890013');
+    const result = parseConstanciaFromPlainText('contribuyente 214567890018');
+    expect(result.rut).toBe('214567890018');
   });
 
   it('ignora RUT capturado si no tiene 12 dígitos normalizados', () => {

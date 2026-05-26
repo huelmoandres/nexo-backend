@@ -22,6 +22,10 @@
 - [ ] Si el usuario ya tiene `kycStatus: VERIFIED`, el endpoint devuelve `400 Bad Request` con el slug `kyc-already-verified`.
 - [ ] El Job enviado a BullMQ contiene las URLs de los documentos y el `userId`. No contiene datos sensibles adicionales que no sean necesarios para el Worker.
 
+### Onboarding profesional — ubicación
+- [ ] Wizard paso ubicación: no avanza sin `stateId`, `cityId` y coordenadas (`professionalProfileSchema`).
+- [ ] `POST /users/professional-profile` devuelve `PROFESSIONAL_LOCATION_UNRESOLVED` si resolve no asigna departamento y ciudad en catálogo.
+
 ### Perfil de Usuario
 - [ ] El endpoint `GET /users/me` extrae el `supabaseUid` del token JWT, nunca de un parámetro de query o path.
 - [ ] Si el usuario existe pero no tiene `ProfessionalProfile`, la respuesta devuelve el usuario con `professionalProfile: null`, no un `404`.

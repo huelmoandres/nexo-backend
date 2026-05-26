@@ -1,6 +1,10 @@
 import { Logger } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import { ConsentDeclineReason, NotificationType } from '@prisma/client';
+import {
+  ConsentDeclineReason,
+  NotificationType,
+  SubscriptionPlan,
+} from '@prisma/client';
 import { NotificationsService } from '../notifications.service';
 
 describe('NotificationsService', () => {
@@ -84,6 +88,113 @@ describe('NotificationsService', () => {
     expect(prisma.notification.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         message: expect.stringContaining('inapropiado'),
+      }),
+    });
+  });
+
+  it('notifySubscriptionPaymentFailed persiste notificación', async () => {
+    const { svc, prisma } = make();
+    await svc.notifySubscriptionPaymentFailed({
+      userId: 'u1',
+      planCode: SubscriptionPlan.PRO,
+      subscriptionId: 'sub-1',
+    });
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: NotificationType.SUBSCRIPTION_PAYMENT_FAILED,
+        relatedEntityType: 'BillingSubscription',
+      }),
+    });
+  });
+
+  it('notifySubscriptionGraceReminder persiste notificación', async () => {
+    const { svc, prisma } = make();
+    await svc.notifySubscriptionGraceReminder({
+      userId: 'u1',
+      planCode: SubscriptionPlan.BUSINESS,
+      subscriptionId: 'sub-1',
+      reminderNumber: 2,
+    });
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: NotificationType.SUBSCRIPTION_GRACE_REMINDER,
+      }),
+    });
+  });
+
+  it('notifySubscriptionDowngraded persiste notificación', async () => {
+    const { svc, prisma } = make();
+    await svc.notifySubscriptionDowngraded({
+      userId: 'u1',
+      subscriptionId: 'sub-1',
+    });
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: NotificationType.SUBSCRIPTION_DOWNGRADED,
+      }),
+    });
+  });
+
+  it('notifyDgiVerificationVerified con y sin razón social', async () => {
+    const { svc, prisma } = make();
+    await svc.notifyDgiVerificationVerified({
+      userId: 'u1',
+      trustProfileId: 't1',
+      razonSocial: 'ACME SA',
+    });
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: NotificationType.DGI_VERIFICATION_VERIFIED,
+        message: expect.stringContaining('ACME SA'),
+      }),
+    });
+
+    await svc.notifyDgiVerificationVerified({
+      userId: 'u1',
+      trustProfileId: 't1',
+    });
+    expect(prisma.notification.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({
+        message: expect.not.stringContaining('Razón social'),
+      }),
+    });
+  });
+
+  it('notifyDgiVerificationRejected con motivo truncado', async () => {
+    const { svc, prisma } = make();
+    const long = 'x'.repeat(250);
+    await svc.notifyDgiVerificationRejected({
+      userId: 'u1',
+      trustProfileId: 't1',
+      reason: long,
+    });
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: NotificationType.DGI_VERIFICATION_REJECTED,
+        message: expect.stringContaining('x'.repeat(200)),
+      }),
+    });
+
+    await svc.notifyDgiVerificationRejected({
+      userId: 'u1',
+      trustProfileId: 't1',
+    });
+    expect(prisma.notification.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({
+        message: expect.not.stringContaining('Motivo:'),
+      }),
+    });
+  });
+
+  it('notifyDgiVerificationManualReview persiste notificación', async () => {
+    const { svc, prisma } = make();
+    await svc.notifyDgiVerificationManualReview({
+      userId: 'u1',
+      trustProfileId: 't1',
+    });
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: NotificationType.DGI_VERIFICATION_MANUAL_REVIEW,
       }),
     });
   });

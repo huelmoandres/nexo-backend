@@ -772,7 +772,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"ACME Servicios Uruguay S.A.\",\n  \"rut\": \"214567890013\"\n}",
+              "raw": "{\n  \"name\": \"ACME Servicios Uruguay S.A.\",\n  \"rut\": \"214567890018\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

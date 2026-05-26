@@ -7,7 +7,7 @@
 ## Estado Actual del Proyecto
 
 **Fase:** Implementación de dominios core + auditoría integral aplicada
-**Fecha de última actualización:** 2026-05-22 (Payout accounts + cobertura 100% + docs/Postman)
+**Fecha de última actualización:** 2026-05-26 (Robustez DGI: rejectionReason, watchdog, cleanup R2, notificaciones)
 
 ---
 
@@ -110,6 +110,7 @@ Política transversal: [docs-first.md](rules/docs-first.md) §9, [security-roles
 
 > Agregar observaciones de sesión aquí.
 
+- **2026-05-26 (Robustez DGI):** Spec [dgi-verification.md](specs/dgi-verification.md). `rejectionReason` en `GET /users/verification/status`; cola `dgi-maintenance` (watchdog PROCESSING + orphan cleanup R2); notificaciones `DGI_VERIFICATION_*`; resubmit borra PDF anterior; `listObjectsByPrefix` en storage.
 - **2026-05-20 (Verificación DGI):** `POST /users/verification/*` presign+submit async (BullMQ `dgi-verify`); QR→`VERIFIED_AUTO`, texto→`PENDING_MANUAL_REVIEW`; empresa y profesional con RUT; admin `POST /admin/verification/:type/:id/review`.
 - **2026-05-20 (Onboarding profesional):** `POST /users/professional-profile` promueve `CLIENT` → `INDEPENDENT_PRO` en transacción; `RutRegistrationService` centraliza DGI + unicidad global; `ProfessionalProfile.rut` opcional; `AuthorizationService.invalidateRoleCache`.
 - **2026-05-20 (Search expansion prompt dinámico):** System prompt de expansión ahora se construye **dinámicamente** desde la tabla `Category` de la BD (`buildSearchExpansionSystemPrompt(categories)`). `SearchQueryExpanderService` carga categorías al init via `CategoriesRepository`; `CategoriesService` invoca `reloadCategories()` tras create/update/delete. No requiere mantener catálogo estático en código. Fix: `parseExpansionTermsJson` sanitiza respuestas con fences markdown (` ```json `).

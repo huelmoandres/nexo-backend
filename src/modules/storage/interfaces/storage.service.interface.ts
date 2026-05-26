@@ -114,4 +114,13 @@ export interface IStorageService {
    * @throws `ServiceUnavailableException` Si R2/S3 no responde.
    */
   downloadObject(key: string, bucket?: string): Promise<Buffer>;
+
+  /**
+   * Lista objetos bajo un prefijo (paginado internamente).
+   * Uso exclusivo de workers BullMQ / procesos admin — no exponer en HTTP.
+   */
+  listObjectsByPrefix(input: {
+    prefix: string;
+    bucket?: string;
+  }): Promise<Array<{ key: string; lastModified: Date }>>;
 }

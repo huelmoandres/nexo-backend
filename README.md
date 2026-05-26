@@ -19,7 +19,10 @@ Nexos es un marketplace que conecta clientes con profesionales de servicios del 
 
 ## Desarrollo con IA
 
-[Punto de entrada del repo: **AGENTS.md**](AGENTS.md): orden de lectura (explicación → referencia → harness → código), stack, convenciones (`api`, path aliases), **JWT Supabase con JWKS (ES256)** y diferencia entre **seeds Prisma** y factories de test. Complementa [`.cursorrules`](.cursorrules) y el [Harness Index](.harness/INDEX.md).
+- **[AGENTS.md](AGENTS.md)** — entrada de este repo (explicación → referencia → harness → código).
+- Workspace **backend + frontend** en una carpeta: **[../AGENTS.md](../AGENTS.md)**.
+
+Complementa [`.cursorrules`](.cursorrules) y el [Harness Index](.harness/INDEX.md).
 
 ---
 
@@ -54,6 +57,15 @@ Ver `.env.example` para la documentación de cada variable.
 docker compose up -d
 # Esto levanta: PostgreSQL+PostGIS, Redis y MongoDB
 ```
+
+**Colas BullMQ (opcional, tipo Horizon):** UI [Bull Board](https://github.com/felixmosh/bull-board) en Docker:
+
+```bash
+docker compose --profile tools up -d
+# http://localhost:3030 — usuario/clave: BULL_BOARD_USER / BULL_BOARD_PASSWORD (.env, default nexos / nexos_dev)
+```
+
+Verificá `dgi-verify`, `portfolio-moderate`, `silent-acceptance`, etc. en waiting / active / completed / failed.
 
 Verificar que los servicios están saludables:
 
@@ -108,12 +120,14 @@ Ver [docs/reference/api-testing.md](docs/reference/api-testing.md) para la guía
 | `npm run format` | Formatear con Prettier |
 | `npm run test` | Tests unitarios con Vitest |
 | `npm run test:watch` | Tests unitarios en modo watch |
-| `npm run test:cov` | Tests unitarios con cobertura y umbral global estricto (95%) |
-| `npm run test:cov:strict` | Alias explícito de `test:cov` para quality gate estricto |
+| `npm run test:cov` | Tests unitarios con cobertura (umbral 100% en `vitest.config.ts`) |
+| `npm run test:cov:billing` | Cobertura solo módulo billing |
 | `npm run test:e2e` | Tests de integración con Testcontainers |
 | `npm run test:all` | Todos los tests (unit + e2e) |
-| `npm run db:seed` | Seeds base (`prisma/seed.js`); ver también `db:seed:geo`, `db:seed:categories`, `db:seed:demo` |
-| `npm run quality:check` | `tsc + lint + coverage 95 + e2e` en un solo comando |
+| `npm run db:seed` | Orquestador: geo, categorías, monedas, bancos, demo, backfill (ver `.harness/specs/seeds.md`) |
+| `npm run db:seed:geo` / `db:seed:demo` / … | Capas individuales del seed |
+| `npm run geo:build` / `categories:build` | Regenerar JSON de catálogo antes de seed |
+| `npm run quality:check` | `tsc + lint:ci + format:check + architecture + test:cov + e2e` |
 | `npm run prepare` | Activa Husky tras `npm install` (hooks de Git locales) |
 
 ---

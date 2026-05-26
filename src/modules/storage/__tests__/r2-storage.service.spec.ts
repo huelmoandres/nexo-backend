@@ -47,6 +47,12 @@ const mocks = vi.hoisted(() => {
   ) {
     Object.assign(this as object, input as object);
   });
+  const MockListObjectsV2Command = vi.fn(function (
+    this: Record<string, unknown>,
+    input: unknown,
+  ) {
+    Object.assign(this as object, input as object);
+  });
   return {
     mockSend,
     mockGetSignedUrl,
@@ -56,6 +62,7 @@ const mocks = vi.hoisted(() => {
     MockDeleteObjectCommand,
     MockHeadBucketCommand,
     MockHeadObjectCommand,
+    MockListObjectsV2Command,
   };
 });
 
@@ -66,6 +73,7 @@ vi.mock('@aws-sdk/client-s3', () => ({
   DeleteObjectCommand: mocks.MockDeleteObjectCommand,
   HeadBucketCommand: mocks.MockHeadBucketCommand,
   HeadObjectCommand: mocks.MockHeadObjectCommand,
+  ListObjectsV2Command: mocks.MockListObjectsV2Command,
 }));
 
 vi.mock('@aws-sdk/s3-request-presigner', () => ({
@@ -579,6 +587,65 @@ describe('R2StorageService', () => {
       const svc = buildService(buildConfig({ r2Endpoint: '' }));
       await expect(svc.downloadObject('key.jpg')).rejects.toThrow(
         ServiceUnavailableException,
+      );
+    });
+  });
+
+  describe('listObjectsByPrefix', () => {
+    it('pagina resultados y devuelve key + lastModified', async () => {
+      const svc = buildService(buildConfig());
+      const date = new Date('2026-01-01');
+      mocks.mockSend
+        .mockResolvedValueOnce({
+          Contents: [{ Key: 'users/u1/verification/a.pdf', LastModified: date }],
+          IsTruncated: true,
+          NextContinuationToken: 'tok',
+        })
+        .mockResolvedValueOnce({
+          Contents: [
+            { Key: 'users/u1/verification/b.pdf', LastModified: date },
+          ],
+          IsTruncated: false,
+        });
+
+      const rows = await svc.listObjectsByPrefix({ prefix: 'users/' });
+
+      expect(rows).toHaveLength(2);
+      expect(rows[0]?.key).toBe('users/u1/verification/a.pdf');
+      expect(mocks.mockSend).toHaveBeenCalledTimes(2);
+    });
+
+    it('omite entradas sin Key y usa epoch si falta LastModified', async () => {
+      const svc = buildService(buildConfig());
+      mocks.mockSend.mockResolvedValueOnce({
+        Contents: undefined,
+        IsTruncated: false,
+      });
+      const empty = await svc.listObjectsByPrefix({ prefix: 'users/' });
+      expect(empty).toEqual([]);
+
+      mocks.mockSend.mockResolvedValueOnce({
+        Contents: [
+          { Key: 'users/u1/a.pdf', LastModified: new Date('2026-02-01') },
+          { Key: 'users/u1/b.pdf' },
+          { LastModified: new Date('2026-02-02') },
+          {},
+        ],
+        IsTruncated: false,
+      });
+
+      const rows = await svc.listObjectsByPrefix({
+        prefix: 'users/',
+        bucket: 'custom-bucket',
+      });
+
+      expect(rows).toHaveLength(2);
+      expect(rows[0]?.lastModified.getTime()).toBe(
+        new Date('2026-02-01').getTime(),
+      );
+      expect(rows[1]?.lastModified.getTime()).toBe(0);
+      expect(mocks.MockListObjectsV2Command).toHaveBeenCalledWith(
+        expect.objectContaining({ Bucket: 'custom-bucket' }),
       );
     });
   });

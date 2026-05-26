@@ -14,6 +14,7 @@ import {
   DeleteObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { buildProblem } from '@common/errors/problem.factory';
@@ -312,5 +313,42 @@ export class R2StorageService implements IStorageService {
     this.assertConfigured();
     const b = bucket ?? this.config.r2BucketKyc;
     await this.client.send(new HeadBucketCommand({ Bucket: b }));
+  }
+
+  /**
+   * Lista objetos bajo un prefijo con paginación S3.
+   * Uso exclusivo de workers internos (p. ej. cleanup DGI).
+   */
+  async listObjectsByPrefix(input: {
+    prefix: string;
+    bucket?: string;
+  }): Promise<Array<{ key: string; lastModified: Date }>> {
+    this.assertConfigured();
+    const b = input.bucket ?? this.config.r2BucketKyc;
+    const results: Array<{ key: string; lastModified: Date }> = [];
+    let continuationToken: string | undefined;
+
+    do {
+      const response = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: b,
+          Prefix: input.prefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      for (const obj of response.Contents ?? []) {
+        if (obj.Key) {
+          results.push({
+            key: obj.Key,
+            lastModified: obj.LastModified ?? new Date(0),
+          });
+        }
+      }
+      continuationToken = response.IsTruncated
+        ? response.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+
+    return results;
   }
 }

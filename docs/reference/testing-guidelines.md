@@ -204,7 +204,7 @@ Usar `addBusinessDays` (no `+48h`) para respetar los fines de semana.
 
 ## 6. Cobertura Mínima Obligatoria
 
-La cobertura se verifica con `npm run test:cov` (o `npm run test:cov:strict`, que es un alias explícito). El build falla si no se alcanzan los umbrales globales.
+La cobertura se verifica con `npm run test:cov`. El build falla si no se alcanzan los umbrales globales.
 
 | Métrica global (`src/config/vitest.config.ts`) | Umbral mínimo |
 |---|---|

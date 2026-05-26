@@ -13,4 +13,10 @@ export class VerificationStatusResponseDto {
 
   @ApiPropertyOptional({ example: '2026-05-20T12:00:00.000Z' })
   verifiedAt?: Date | null;
+
+  @ApiPropertyOptional({
+    example: 'El RUT extraído del PDF no coincide con el registrado.',
+    description: 'Solo presente cuando status es REJECTED',
+  })
+  rejectionReason?: string | null;
 }

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,7 +9,9 @@ import { AuthorizationService } from '@modules/authorization/authorization.servi
 import { buildProblem } from '@common/errors/problem.factory';
 import type { CompanySummaryDto } from '../dto/company-summary.dto';
 import type { CreateCompanyDto } from '../dto/create-company.dto';
+import type { CreateEmployeeDto } from '../dto/create-employee.dto';
 import type { CompanyCreatedResponseDto } from '../dto/company-created-response.dto';
+import type { CompanyEmployeeCreatedResponseDto } from '../dto/company-employee-created-response.dto';
 import { UsersRepository } from '../users.repository';
 import { type RequestMeta } from '../users.types';
 import { RutRegistrationService } from './rut-registration.service';
@@ -65,6 +68,94 @@ export class UsersCompanyService {
 
     return {
       company: this.mapCompanySummary(company),
+    };
+  }
+
+  async createEmployee(
+    supabaseUid: string,
+    dto: CreateEmployeeDto,
+  ): Promise<CompanyEmployeeCreatedResponseDto> {
+    const admin = await this.usersRepository.findBySupabaseUidForMe(supabaseUid);
+    if (!admin) {
+      throw new NotFoundException(
+        buildProblem(
+          'USER_NOT_FOUND',
+          'No existe un usuario sincronizado para este token.',
+        ),
+      );
+    }
+
+    if (admin.role !== Role.COMPANY_ADMIN) {
+      throw new ForbiddenException(
+        buildProblem(
+          'AUTH_INSUFFICIENT_PERMISSIONS',
+          'Solo el administrador de la empresa puede agregar operadores.',
+        ),
+      );
+    }
+
+    const company = admin.ownedCompany;
+    if (!company) {
+      throw new NotFoundException(
+        buildProblem('USER_NOT_FOUND', 'No se encontró la empresa administrada.'),
+      );
+    }
+
+    const candidate = await this.usersRepository.findUserByEmail(dto.email);
+    if (!candidate) {
+      throw new NotFoundException(
+        buildProblem(
+          'EMPLOYEE_NOT_REGISTERED',
+          'El operador debe crear una cuenta en Nexos con ese email antes de vincularlo.',
+        ),
+      );
+    }
+
+    if (candidate.id === admin.id) {
+      throw new ConflictException(
+        buildProblem(
+          'EMPLOYEE_LINK_CONFLICT',
+          'No podés agregarte a vos mismo como operador.',
+        ),
+      );
+    }
+
+    if (candidate.role !== Role.CLIENT || candidate.companyId) {
+      throw new ConflictException(
+        buildProblem(
+          'EMPLOYEE_LINK_CONFLICT',
+          'Ese usuario ya tiene un rol o empresa asignada en Nexos.',
+        ),
+      );
+    }
+
+    const hasPro = await this.usersRepository.hasProfessionalProfile(
+      candidate.id,
+    );
+    if (hasPro) {
+      throw new ConflictException(
+        buildProblem(
+          'EMPLOYEE_LINK_CONFLICT',
+          'El usuario ya tiene perfil profesional y no puede ser operador de empresa.',
+        ),
+      );
+    }
+
+    const employee = await this.usersRepository.linkUserAsCompanyEmployee({
+      userId: candidate.id,
+      companyId: company.id,
+      fullName: dto.fullName,
+    });
+
+    this.authorizationService.invalidateRoleCache(candidate.supabaseUid);
+
+    return {
+      employee: {
+        id: employee.id,
+        email: employee.email,
+        fullName: employee.fullName,
+        role: employee.role,
+      },
     };
   }
 

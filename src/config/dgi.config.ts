@@ -14,6 +14,16 @@ export const dgiConfig = registerAs('dgi', () => ({
     | 'soap',
   fetchTimeoutMs: parseInt(process.env['DGI_FETCH_TIMEOUT_MS'] ?? '10000', 10),
   queueEnabled: process.env['DGI_VERIFY_QUEUE_ENABLED'] !== 'false',
+  maintenanceEnabled: process.env['DGI_MAINTENANCE_ENABLED'] !== 'false',
+  processingTimeoutMinutes: parseInt(
+    process.env['DGI_PROCESSING_TIMEOUT_MINUTES'] ?? '15',
+    10,
+  ),
+  staleWatchdogCron: process.env['DGI_STALE_WATCHDOG_CRON'] ?? '*/5 * * * *',
+  orphanCleanupCron: process.env['DGI_ORPHAN_CLEANUP_CRON'] ?? '0 3 * * *',
+  orphanMinAgeHours: parseInt(process.env['DGI_ORPHAN_MIN_AGE_HOURS'] ?? '24', 10),
+  staleWatchdogJobId: 'dgi-stale-watchdog',
+  orphanCleanupJobId: 'dgi-orphan-cleanup',
   allowedHosts: [
     'www.efactura.dgi.gub.uy',
     'efactura.dgi.gub.uy',

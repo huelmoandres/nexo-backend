@@ -4,6 +4,7 @@
 #
 # Uso:
 #   docker compose up -d          → Levanta todos los servicios en segundo plano
+#   docker compose --profile tools up -d  → Incluye Bull Board (colas BullMQ)
 #   docker compose down           → Detiene los servicios (los datos persisten en .docker_data/)
 #   docker compose down -v        → Detiene y elimina volúmenes (reset completo)
 #   docker compose logs -f        → Ver logs en tiempo real
@@ -100,3 +101,27 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Bull Board (UI para colas BullMQ — similar a Laravel Horizon)
+  # Solo desarrollo local. Perfil "tools" para no levantarlo siempre.
+  # UI: http://localhost:3030  (auth: BULL_BOARD_USER / BULL_BOARD_PASSWORD)
+  # ---------------------------------------------------------------------------
+  bull-board:
+    image: nauverse/bull-board:latest
+    container_name: nexos_bull_board
+    profiles:
+      - tools
+    restart: unless-stopped
+    ports:
+      - "3030:3000"
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:-nexos_redis_password}@redis:6379
+      BULL_PREFIX: bull
+      BULL_VERSION: BULLMQ
+      USER_USERNAME: ${BULL_BOARD_USER:-nexos}
+      USER_PASSWORD: ${BULL_BOARD_PASSWORD:-nexos_dev}
+      LOG_ANONYMIZE_IP: "true"
+    depends_on:
+      redis:
+        condition: service_healthy

@@ -72,14 +72,21 @@ URGENCY_EXPIRATION_MINUTES=30
 El archivo `docker-compose.yml` levanta PostgreSQL (con PostGIS), Redis y MongoDB:
 
 ```bash
-docker-compose up -d
+docker compose up -d
+```
+
+**Opcional — monitor de colas BullMQ (Bull Board):**
+
+```bash
+docker compose --profile tools up -d
+# http://localhost:3030 (auth: BULL_BOARD_USER / BULL_BOARD_PASSWORD en .env)
 ```
 
 Verifica que los contenedores estén corriendo:
 
 ```bash
-docker ps
-# Deberías ver: nexos-postgres, nexos-redis, nexos-mongo
+docker compose ps
+# Deberías ver: nexos_postgres, nexos_redis, nexos_mongodb
 ```
 
 ---

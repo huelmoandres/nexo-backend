@@ -42,7 +42,7 @@ describe('UsersRepository DGI', () => {
           id: 'u1',
           ownedCompany: {
             id: 'c1',
-            rut: '214567890013',
+            rut: '214567890018',
             deletedAt: null,
             dgiVerificationStatus: DgiVerificationStatus.UNVERIFIED,
             dgiRazonSocial: null,
@@ -75,7 +75,7 @@ describe('UsersRepository DGI', () => {
           id: 'u1',
           ownedCompany: {
             id: 'c1',
-            rut: '214567890013',
+            rut: '214567890018',
             deletedAt: null,
             dgiVerificationStatus: DgiVerificationStatus.UNVERIFIED,
             dgiRazonSocial: null,
@@ -105,7 +105,7 @@ describe('UsersRepository DGI', () => {
           id: 'u1',
           ownedCompany: {
             id: 'c1',
-            rut: '214567890013',
+            rut: '214567890018',
             deletedAt: new Date(),
           },
           professionalProfile: null,
@@ -150,7 +150,7 @@ describe('UsersRepository DGI', () => {
           ownedCompany: null,
           professionalProfile: {
             id: 'p1',
-            rut: '214567890013',
+            rut: '214567890018',
             deletedAt: null,
             dgiVerificationStatus: DgiVerificationStatus.UNVERIFIED,
             dgiRazonSocial: null,
@@ -180,7 +180,7 @@ describe('UsersRepository DGI', () => {
           ownedCompany: null,
           professionalProfile: {
             id: 'p1',
-            rut: '214567890013',
+            rut: '214567890018',
             deletedAt: null,
             dgiVerificationStatus: DgiVerificationStatus.UNVERIFIED,
             dgiRazonSocial: null,
@@ -261,7 +261,7 @@ describe('UsersRepository DGI', () => {
           ownedCompany: null,
           professionalProfile: {
             id: 'p1',
-            rut: '214567890013',
+            rut: '214567890018',
             deletedAt: new Date(),
           },
         }),
@@ -333,7 +333,7 @@ describe('UsersRepository DGI', () => {
         findMany: vi.fn().mockResolvedValue([
           {
             id: 'c1',
-            rut: '214567890013',
+            rut: '214567890018',
             dgiRazonSocial: 'ACME',
             dgiVerificationDocKey: 'k1',
             updatedAt,
@@ -404,7 +404,7 @@ describe('UsersRepository DGI', () => {
         findFirst: vi.fn().mockResolvedValue({
           id: 'c1',
           adminId: 'u1',
-          rut: '214567890013',
+          rut: '214567890018',
           deletedAt: null,
           dgiVerificationStatus: DgiVerificationStatus.UNVERIFIED,
           dgiRazonSocial: null,
@@ -452,7 +452,7 @@ describe('UsersRepository DGI', () => {
         findFirst: vi.fn().mockResolvedValue({
           id: 'c1',
           adminId: 'u1',
-          rut: '214567890013',
+          rut: '214567890018',
           deletedAt: null,
           dgiVerificationStatus: DgiVerificationStatus.PENDING_MANUAL_REVIEW,
           dgiRazonSocial: 'ACME',
@@ -481,7 +481,7 @@ describe('UsersRepository DGI', () => {
         findFirst: vi.fn().mockResolvedValue({
           id: 'p1',
           userId: 'u1',
-          rut: '214567890013',
+          rut: '214567890018',
           deletedAt: null,
           dgiVerificationStatus: DgiVerificationStatus.PENDING_MANUAL_REVIEW,
           dgiRazonSocial: 'Pro',
@@ -510,7 +510,7 @@ describe('UsersRepository DGI', () => {
         findFirst: vi.fn().mockResolvedValue({
           id: 'p1',
           userId: 'u1',
-          rut: '214567890013',
+          rut: '214567890018',
           deletedAt: null,
           dgiVerificationStatus: DgiVerificationStatus.UNVERIFIED,
           dgiRazonSocial: null,
@@ -542,8 +542,8 @@ describe('UsersRepository DGI', () => {
     } as unknown as PrismaService;
     const repo = new UsersRepository(prisma);
 
-    expect(await repo.findProfileByRut('214567890013')).toBeNull();
-    expect(await repo.isRutTakenGlobally('214567890013')).toBe(true);
+    expect(await repo.findProfileByRut('214567890018')).toBeNull();
+    expect(await repo.isRutTakenGlobally('214567890018')).toBe(true);
   });
 
   it('isRutTakenGlobally true solo por perfil profesional', async () => {
@@ -555,7 +555,7 @@ describe('UsersRepository DGI', () => {
     } as unknown as PrismaService;
     const repo = new UsersRepository(prisma);
 
-    expect(await repo.isRutTakenGlobally('214567890013')).toBe(true);
+    expect(await repo.isRutTakenGlobally('214567890018')).toBe(true);
   });
 
   it('listPending ignora perfiles sin rut en el filtro', async () => {
@@ -603,5 +603,121 @@ describe('UsersRepository DGI', () => {
       where: expect.any(Object),
       data: expect.objectContaining({ reviewedAt: null }),
     });
+  });
+
+  it('getRutProofRejectionReason devuelve motivo del documento', async () => {
+    const prisma = {
+      verificationDocument: {
+        findFirst: vi.fn().mockResolvedValue({ rejectionReason: 'Motivo X' }),
+      },
+    } as unknown as PrismaService;
+    const repo = new UsersRepository(prisma);
+
+    const reason = await repo.getRutProofRejectionReason('t1');
+    expect(reason).toBe('Motivo X');
+  });
+
+  it('getRutProofRejectionReason null si no hay documento', async () => {
+    const prisma = {
+      verificationDocument: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+    } as unknown as PrismaService;
+    const repo = new UsersRepository(prisma);
+
+    expect(await repo.getRutProofRejectionReason('t1')).toBeNull();
+  });
+
+  it('findStaleDgiProcessingSubjects combina empresa y profesional', async () => {
+    const prisma = {
+      company: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'c1', adminId: 'u-admin' }]),
+      },
+      professionalProfile: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'p1', userId: 'u-pro' }]),
+      },
+      trustProfile: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({ id: 't-c' })
+          .mockResolvedValueOnce({ id: 't-p' }),
+      },
+    } as unknown as PrismaService;
+    const repo = new UsersRepository(prisma);
+    const cutoff = new Date('2020-01-01');
+
+    const rows = await repo.findStaleDgiProcessingSubjects(cutoff);
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.subjectType).toBe(VerificationSubjectType.COMPANY);
+    expect(rows[1]?.subjectType).toBe(VerificationSubjectType.PROFESSIONAL);
+  });
+
+  it('findStaleDgiProcessingSubjects omite profesional sin trust', async () => {
+    const prisma = {
+      company: { findMany: vi.fn().mockResolvedValue([]) },
+      professionalProfile: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'p1', userId: 'u-pro' }]),
+      },
+      trustProfile: { findFirst: vi.fn().mockResolvedValue(null) },
+    } as unknown as PrismaService;
+    const repo = new UsersRepository(prisma);
+
+    const rows = await repo.findStaleDgiProcessingSubjects(new Date());
+    expect(rows).toHaveLength(0);
+  });
+
+  it('findStaleDgiProcessingSubjects omite sujetos sin trust', async () => {
+    const prisma = {
+      company: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'c1', adminId: 'u1' }]),
+      },
+      professionalProfile: { findMany: vi.fn().mockResolvedValue([]) },
+      trustProfile: { findFirst: vi.fn().mockResolvedValue(null) },
+    } as unknown as PrismaService;
+    const repo = new UsersRepository(prisma);
+
+    const rows = await repo.findStaleDgiProcessingSubjects(new Date());
+    expect(rows).toHaveLength(0);
+  });
+
+  it('listReferencedVerificationDocKeys ignora keys null en filas', async () => {
+    const prisma = {
+      company: {
+        findMany: vi.fn().mockResolvedValue([{ dgiVerificationDocKey: null }]),
+      },
+      professionalProfile: {
+        findMany: vi.fn().mockResolvedValue([{ dgiVerificationDocKey: null }]),
+      },
+      verificationDocument: { findMany: vi.fn().mockResolvedValue([]) },
+    } as unknown as PrismaService;
+    const repo = new UsersRepository(prisma);
+
+    const keys = await repo.listReferencedVerificationDocKeys();
+    expect(keys.size).toBe(0);
+  });
+
+  it('listReferencedVerificationDocKeys une todas las fuentes', async () => {
+    const prisma = {
+      company: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ dgiVerificationDocKey: 'k-company' }]),
+      },
+      professionalProfile: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ dgiVerificationDocKey: 'k-pro' }]),
+      },
+      verificationDocument: {
+        findMany: vi.fn().mockResolvedValue([{ storageKey: 'k-doc' }]),
+      },
+    } as unknown as PrismaService;
+    const repo = new UsersRepository(prisma);
+
+    const keys = await repo.listReferencedVerificationDocKeys();
+    expect(keys.has('k-company')).toBe(true);
+    expect(keys.has('k-pro')).toBe(true);
+    expect(keys.has('k-doc')).toBe(true);
   });
 });

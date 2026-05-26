@@ -9,7 +9,7 @@ export class CreateCompanyDto {
   name!: string;
 
   @ApiProperty({
-    example: '214567890013',
+    example: '214567890018',
     description:
       'RUT uruguayo: 12 dígitos, dígito verificador DGI (puede enviarse con o sin separadores).',
   })

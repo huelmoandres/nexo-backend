@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import type { CreateCompanyDto } from './dto/create-company.dto';
+import type { CreateEmployeeDto } from './dto/create-employee.dto';
 import type { CreateProfessionalProfileDto } from './dto/create-professional-profile.dto';
 import type { PresignDocumentDto } from './dto/presign-document.dto';
 import type { CompanyCreatedResponseDto } from './dto/company-created-response.dto';
+import type { CompanyEmployeeCreatedResponseDto } from './dto/company-employee-created-response.dto';
 import type { PresignDocumentResponseDto } from './dto/presign-document-response.dto';
 import type { ProfessionalProfileCreatedResponseDto } from './dto/professional-profile-created-response.dto';
 import type { UserResponseDto } from './dto/user-response.dto';
@@ -49,6 +51,13 @@ export class UsersService {
     meta: RequestMeta,
   ): Promise<CompanyCreatedResponseDto> {
     return this.usersCompanyService.createCompany(supabaseUid, dto, meta);
+  }
+
+  async createCompanyEmployee(
+    supabaseUid: string,
+    dto: CreateEmployeeDto,
+  ): Promise<CompanyEmployeeCreatedResponseDto> {
+    return this.usersCompanyService.createEmployee(supabaseUid, dto);
   }
 
   /**

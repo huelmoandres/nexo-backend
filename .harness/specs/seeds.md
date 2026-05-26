@@ -6,9 +6,12 @@ Datos de desarrollo y staging **separados** de los tests unitarios (Fishery en `
 
 | Comando | Descripción |
 |--------|-------------|
-| `npm run db:seed` | Orquestador completo: geo → categorías → demo → backfill trust (stress solo si `STRESS_PRO_COUNT` o `SEED_STRESS` lo activan) |
+| `npm run db:seed` | Orquestador completo: geo → categorías → monedas → bancos → demo → backfill trust (stress solo si `STRESS_PRO_COUNT` o `SEED_STRESS` lo activan) |
+| `npm run db:seed:currencies` | Solo UYU/USD y tasa de ejemplo |
+| `npm run db:seed:banks` | Solo catálogo bancos UY (payout) |
 | `npm run db:seed:geo` | Solo catálogo geográfico Uruguay (JSON generado con `npm run geo:build`; `SEED_GEO_LITE=1` para subset CI) |
 | `npm run geo:build` | Regenera `prisma/data/uruguay-geo.json` desde GeoNames/IDE |
+| `npm run geo:import-rocha-barrios` | Importa barrios oficiales de ciudad Rocha (KML CKAN); ver [uruguay-geo.md](../../docs/data-sources/uruguay-geo.md) |
 | `npm run categories:build` | Regenera `prisma/data/categories.json` (42 oficios + 274 servicios) |
 | `npm run db:seed:categories` | Solo oficios (TRADE) y servicios (SERVICE), upsert por `slug` |
 | `npm run db:seed:demo` | Solo escenarios demo (requiere geo + categorías) |
@@ -23,7 +26,7 @@ Datos de desarrollo y staging **separados** de los tests unitarios (Fishery en `
 |-----|-------|--------|
 | Cliente | `demo.client@nexos.local` | `CLIENT` |
 | Profesional | `demo.pro@nexos.local` | `INDEPENDENT_PRO`, Montevideo/Pocitos, `isAvailable=true`, KYC `VERIFIED`, categorías plomería + electricidad |
-| Admin empresa | `demo.company@nexos.local` | `COMPANY_ADMIN`, empresa RUT `214567890013` (válido DGI, documentado en API) |
+| Admin empresa | `demo.company@nexos.local` | `COMPANY_ADMIN`, empresa RUT `214567890018` (válido DGI, documentado en API) |
 
 ## Variables relevantes
 

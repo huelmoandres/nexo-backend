@@ -12,4 +12,10 @@ export const geoConfig = registerAs('geo', () => ({
     10,
   ),
   countryIsoCode: 'UY',
+  uruguayBounds: {
+    minLat: -35.2,
+    maxLat: -30.05,
+    minLng: -57.85,
+    maxLng: -53.07,
+  },
 }));

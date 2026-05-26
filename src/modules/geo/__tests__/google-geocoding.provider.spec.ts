@@ -30,7 +30,33 @@ describe('GoogleGeocodingProvider', () => {
       makeConfig({ enabled: false }) as never,
     );
     await expect(provider.forwardGeocode('test')).resolves.toBeNull();
+    await expect(provider.geocodePlaceId('ChIJ_test')).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('geocodePlaceId usa place_id en la URL', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: 'OK',
+        results: [
+          {
+            formatted_address: 'Pocitos, Montevideo',
+            place_id: 'ChIJ_test',
+            geometry: { location: { lat: -34.91, lng: -56.17 } },
+            address_components: [
+              { long_name: 'Uruguay', short_name: 'UY', types: ['country'] },
+            ],
+          },
+        ],
+      }),
+    });
+    const provider = new GoogleGeocodingProvider(makeConfig() as never);
+    const result = await provider.geocodePlaceId('ChIJ_test');
+    expect(fetchMock).toHaveBeenCalled();
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toContain('place_id=ChIJ_test');
+    expect(result?.placeId).toBe('ChIJ_test');
   });
 
   it('reverseGeocode mapea resultado uruguayo', async () => {
@@ -192,6 +218,66 @@ describe('GoogleGeocodingProvider', () => {
     await expect(provider.forwardGeocode('x')).resolves.toBeNull();
   });
 
+  it('reverseGeocode fusiona barrio desde results secundarios (Montevideo)', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: 'OK',
+        results: [
+          {
+            formatted_address:
+              'Av. Brasil 2770, 11300 Montevideo, Departamento de Montevideo, Uruguay',
+            place_id: 'street-1',
+            types: ['street_address'],
+            geometry: { location: { lat: -34.9095, lng: -56.1545 } },
+            address_components: [
+              { long_name: 'Uruguay', short_name: 'UY', types: ['country'] },
+              {
+                long_name: 'Montevideo',
+                short_name: 'MV',
+                types: ['locality'],
+              },
+              {
+                long_name: 'Departamento de Montevideo',
+                short_name: 'MO',
+                types: ['administrative_area_level_1'],
+              },
+            ],
+          },
+          {
+            formatted_address:
+              'Pocitos, 11300 Montevideo, Departamento de Montevideo, Uruguay',
+            place_id: 'hood-1',
+            types: ['neighborhood', 'political'],
+            geometry: { location: { lat: -34.91, lng: -56.15 } },
+            address_components: [
+              { long_name: 'Uruguay', short_name: 'UY', types: ['country'] },
+              { long_name: 'Pocitos', short_name: 'Pocitos', types: ['neighborhood'] },
+              {
+                long_name: 'Montevideo',
+                short_name: 'MV',
+                types: ['locality'],
+              },
+              {
+                long_name: 'Departamento de Montevideo',
+                short_name: 'MO',
+                types: ['administrative_area_level_1'],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const provider = new GoogleGeocodingProvider(makeConfig() as never);
+    const result = await provider.reverseGeocode(-34.9095, -56.1545);
+    expect(result?.formattedAddress).toContain('Av. Brasil');
+    expect(
+      result?.components.some(
+        (c) => c.types.includes('neighborhood') && c.longName === 'Pocitos',
+      ),
+    ).toBe(true);
+  });
+
   it('reverseGeocode retorna null si deshabilitado', async () => {
     const provider = new GoogleGeocodingProvider(
       makeConfig({ enabled: false }) as never,
@@ -206,6 +292,99 @@ describe('GoogleGeocodingProvider', () => {
     });
     const provider = new GoogleGeocodingProvider(makeConfig() as never);
     await expect(provider.forwardGeocode('x')).resolves.toBeNull();
+  });
+
+  it('reverseGeocode fusiona sublocality cuando no hay neighborhood', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: 'OK',
+        results: [
+          {
+            formatted_address: 'Av. Brasil 2770, Montevideo',
+            place_id: 'street-2',
+            types: ['street_address'],
+            geometry: { location: { lat: -34.9095, lng: -56.1545 } },
+            address_components: [
+              { long_name: 'Uruguay', short_name: 'UY', types: ['country'] },
+              {
+                long_name: 'Montevideo',
+                short_name: 'MV',
+                types: ['locality'],
+              },
+            ],
+          },
+          {
+            formatted_address: 'Pocitos, Montevideo',
+            place_id: 'hood-2',
+            types: ['political'],
+            geometry: { location: { lat: -34.91, lng: -56.15 } },
+            address_components: [
+              { long_name: 'Uruguay', short_name: 'UY', types: ['country'] },
+              {
+                long_name: 'Pocitos',
+                short_name: 'Pocitos',
+                types: ['sublocality_level_1'],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const provider = new GoogleGeocodingProvider(makeConfig() as never);
+    const result = await provider.reverseGeocode(-34.9095, -56.1545);
+    expect(
+      result?.components.some(
+        (c) =>
+          c.longName === 'Pocitos' &&
+          c.types.includes('sublocality_level_1'),
+      ),
+    ).toBe(true);
+  });
+
+  it('reverseGeocode no duplica componentes ya fusionados', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: 'OK',
+        results: [
+          {
+            formatted_address: 'Pocitos, Montevideo',
+            place_id: 'hood-dup',
+            types: ['neighborhood', 'political'],
+            geometry: { location: { lat: -34.91, lng: -56.15 } },
+            address_components: [
+              { long_name: 'Uruguay', short_name: 'UY', types: ['country'] },
+              {
+                long_name: 'Pocitos',
+                short_name: 'Pocitos',
+                types: ['neighborhood'],
+              },
+            ],
+          },
+          {
+            formatted_address: 'Pocitos otra vez',
+            place_id: 'hood-dup-2',
+            types: ['political'],
+            geometry: { location: { lat: -34.91, lng: -56.15 } },
+            address_components: [
+              { long_name: 'Uruguay', short_name: 'UY', types: ['country'] },
+              {
+                long_name: 'Pocitos',
+                short_name: 'Pocitos',
+                types: ['neighborhood'],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const provider = new GoogleGeocodingProvider(makeConfig() as never);
+    const result = await provider.reverseGeocode(-34.91, -56.15);
+    const hoods = result?.components.filter((c) =>
+      c.types.includes('neighborhood'),
+    );
+    expect(hoods).toHaveLength(1);
   });
 
   it('retorna null si status no es OK aunque haya results', async () => {

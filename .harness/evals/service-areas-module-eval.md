@@ -6,7 +6,7 @@ Ejecutar antes de merge de cambios en `service-areas` o límites en `entitlement
 
 - [ ] `npm run test` — `src/modules/service-areas/__tests__/`
 - [ ] `npm run test:e2e` — `service-areas.e2e-spec.ts`
-- [ ] `npm run test:cov:strict` — sin regresión en módulo
+- [ ] `npm run test:cov` — sin regresión en módulo
 
 ## Checklist manual
 

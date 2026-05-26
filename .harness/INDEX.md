@@ -26,6 +26,7 @@
 
 - [Módulo de Autenticación](specs/auth-module.md): Sincronización Supabase y Redis Blocklist.
 - [Módulo de Usuarios](specs/users-module.md): Roles, Empresas y Sello Uruguay Pro.
+- [Verificación DGI (constancia PDF)](specs/dgi-verification.md): Presign, BullMQ, watchdog, cleanup R2 y notificaciones.
 - [Módulo de Disputas](specs/dispute-module.md): Flujo de mediación y evidencias.
 - [Módulo de Urgencias](specs/urgency-module.md): PostGIS, Weighted Broadcast y First-come first-served.
 - [Búsqueda y Matching](specs/search-matching.md): PostGIS, Score de Relevancia y filtros geoespaciales.
@@ -57,6 +58,7 @@
 ## Evals de Módulos (Auto-verificación antes de PR)
 - [Auth Module Eval](evals/auth-module-eval.md): Supabase UID, Redis Blocklist y sincronización de usuario.
 - [Users Module Eval](evals/users-module-eval.md): RBAC, escalada de privilegios y KYC con URLs firmadas.
+- [DGI Verification Eval](evals/dgi-verification-eval.md): rejectionReason, PROCESSING atascado, cleanup huérfanos.
 - [Urgency Module Eval](evals/urgency-module-eval.md): PostGIS ST_DWithin, Weighted Broadcast con priority, anti-double-booking.
 - [Escrow Module Eval](evals/escrow-module-eval.md): Value Object Money, ACID, idempotencia y Audit Log.
 - [Dispute Module Eval](evals/dispute-module-eval.md): Evidencia Proactiva, Segunda Oportunidad y acceso SUPER_ADMIN.

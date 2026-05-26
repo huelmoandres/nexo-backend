@@ -226,8 +226,18 @@ Cuando un módulo recibe un `fileKey` ya subido (porque el cliente completó el 
 
 Si alguna validación falla, `400 VALIDATION_ERROR` o `403 STORAGE_FORBIDDEN_KEY` según el caso.
 
+### 10.6 `listObjectsByPrefix` (solo sistema)
+
+Método `listObjectsByPrefix({ prefix, bucket? })` en `IStorageService` / `R2StorageService`:
+
+- Implementado con `ListObjectsV2Command` y paginación (`ContinuationToken`).
+- **Uso exclusivo** de workers BullMQ o procesos admin (`dgi-orphan-cleanup` en bucket KYC).
+- **No** expuesto vía HTTP ni acepta `key` del cliente.
+- Retorna `{ key, lastModified }[]` para decidir borrado con `deleteObjectAsSystem`.
+
 ### 10.5 Tests obligatorios
 
 - Test unitario de `StorageService.deleteObject` que verifica el rechazo con `key` foráneo.
+- Test de `listObjectsByPrefix` con paginación mock del cliente S3.
 - Test e2e que un endpoint que persiste `fileKey` (p. ej. portfolio) rechaza un `fileKey` foráneo en el body.
 - Test de integración del `portfolio-cleanup` que solo borra objetos cuyo prefijo es del profesional dueño del item.

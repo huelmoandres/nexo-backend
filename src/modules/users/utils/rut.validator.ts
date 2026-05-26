@@ -1,5 +1,5 @@
 /** Pesos DGI para los 11 primeros dígitos del RUT (izquierda → derecha). */
-const RUT_WEIGHTS = [4, 3, 2, 9, 8, 7, 6, 3, 4, 9, 8] as const;
+const RUT_WEIGHTS = [4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] as const;
 
 /**
  * Normaliza el RUT dejando solo dígitos (elimina guiones, puntos y espacios).
@@ -12,14 +12,37 @@ export function normalizeRutDigits(input: string): string {
 }
 
 /**
- * Valida RUT uruguayo de 12 dígitos (11 base + dígito verificador) según algoritmo DGI.
- * Si el resto de la división por 11 es 1, el RUT es inválido (no existe DV).
+ * Valida la estructura de un RUT de 12 dígitos según reglas DGI (persona jurídica).
  *
- * @param input - RUT en cualquier formato; conviene pasar ya normalizado con {@link normalizeRutDigits}.
- * @returns `true` si el dígito verificador coincide con los pesos DGI.
+ * @param digits - RUT ya normalizado (solo dígitos).
  */
-export function validateUruguayRut12(input: string): boolean {
-  const digits = normalizeRutDigits(input);
+export function validateRutStructure12(digits: string): boolean {
+  if (digits.length !== 12) {
+    return false;
+  }
+
+  const prefix = Number(digits.slice(0, 2));
+  if (prefix < 1 || prefix > 21) {
+    return false;
+  }
+
+  if (digits.slice(2, 8) === '000000') {
+    return false;
+  }
+
+  if (digits.slice(8, 10) !== '00') {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Valida el dígito verificador (11 base + DV) según módulo 11 DGI.
+ *
+ * @param digits - RUT normalizado de 12 dígitos.
+ */
+export function validateRutCheckDigit12(digits: string): boolean {
   if (digits.length !== 12) {
     return false;
   }
@@ -40,4 +63,15 @@ export function validateUruguayRut12(input: string): boolean {
   }
 
   return checkDigit === 11 - rem;
+}
+
+/**
+ * Valida RUT uruguayo de 12 dígitos (estructura DGI + dígito verificador).
+ *
+ * @param input - RUT en cualquier formato; conviene pasar ya normalizado con {@link normalizeRutDigits}.
+ * @returns `true` si estructura y dígito verificador son válidos.
+ */
+export function validateUruguayRut12(input: string): boolean {
+  const digits = normalizeRutDigits(input);
+  return validateRutStructure12(digits) && validateRutCheckDigit12(digits);
 }

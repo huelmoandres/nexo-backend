@@ -89,6 +89,31 @@ describe('UsersService', () => {
     expect(usersProfileService.createProfessionalProfile).toHaveBeenCalled();
   });
 
+  it('delegates createCompanyEmployee to company service', async () => {
+    const usersProfileService = {
+      getMe: vi.fn(),
+      createProfessionalProfile: vi.fn(),
+      presignDocument: vi.fn(),
+    };
+    const usersCompanyService = {
+      createCompany: vi.fn(),
+      createEmployee: vi.fn().mockResolvedValue({ employee: { id: 'e1' } }),
+    };
+    const service = new UsersService(
+      usersCompanyService as never,
+      usersProfileService as never,
+    );
+
+    await service.createCompanyEmployee('sub-1', {
+      email: 'op@test.com',
+      fullName: 'Op',
+    });
+    expect(usersCompanyService.createEmployee).toHaveBeenCalledWith('sub-1', {
+      email: 'op@test.com',
+      fullName: 'Op',
+    });
+  });
+
   it('delegates presignDocument to profile service', async () => {
     const usersProfileService = {
       getMe: vi.fn(),
