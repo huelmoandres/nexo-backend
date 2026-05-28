@@ -1,22 +1,18 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, beforeAll } from 'vitest';
+import sharp = require('sharp');
 import { ImagePrepService } from '../lib/image-prep.service';
-
-const mockSharpInstance = {
-  resize: vi.fn().mockReturnThis(),
-  webp: vi.fn().mockReturnThis(),
-  toBuffer: vi.fn().mockResolvedValue(Buffer.from('resized-image')),
-};
-
-vi.mock('sharp', () => ({
-  default: vi.fn(() => mockSharpInstance),
-}));
 
 describe('ImagePrepService', () => {
   const cfg = {
     image: { maxSidePx: 1024, quality: 85 },
     policyVersion: '1.0.0',
     openai: { apiKey: '' },
-    aws: { region: 'us-east-1' },
+    aws: {
+      region: 'us-east-1',
+      accessKeyId: '',
+      secretAccessKey: '',
+      sessionToken: '',
+    },
     provider: { timeoutMs: 30000 },
     circuitBreaker: { errorThresholdPercentage: 50, resetTimeoutMs: 30000 },
     cache: { ttlSeconds: 604800, pgEnabled: true },
@@ -24,26 +20,42 @@ describe('ImagePrepService', () => {
   };
 
   let svc: ImagePrepService;
+  let inputPng: Buffer;
 
-  beforeEach(() => {
+  beforeAll(async () => {
     svc = new ImagePrepService(cfg);
-    mockSharpInstance.toBuffer.mockResolvedValue(Buffer.from('resized-image'));
+    inputPng = await sharp({
+      create: {
+        width: 16,
+        height: 16,
+        channels: 3,
+        background: { r: 120, g: 80, b: 40 },
+      },
+    })
+      .png()
+      .toBuffer();
   });
 
   it('devuelve buffer, outputBytes y durationMs', async () => {
-    const input = Buffer.from('original-image-bytes');
-    const result = await svc.prepareForInference(input);
+    const result = await svc.prepareForInference(inputPng);
 
     expect(result.buffer).toBeInstanceOf(Buffer);
     expect(result.outputBytes).toBeGreaterThan(0);
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
   });
 
-  it('llama a resize con maxSidePx correcto', async () => {
-    await svc.prepareForInference(Buffer.from('img'));
+  it('mantiene dimensiones dentro de maxSidePx', async () => {
+    const result = await svc.prepareForInference(inputPng);
+    const metadata = await sharp(result.buffer).metadata();
 
-    expect(mockSharpInstance.resize).toHaveBeenCalledWith(
-      expect.objectContaining({ width: 1024, height: 1024 }),
-    );
+    expect(metadata.width).toBeLessThanOrEqual(1024);
+    expect(metadata.height).toBeLessThanOrEqual(1024);
+  });
+
+  it('convierte la imagen a JPEG para Rekognition', async () => {
+    const result = await svc.prepareForInference(inputPng);
+    const metadata = await sharp(result.buffer).metadata();
+
+    expect(metadata.format).toBe('jpeg');
   });
 });

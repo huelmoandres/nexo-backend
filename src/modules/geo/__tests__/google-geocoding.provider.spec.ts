@@ -252,7 +252,11 @@ describe('GoogleGeocodingProvider', () => {
             geometry: { location: { lat: -34.91, lng: -56.15 } },
             address_components: [
               { long_name: 'Uruguay', short_name: 'UY', types: ['country'] },
-              { long_name: 'Pocitos', short_name: 'Pocitos', types: ['neighborhood'] },
+              {
+                long_name: 'Pocitos',
+                short_name: 'Pocitos',
+                types: ['neighborhood'],
+              },
               {
                 long_name: 'Montevideo',
                 short_name: 'MV',
@@ -336,8 +340,7 @@ describe('GoogleGeocodingProvider', () => {
     expect(
       result?.components.some(
         (c) =>
-          c.longName === 'Pocitos' &&
-          c.types.includes('sublocality_level_1'),
+          c.longName === 'Pocitos' && c.types.includes('sublocality_level_1'),
       ),
     ).toBe(true);
   });

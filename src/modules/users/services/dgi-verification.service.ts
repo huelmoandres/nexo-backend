@@ -33,7 +33,9 @@ import type { VerifyRutDocumentDto } from '../dto/verify-rut-document.dto';
 import type { VerificationStatusResponseDto } from '../dto/verification-status-response.dto';
 import type { VerificationSubmitResponseDto } from '../dto/verification-submit-response.dto';
 import type { AdminReviewVerificationDto } from '../dto/admin-review-verification.dto';
+import type { AdminVerificationDocumentUrlDto } from '../dto/admin-verification-document-url.dto';
 import type { PendingVerificationItemDto } from '../dto/pending-verification-item.dto';
+import { storageConfig } from '@config/storage.config';
 import { UsersRepository } from '../users.repository';
 import type { DgiVerificationSubjectRow } from '../users.repository';
 import { DGI_VERIFY_JOB, DGI_VERIFY_QUEUE } from '../users-dgi.constants';
@@ -52,6 +54,8 @@ export class DgiVerificationService {
     private readonly usersCfg: ConfigType<typeof usersConfig>,
     @Inject(dgiConfig.KEY)
     private readonly dgiCfg: ConfigType<typeof dgiConfig>,
+    @Inject(storageConfig.KEY)
+    private readonly storageCfg: ConfigType<typeof storageConfig>,
     @InjectQueue(DGI_VERIFY_QUEUE)
     private readonly verifyQueue: Queue<DgiVerifyJobData>,
   ) {}
@@ -137,6 +141,11 @@ export class DgiVerificationService {
     });
 
     if (this.dgiCfg.queueEnabled) {
+      const jobId = this.buildVerifyJobId(
+        subject.subjectType,
+        subject.subjectId,
+      );
+      await this.clearFinishedVerifyJob(jobId);
       await this.verifyQueue.add(
         DGI_VERIFY_JOB,
         {
@@ -147,7 +156,7 @@ export class DgiVerificationService {
           trustProfileId: subject.trustProfileId,
         },
         {
-          jobId: `dgi-verify:${subject.subjectType}:${subject.subjectId}`,
+          jobId,
           attempts: 3,
           backoff: { type: 'exponential', delay: 5000 },
           removeOnComplete: 100,
@@ -180,7 +189,60 @@ export class DgiVerificationService {
       dgiRazonSocial: r.dgiRazonSocial,
       verificationDocKey: r.dgiVerificationDocKey,
       updatedAt: r.updatedAt,
+      verificationMethod: r.dgiVerificationMethod,
+      subjectDisplayName: r.subjectDisplayName,
+      ownerUserId: r.ownerUserId,
+      ownerEmail: r.ownerEmail,
+      ownerFullName: r.ownerFullName,
+      documentSubmittedAt: r.documentSubmittedAt,
+      hasDocument: r.hasDocument,
     }));
+  }
+
+  async getAdminVerificationDocumentUrl(
+    subjectType: VerificationSubjectType,
+    subjectId: string,
+  ): Promise<AdminVerificationDocumentUrlDto> {
+    const subject = await this.usersRepository.findDgiSubjectById({
+      subjectType,
+      subjectId,
+    });
+    if (!subject) {
+      throw new NotFoundException(
+        buildProblem(
+          'DGI_VERIFICATION_SUBJECT_NOT_FOUND',
+          'No se encontró el sujeto de verificación.',
+        ),
+      );
+    }
+    if (
+      subject.dgiVerificationStatus !==
+      DgiVerificationStatus.PENDING_MANUAL_REVIEW
+    ) {
+      throw new ConflictException(
+        buildProblem(
+          'DGI_VERIFICATION_REJECTED',
+          'El sujeto no está pendiente de revisión manual.',
+        ),
+      );
+    }
+    const key = subject.dgiVerificationDocKey;
+    if (!key || !VERIFICATION_DOC_KEY_PATTERN.test(key)) {
+      throw new NotFoundException(
+        buildProblem(
+          'STORAGE_OBJECT_NOT_FOUND',
+          'No hay constancia PDF disponible para revisión.',
+        ),
+      );
+    }
+    const viewUrl = await this.storage.generatePresignedGetUrl(
+      key,
+      this.usersCfg.kycBucket,
+    );
+    return {
+      viewUrl,
+      expiresInSeconds: this.storageCfg.presignedUrlTtlSeconds,
+    };
   }
 
   async adminReview(
@@ -288,6 +350,28 @@ export class DgiVerificationService {
           'Debes registrar un RUT antes de verificar con constancia DGI.',
         ),
       );
+    }
+  }
+
+  private buildVerifyJobId(
+    subjectType: VerificationSubjectType,
+    subjectId: string,
+  ): string {
+    return `dgi-verify:${subjectType}:${subjectId}`;
+  }
+
+  /**
+   * BullMQ ignora `add` si el jobId ya existe en la cola (p. ej. completed con
+   * removeOnComplete). Tras REJECTED el re-submit debe poder encolar de nuevo.
+   */
+  private async clearFinishedVerifyJob(jobId: string): Promise<void> {
+    const existing = await this.verifyQueue.getJob(jobId);
+    if (!existing) {
+      return;
+    }
+    const state = await existing.getState();
+    if (state === 'completed' || state === 'failed') {
+      await existing.remove();
     }
   }
 

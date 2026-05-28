@@ -27,7 +27,10 @@ import { escrowConfig } from '@config/escrow.config';
 import { paymentsConfig } from '@config/payments.config';
 import { payoutConfig } from '@config/payout.config';
 import { billingConfig } from '@config/billing.config';
+import { observabilityConfig } from '@config/observability.config';
 import { validateEnv } from '@config/env.validation';
+import { ObservabilityModule } from '@common/observability';
+import { AdminModule } from '@modules/admin/admin.module';
 import { ExchangeRatesModule } from '@modules/exchange-rates/exchange-rates.module';
 import { EscrowModule } from '@modules/escrow/escrow.module';
 import { JobsModule } from '@modules/jobs/jobs.module';
@@ -37,6 +40,7 @@ import { CategoriesModule } from '@modules/categories/categories.module';
 import { GeoModule } from '@modules/geo/geo.module';
 import { DiagnosticsModule } from '@modules/diagnostics/diagnostics.module';
 import { SearchModule } from '@modules/search/search.module';
+import { RealtimeModule } from '@modules/realtime/realtime.module';
 import { EntitlementsModule } from '@modules/entitlements/entitlements.module';
 import { HealthModule } from '@modules/health/health.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
@@ -69,29 +73,47 @@ import { BillingModule } from '@modules/billing/billing.module';
         paymentsConfig,
         payoutConfig,
         billingConfig,
+        observabilityConfig,
       ],
       validate: validateEnv,
     }),
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [authConfig.KEY],
-      useFactory: (auth: ConfigType<typeof authConfig>) => ({
-        connection: new Redis(auth.redisUrl, {
+      useFactory: (auth: ConfigType<typeof authConfig>) => {
+        const connection = new Redis(auth.redisUrl, {
+          // BullMQ requiere null en workers/comandos bloqueantes.
           maxRetriesPerRequest: null,
           enableReadyCheck: false,
-        }),
-      }),
+          // Evita loop infinito de reconexión cuando Redis no está disponible.
+          retryStrategy: (attempt) =>
+            attempt > 5 ? null : Math.min(attempt * 250, 2000),
+        });
+        // Sin listener, ioredis emite "Unhandled error event" continuamente.
+        connection.on('error', () => undefined);
+        return { connection };
+      },
     }),
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [authConfig.KEY],
-      useFactory: (auth: ConfigType<typeof authConfig>) => ({
-        throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
-        storage: new ThrottlerStorageRedisService(auth.redisUrl),
-      }),
+      useFactory: (auth: ConfigType<typeof authConfig>) => {
+        const throttlerRedis = new Redis(auth.redisUrl, {
+          maxRetriesPerRequest: auth.redisMaxRetriesPerRequest,
+          enableReadyCheck: false,
+          retryStrategy: (attempt) =>
+            attempt > 5 ? null : Math.min(attempt * 250, 2000),
+        });
+        throttlerRedis.on('error', () => undefined);
+        return {
+          throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
+          storage: new ThrottlerStorageRedisService(throttlerRedis),
+        };
+      },
     }),
     EventEmitterModule.forRoot(),
     AppLoggerModule,
+    ObservabilityModule,
     DiagnosticsModule,
     HealthModule,
     StorageModule,
@@ -100,6 +122,7 @@ import { BillingModule } from '@modules/billing/billing.module';
     CategoriesModule,
     GeoModule,
     SearchModule,
+    RealtimeModule,
     EntitlementsModule,
     ServiceAreasModule,
     NotificationsModule,
@@ -109,6 +132,7 @@ import { BillingModule } from '@modules/billing/billing.module';
     JobsModule,
     PaymentsModule,
     BillingModule,
+    AdminModule,
   ],
   providers: [
     GlobalExceptionFilter,

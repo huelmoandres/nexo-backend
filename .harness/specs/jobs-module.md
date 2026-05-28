@@ -61,7 +61,8 @@ Prefijo `/api/jobs`. JWT salvo rutas `@Public()` futuras.
 | Método | Ruta | Rol | Notas |
 |--------|------|-----|-------|
 | POST | `/` | `CLIENT` | Crear `PENDING` + líneas + geo + `currencyCode` |
-| GET | `/mine` | `CLIENT` | Listado paginado |
+| GET | `/mine` | `CLIENT` | Trabajos publicados por el cliente (listado paginado) |
+| GET | `/professional/mine` | `INDEPENDENT_PRO`, `COMPANY_ADMIN` | Trabajos asignados al perfil profesional del usuario |
 | GET | `/:id` | CLIENT o pro asignado | Detalle + líneas + change orders |
 | GET | `/available` | `INDEPENDENT_PRO` | `PENDING` (v1 sin radio; filtro categoría) |
 | POST | `/:id/accept` | `INDEPENDENT_PRO` | → `ACCEPTED` + escrow; body opcional `payoutAccountId` (ver [payout-accounts-module.md](payout-accounts-module.md)) |

@@ -12,8 +12,10 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { ConfigType } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import {
+  AiModerationStatus,
   ConsentStatus,
   JobStatus,
+  ModerationTransitionType,
   PortfolioItemStatus,
   type PortfolioItem,
   type PortfolioPhoto,
@@ -23,8 +25,10 @@ import { IStorageService } from '@modules/storage/interfaces/storage.service.int
 import { STORAGE_SERVICE_TOKEN } from '@modules/storage/storage.constants';
 import { buildProblem } from '@common/errors/problem.factory';
 import { portfolioConfig } from '@config/portfolio.config';
+import { storageConfig } from '@config/storage.config';
 import { NotificationsService } from '@modules/notifications/notifications.service';
 import { EntitlementsService } from '@modules/entitlements/entitlements.service';
+import { buildPublicObjectUrl } from '@modules/storage/public-object-url';
 import {
   PORTFOLIO_PHOTO_KEY_PATTERN,
   assertKeyBelongsToUser,
@@ -33,6 +37,10 @@ import {
 import type { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
 import type { PresignPortfolioPhotoDto } from './dto/presign-portfolio-photo.dto';
 import type { PresignPortfolioPhotoResponseDto } from './dto/presign-portfolio-photo.dto';
+import type { PresignPortfolioPhotosBatchDto } from './dto/presign-portfolio-photos-batch.dto';
+import type { PresignPortfolioPhotosBatchResponseDto } from './dto/presign-portfolio-photos-batch.dto';
+import type { AddPortfolioPhotosBatchDto } from './dto/add-portfolio-photos-batch.dto';
+import type { AddPortfolioPhotosBatchResponseDto } from './dto/add-portfolio-photos-batch.dto';
 import type { ConsentPreviewResponseDto } from './dto/consent-preview-response.dto';
 import type { CreatePortfolioItemDto } from './dto/create-portfolio-item.dto';
 import type { DeclineConsentDto } from './dto/decline-consent.dto';
@@ -97,7 +105,87 @@ export class PortfolioService {
     private readonly moderateQueue: Queue,
     private readonly notifications: NotificationsService,
     private readonly entitlements: EntitlementsService,
+    @Inject(storageConfig.KEY)
+    private readonly storageCfg: ConfigType<typeof storageConfig>,
   ) {}
+
+  private get portfolioPublicBucket(): string {
+    return this.storageCfg.r2BucketPublic;
+  }
+
+  private buildPhotoPublicUrl(fileKey: string): string | null {
+    return buildPublicObjectUrl(fileKey, this.storageCfg.r2PublicBaseUrl);
+  }
+
+  private mapPhotoForPublic(photo: {
+    id: string;
+    fileKey: string;
+    caption: string | null;
+    displayOrder: number;
+  }) {
+    return {
+      id: photo.id,
+      fileKey: photo.fileKey,
+      caption: photo.caption,
+      displayOrder: photo.displayOrder,
+      publicUrl: this.buildPhotoPublicUrl(photo.fileKey),
+    };
+  }
+
+  private async mapPhotoForOwner(photo: {
+    id: string;
+    fileKey: string;
+    caption: string | null;
+    displayOrder: number;
+  }) {
+    const previewUrl = await this.storage.generatePresignedGetUrl(
+      photo.fileKey,
+      this.portfolioPublicBucket,
+    );
+    return {
+      ...this.mapPhotoForPublic(photo),
+      previewUrl,
+    };
+  }
+
+  private shouldRevalidateAfterEdit(item: PortfolioItem): boolean {
+    if (!this.config.ai.enabled) return false;
+    if (item.status === PortfolioItemStatus.PUBLISHED) return true;
+    return (
+      item.status === PortfolioItemStatus.HIDDEN_PENDING_REVIEW &&
+      item.aiModerationStatus === AiModerationStatus.FLAGGED
+    );
+  }
+
+  private async enqueueRemoderationIfNeeded(
+    item: PortfolioItem,
+    moderationText?: string,
+  ): Promise<PortfolioItem | null> {
+    if (!this.shouldRevalidateAfterEdit(item)) return null;
+
+    const photos = await this.repository.findPhotosByItemId(item.id);
+    const hidden = await this.repository.transitionToAiPending(item.id);
+    const jobData: PortfolioModerateJobData = {
+      itemId: item.id,
+      photoFileKeys: photos.map((p) => p.fileKey),
+      text: moderationText ?? `${item.title}\n${item.description ?? ''}`,
+      transitionType: ModerationTransitionType.RE_MODERATION,
+    };
+    await this.moderateQueue.add(PORTFOLIO_MODERATE_JOB, jobData, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+      removeOnComplete: 100,
+      removeOnFail: 50,
+    });
+    this.logger.log({
+      op: 'portfolio.remoderate.aiQueued',
+      itemId: item.id,
+      photoCount: photos.length,
+      fromStatus: item.status,
+      previousAiModerationStatus: item.aiModerationStatus,
+    });
+    return hidden;
+  }
 
   /**
    * Crea un PortfolioItem en estado `DRAFT`.
@@ -165,6 +253,57 @@ export class PortfolioService {
       await this.resolveProfessionalProfileId(supabaseUid);
     await this.assertItemOwned(itemId, professionalProfileId);
 
+    return this.presignPhotoForOwner(professionalProfileId, itemId, dto);
+  }
+
+  /**
+   * Presigna varias fotos en una sola llamada. Valida que el lote no exceda
+   * los cupos restantes del plan antes de generar URLs.
+   */
+  async presignPhotosBatch(
+    supabaseUid: string,
+    itemId: string,
+    dto: PresignPortfolioPhotosBatchDto,
+  ): Promise<PresignPortfolioPhotosBatchResponseDto> {
+    const professionalProfileId =
+      await this.resolveProfessionalProfileId(supabaseUid);
+    await this.assertItemOwned(itemId, professionalProfileId);
+    await this.assertPhotoBatchFits(
+      itemId,
+      professionalProfileId,
+      dto.photos.length,
+    );
+
+    const photos: PresignPortfolioPhotoResponseDto[] = [];
+    for (const entry of dto.photos) {
+      photos.push(
+        await this.presignPhotoForOwner(professionalProfileId, itemId, entry),
+      );
+    }
+    return { photos };
+  }
+
+  /**
+   * Registra varias fotos ya subidas a R2 en una sola llamada HTTP.
+   * Cada entrada reutiliza las validaciones de `addPhoto`.
+   */
+  async addPhotosBatch(
+    supabaseUid: string,
+    itemId: string,
+    dto: AddPortfolioPhotosBatchDto,
+  ): Promise<AddPortfolioPhotosBatchResponseDto> {
+    const photos: PortfolioPhotoResponseDto[] = [];
+    for (const entry of dto.photos) {
+      photos.push(await this.addPhoto(supabaseUid, itemId, entry));
+    }
+    return { photos };
+  }
+
+  private async presignPhotoForOwner(
+    professionalProfileId: string,
+    itemId: string,
+    dto: PresignPortfolioPhotoDto,
+  ): Promise<PresignPortfolioPhotoResponseDto> {
     const ext = dto.fileExtension ?? 'jpg';
     const mimeMap: Record<string, string> = {
       jpg: 'image/jpeg',
@@ -175,10 +314,46 @@ export class PortfolioService {
     const key = buildPortfolioPhotoKey(professionalProfileId, itemId, ext);
     const { uploadUrl } = await this.storage.generatePresignedPutUrl({
       key,
+      bucket: this.portfolioPublicBucket,
       contentType: mimeMap[ext],
     });
-
     return { uploadUrl, key };
+  }
+
+  private async assertPhotoBatchFits(
+    itemId: string,
+    professionalProfileId: string,
+    batchSize: number,
+  ): Promise<void> {
+    const currentCount = await this.repository.countPhotosByItemId(itemId);
+    const photosLimit = await this.resolvePhotosLimitForProfessional(
+      professionalProfileId,
+    );
+    if (currentCount + batchSize > photosLimit) {
+      throw new ConflictException(
+        buildProblem(
+          'PORTFOLIO_PHOTOS_LIMIT_REACHED',
+          'El lote supera el límite de fotos de tu plan para este trabajo.',
+          {
+            currentCount,
+            batchSize,
+            limit: photosLimit,
+          },
+        ),
+      );
+    }
+  }
+
+  private async resolvePhotosLimitForProfessional(
+    professionalProfileId: string,
+  ): Promise<number> {
+    const planEntitlements = await this.entitlements.resolveForProfessional(
+      professionalProfileId,
+    );
+    return Math.min(
+      this.config.maxPhotosPerItem,
+      planEntitlements.portfolio.photosPerItemMax,
+    );
   }
 
   /**
@@ -202,7 +377,10 @@ export class PortfolioService {
     const professionalProfileId =
       await this.resolveProfessionalProfileId(supabaseUid);
 
-    await this.assertItemOwned(itemId, professionalProfileId);
+    const item = await this.assertItemOwnedAndReturn(
+      itemId,
+      professionalProfileId,
+    );
 
     if (!PORTFOLIO_PHOTO_KEY_PATTERN.test(dto.fileKey)) {
       throw new BadRequestException(
@@ -226,12 +404,8 @@ export class PortfolioService {
     }
 
     const currentCount = await this.repository.countPhotosByItemId(itemId);
-    const planEntitlements = await this.entitlements.resolveForProfessional(
+    const photosLimit = await this.resolvePhotosLimitForProfessional(
       professionalProfileId,
-    );
-    const photosLimit = Math.min(
-      this.config.maxPhotosPerItem,
-      planEntitlements.portfolio.photosPerItemMax,
     );
     await this.entitlements.assert(
       'portfolio.photo.add',
@@ -251,6 +425,9 @@ export class PortfolioService {
         ? { displayOrder: dto.displayOrder }
         : {}),
     });
+
+    // Si el ítem estaba publicado, cualquier cambio en fotos requiere re-moderación.
+    await this.enqueueRemoderationIfNeeded(item);
     return this.toPhotoResponseDto(photo);
   }
 
@@ -270,9 +447,8 @@ export class PortfolioService {
    *   expone, así que el invariante se mantiene a nivel API.
    *
    * Re-moderación: si el item estaba `PUBLISHED` y se cambian campos
-   * de contenido, debería encolarse `portfolio-moderate`. La integración
-   * con BullMQ vive en un PR futuro; por ahora el método solo registra
-   * la intención.
+   * de contenido con `PORTFOLIO_AI_ENABLED=true`, se transiciona a
+   * `HIDDEN_PENDING_REVIEW` y se encola `portfolio-moderate`.
    */
   async updateItem(
     supabaseUid: string,
@@ -319,6 +495,14 @@ export class PortfolioService {
         ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
       },
     );
+
+    // Si el ítem ya era público y cambió contenido, re-moderamos de forma asíncrona.
+    const remod = await this.enqueueRemoderationIfNeeded(
+      item,
+      `${updated.title}\n${updated.description ?? ''}`,
+    );
+    if (remod) return this.toResponseDto(remod);
+
     return this.toResponseDto(updated);
   }
 
@@ -348,6 +532,47 @@ export class PortfolioService {
     return {
       items: items.map((it) => this.toResponseDto(it)),
       meta: { page, pageSize, total },
+    };
+  }
+
+  /**
+   * Detalle de un item propio (cualquier status no soft-deleted del dueño).
+   */
+  async getMyPortfolioItemById(
+    supabaseUid: string,
+    itemId: string,
+  ): Promise<PublicPortfolioItemDetailDto> {
+    const professionalProfileId =
+      await this.resolveProfessionalProfileId(supabaseUid);
+    const row = await this.repository.findOwnerPortfolioItemDetail(
+      itemId,
+      professionalProfileId,
+    );
+    if (!row) {
+      throw new NotFoundException(
+        buildProblem(
+          'PORTFOLIO_ITEM_NOT_FOUND',
+          'El ítem de portfolio no existe o no te pertenece.',
+        ),
+      );
+    }
+
+    const { item, category, job, photos, verifiedJobClientFirstName } = row;
+    const base = this.toResponseDto(item);
+
+    return {
+      ...base,
+      category,
+      job: job
+        ? {
+            id: job.id,
+            title: job.title,
+            completedAt: job.completedAt,
+            category: job.category,
+          }
+        : null,
+      photos: await Promise.all(photos.map((p) => this.mapPhotoForOwner(p))),
+      verifiedJobClientFirstName,
     };
   }
 
@@ -410,12 +635,7 @@ export class PortfolioService {
             category: job.category,
           }
         : null,
-      photos: photos.map((p) => ({
-        id: p.id,
-        fileKey: p.fileKey,
-        caption: p.caption,
-        displayOrder: p.displayOrder,
-      })),
+      photos: photos.map((p) => this.mapPhotoForPublic(p)),
       verifiedJobClientFirstName,
     };
   }
@@ -501,6 +721,15 @@ export class PortfolioService {
       professionalProfileId,
     );
 
+    if (item.status === PortfolioItemStatus.HIDDEN_BY_ADMIN) {
+      throw new ConflictException(
+        buildProblem(
+          'PORTFOLIO_BLOCKED_BY_ADMIN',
+          'Este trabajo está bloqueado por moderación admin y no puede publicarse hasta ser rehabilitado.',
+        ),
+      );
+    }
+
     if (item.status !== PortfolioItemStatus.DRAFT) {
       throw new ConflictException(
         buildProblem(
@@ -511,11 +740,12 @@ export class PortfolioService {
     }
 
     const photos = await this.repository.findPhotosByItemId(itemId);
-    if (photos.length === 0) {
+    if (photos.length < 2) {
       throw new ConflictException(
         buildProblem(
-          'PORTFOLIO_PHOTOS_REQUIRED',
-          'Para publicar, el item debe tener al menos una foto.',
+          'PORTFOLIO_MIN_PHOTOS_REQUIRED',
+          'Para publicar, el item debe tener al menos 2 fotos.',
+          { minPhotos: 2, currentPhotos: photos.length },
         ),
       );
     }
@@ -529,6 +759,7 @@ export class PortfolioService {
         itemId,
         photoFileKeys: photos.map((p) => p.fileKey),
         text: `${item.title}\n${item.description ?? ''}`,
+        transitionType: ModerationTransitionType.INITIAL,
       };
       await this.moderateQueue.add(PORTFOLIO_MODERATE_JOB, jobData, {
         attempts: 3,
@@ -555,6 +786,31 @@ export class PortfolioService {
       aiModerationStatus: moderation.status,
       aiModerationModelRef: moderation.modelRef,
     });
+    return this.toResponseDto(updated);
+  }
+
+  /** Owner: despublica un item publicado para volver a estado borrador. */
+  async unpublishItem(
+    supabaseUid: string,
+    itemId: string,
+  ): Promise<PortfolioItemResponseDto> {
+    const professionalProfileId =
+      await this.resolveProfessionalProfileId(supabaseUid);
+    const item = await this.assertItemOwnedAndReturn(
+      itemId,
+      professionalProfileId,
+    );
+    if (item.status !== PortfolioItemStatus.PUBLISHED) {
+      throw new ConflictException(
+        buildProblem(
+          'PORTFOLIO_ITEM_NOT_PUBLISHED',
+          `Para despublicar, el item debe estar en PUBLISHED. Estado actual: ${item.status}.`,
+        ),
+      );
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    const updated = await this.repository.transitionToDraft(itemId);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     return this.toResponseDto(updated);
   }
 
@@ -604,7 +860,7 @@ export class PortfolioService {
   ): Promise<'ok' | 'not-found'> {
     const withTimeout = () =>
       Promise.race([
-        this.storage.assertObjectExists(fileKey),
+        this.storage.assertObjectExists(fileKey, this.portfolioPublicBucket),
         new Promise<never>((_, reject) =>
           setTimeout(
             () =>
@@ -699,8 +955,24 @@ export class PortfolioService {
   ): Promise<void> {
     const professionalProfileId =
       await this.resolveProfessionalProfileId(supabaseUid);
-    await this.assertItemOwned(itemId, professionalProfileId);
+    const item = await this.assertItemOwnedAndReturn(
+      itemId,
+      professionalProfileId,
+    );
+
+    if (item.status === PortfolioItemStatus.PUBLISHED) {
+      throw new ConflictException(
+        buildProblem(
+          'PORTFOLIO_ITEM_NOT_DRAFT',
+          'Para editar fotos de un trabajo publicado, primero despublicalo.',
+        ),
+      );
+    }
+
     await this.repository.deletePhotoWithReorder(itemId, photoId);
+
+    // Si el ítem estaba publicado, quitar una foto requiere re-moderación.
+    await this.enqueueRemoderationIfNeeded(item);
   }
 
   /**
@@ -862,12 +1134,7 @@ export class PortfolioService {
       portfolioItemDescription: item.description,
       proposedCategory: item.category,
       categoryCoincide: item.categoryId === job.categoryId,
-      photos: item.photos.map((p) => ({
-        id: p.id,
-        fileKey: p.fileKey,
-        caption: p.caption,
-        displayOrder: p.displayOrder,
-      })),
+      photos: item.photos.map((p) => this.mapPhotoForPublic(p)),
     };
   }
 

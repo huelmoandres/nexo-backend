@@ -7,7 +7,16 @@ import { SilentAcceptanceProcessor } from '../silent-acceptance.processor';
 
 describe('SilentAcceptanceProcessor', () => {
   const escrowService = { processSilentAcceptance: vi.fn() };
-  const proc = new SilentAcceptanceProcessor(escrowService as never);
+  const auditContext = {
+    ensureWorkerContext: vi.fn().mockReturnValue({ correlationId: 'corr' }),
+    getCorrelationId: vi.fn().mockReturnValue('corr'),
+  };
+  const processAudit = { record: vi.fn().mockResolvedValue(undefined) };
+  const proc = new SilentAcceptanceProcessor(
+    escrowService as never,
+    auditContext as never,
+    processAudit as never,
+  );
 
   it('ignora job desconocido', async () => {
     await proc.process({ name: 'other', data: { jobId: 'j1' } } as never);

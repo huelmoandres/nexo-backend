@@ -5,6 +5,7 @@ import { EscrowModule } from '@modules/escrow/escrow.module';
 import { ExchangeRatesModule } from '@modules/exchange-rates/exchange-rates.module';
 import { PrismaModule } from '@prisma/prisma.module';
 import { PaymentGatewayModule } from './payment-gateway.module';
+import { PaymentWebhookIdempotencyRepository } from './payment-webhook-idempotency.repository';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 
@@ -17,7 +18,11 @@ import { PaymentsService } from './payments.service';
     PaymentGatewayModule,
   ],
   controllers: [PaymentsController],
-  providers: [PaymentsService],
-  exports: [PaymentsService, PaymentGatewayModule],
+  providers: [PaymentsService, PaymentWebhookIdempotencyRepository],
+  exports: [
+    PaymentsService,
+    PaymentGatewayModule,
+    PaymentWebhookIdempotencyRepository,
+  ],
 })
 export class PaymentsModule {}

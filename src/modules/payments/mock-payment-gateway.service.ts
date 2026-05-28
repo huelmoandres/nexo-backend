@@ -3,6 +3,7 @@ import type {
   IPaymentGateway,
   IssuePayoutInput,
   IssuePayoutResult,
+  ReconcilePayoutInput,
   ValidatePayoutDestinationInput,
   ValidatePayoutDestinationResult,
 } from './payment-gateway.interface';
@@ -11,6 +12,7 @@ import type {
 export class MockPaymentGatewayService implements IPaymentGateway {
   private rejectNextValidation = false;
   private rejectNextPayout = false;
+  private payoutResultsByIdempotencyKey = new Map<string, IssuePayoutResult>();
 
   /** Solo para tests — simula rechazo MP en la próxima validación. */
   setRejectNextValidation(value: boolean): void {
@@ -71,18 +73,40 @@ export class MockPaymentGatewayService implements IPaymentGateway {
   }
 
   async issuePayout(input: IssuePayoutInput): Promise<IssuePayoutResult> {
+    if (input.idempotencyKey) {
+      const existing = this.payoutResultsByIdempotencyKey.get(
+        input.idempotencyKey,
+      );
+      if (existing) {
+        return existing;
+      }
+    }
     if (this.rejectNextPayout) {
       this.rejectNextPayout = false;
-      return {
+      const res: IssuePayoutResult = {
         success: false,
         failureCode: 'MOCK_PAYOUT_FAILED',
         failureMessage: 'Cuenta inválida (mock)',
       };
+      if (input.idempotencyKey) {
+        this.payoutResultsByIdempotencyKey.set(input.idempotencyKey, res);
+      }
+      return res;
     }
-    return {
+    const res: IssuePayoutResult = {
       success: true,
       providerReference: `MOCK-PAYOUT-${input.escrowTransactionId.slice(0, 8)}`,
       providerStatus: 'approved',
     };
+    if (input.idempotencyKey) {
+      this.payoutResultsByIdempotencyKey.set(input.idempotencyKey, res);
+    }
+    return res;
+  }
+
+  async reconcilePayoutByIdempotencyKey(
+    input: ReconcilePayoutInput,
+  ): Promise<IssuePayoutResult | null> {
+    return this.payoutResultsByIdempotencyKey.get(input.idempotencyKey) ?? null;
   }
 }

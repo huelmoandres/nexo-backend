@@ -7,7 +7,9 @@ describe('AdminEscrowPayoutController', () => {
     presignManualPayoutReceipt: vi
       .fn()
       .mockResolvedValue({ uploadUrl: 'u', receiptStorageKey: 'k' }),
-    confirmManualPayout: vi.fn().mockResolvedValue({ payoutStatus: 'SUCCEEDED' }),
+    confirmManualPayout: vi
+      .fn()
+      .mockResolvedValue({ payoutStatus: 'SUCCEEDED' }),
   };
   const ctrl = new AdminEscrowPayoutController(escrowPayout as never);
 
@@ -30,11 +32,9 @@ describe('AdminEscrowPayoutController', () => {
   });
 
   it('delega confirmación manual', async () => {
-    await ctrl.confirm(
-      { sub: 'admin-1' } as never,
-      'job-1',
-      { receiptStorageKey: 'k' } as never,
-    );
+    await ctrl.confirm({ sub: 'admin-1' } as never, 'job-1', {
+      receiptStorageKey: 'k',
+    } as never);
     expect(escrowPayout.confirmManualPayout).toHaveBeenCalledWith(
       'job-1',
       'admin-1',

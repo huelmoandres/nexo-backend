@@ -28,11 +28,11 @@
 | **users** | `POST /users/company` | JWT | `CLIENT` (promueve a `COMPANY_ADMIN`) | Alta empresa FREE |
 | **users** | `POST /users/company/employees` | JWT | `COMPANY_ADMIN` | Vincula `CLIENT` existente |
 | **users/verification** | `POST presign`, `POST submit`, `GET status` | JWT | `INDEPENDENT_PRO`, `COMPANY_ADMIN` + assert subject | N/A |
-| **admin/verification** | `GET pending`, `POST review` | JWT | `SUPER_ADMIN` | N/A |
+| **admin/verification** | `GET pending`, `GET document-url`, `POST review` | JWT | `SUPER_ADMIN` | N/A |
 | **admin** (plans) | `GET/PATCH plan-definitions`, assign/custom | JWT | `SUPER_ADMIN` | Admin catálogo |
 | **professionals/me/service-areas** | CRUD | JWT | `INDEPENDENT_PRO` + ownership | create + radius |
 | **companies/:id/service-areas** | CRUD | JWT | `COMPANY_ADMIN` + assertCompanyAdmin | create + radius |
-| **portfolio** | Owner CRUD, publish, etc. | JWT | `INDEPENDENT_PRO`, `COMPANY_ADMIN` + ownership | items + photos |
+| **portfolio** | Owner CRUD, publish, `GET items/:id/mine`, etc. | JWT | `INDEPENDENT_PRO`, `COMPANY_ADMIN` + ownership | items + photos |
 | **portfolio** | `GET /portfolio/items/:id` | Público | Detalle publicado | N/A |
 | **portfolio** | `GET /professionals/:id/portfolio` | Público | Vidriera | N/A |
 | **portfolio** | `GET/POST /portfolio/consents/:token` | Público | Token UUID | N/A |

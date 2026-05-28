@@ -20,7 +20,10 @@ describe('JobsService', () => {
     createJob: vi.fn(),
     listByClient: vi.fn(),
     listPendingAvailable: vi.fn(),
+    listByProfessional: vi.fn(),
     assignProfessional: vi.fn(),
+    acceptJobAtomically: vi.fn(),
+    approveCompletionAtomically: vi.fn(),
     updateStatus: vi.fn(),
     createChangeOrder: vi.fn(),
     findChangeOrder: vi.fn(),
@@ -36,26 +39,39 @@ describe('JobsService', () => {
   const escrowService = {
     createPending: vi.fn(),
     scheduleSilentAcceptance: vi.fn(),
+    cancelSilentAcceptance: vi.fn(),
     releaseForJob: vi.fn(),
   };
-  const escrowPayout = { retryPayout: vi.fn() };
+  const escrowRepository = {
+    release: vi.fn(),
+    setBullJobId: vi.fn(),
+  };
+  const escrowPayout = {
+    retryPayout: vi.fn(),
+    executePayoutForJob: vi.fn(),
+  };
   const payoutAccounts = { assertProfessionalCanAcceptJob: vi.fn() };
   const payoutRepository = {
     assignJobPayout: vi.fn(),
     setEscrowPayoutAccount: vi.fn(),
   };
   const escrowCfg = { silentAcceptanceBusinessDays: 2 };
+  const payoutCfg = { mode: 'manual' as const, maxPayoutAttempts: 5 };
+  const businessAudit = { write: vi.fn().mockResolvedValue(undefined) };
 
-  const makeSvc = () =>
+  const makeSvc = (payoutMode: 'manual' | 'gateway' = 'manual') =>
     new JobsService(
       repository as never,
       exchangeRatesService as never,
       moneyConversion as never,
       escrowService as never,
+      escrowRepository as never,
       escrowPayout as never,
       payoutAccounts as never,
       payoutRepository as never,
       escrowCfg as never,
+      { ...payoutCfg, mode: payoutMode } as never,
+      businessAudit as never,
     );
 
   beforeEach(() => vi.clearAllMocks());
@@ -122,17 +138,67 @@ describe('JobsService', () => {
     await svc.getById('uid', 'job-1');
   });
 
+  it('listProfessionalMine lista para COMPANY_ADMIN con profile', async () => {
+    repository.findUserBySupabaseUid.mockResolvedValue({
+      id: 'co-admin',
+      role: Role.COMPANY_ADMIN,
+      professionalProfile: { id: 'pp-1' },
+    });
+    repository.listByProfessional.mockResolvedValue([jobBase]);
+    const items = await makeSvc().listProfessionalMine('uid', 2, 5);
+    expect(repository.listByProfessional).toHaveBeenCalledWith('pp-1', 5, 5);
+    expect(items).toHaveLength(1);
+  });
+
+  it('listProfessionalMine deniega sin rol permitido o sin profile', async () => {
+    repository.findUserBySupabaseUid.mockResolvedValue({
+      id: 'client-1',
+      role: Role.CLIENT,
+      professionalProfile: { id: 'pp-1' },
+    });
+    await expect(makeSvc().listProfessionalMine('uid')).rejects.toMatchObject({
+      response: { code: 'JOB_ACCESS_DENIED' },
+    });
+
+    repository.findUserBySupabaseUid.mockResolvedValue({
+      id: 'pro-1',
+      role: Role.INDEPENDENT_PRO,
+      professionalProfile: null,
+    });
+    await expect(makeSvc().listProfessionalMine('uid')).rejects.toMatchObject({
+      response: { code: 'JOB_ACCESS_DENIED' },
+    });
+  });
+
   it('accept con payout y errores', async () => {
     repository.findUserBySupabaseUid.mockResolvedValue({
       id: 'pro-1',
       role: Role.INDEPENDENT_PRO,
       professionalProfile: { id: 'pp-1' },
     });
-    repository.findById
-      .mockResolvedValueOnce({ ...jobBase, status: JobStatus.PENDING })
-      .mockResolvedValueOnce({ ...jobBase, status: JobStatus.ACCEPTED });
+    repository.findById.mockResolvedValueOnce({
+      ...jobBase,
+      status: JobStatus.PENDING,
+    });
     payoutAccounts.assertProfessionalCanAcceptJob.mockResolvedValue('acc-1');
+    repository.acceptJobAtomically.mockResolvedValue({
+      ...jobBase,
+      status: JobStatus.ACCEPTED,
+    });
     await makeSvc().accept('uid', 'job-1', 'acc-1');
+    repository.findUserBySupabaseUid.mockResolvedValue({
+      id: 'pro-1',
+      role: Role.INDEPENDENT_PRO,
+      professionalProfile: { id: 'pp-1' },
+    });
+    repository.findById.mockResolvedValue({
+      ...jobBase,
+      status: JobStatus.PENDING,
+    });
+    repository.acceptJobAtomically.mockResolvedValueOnce(null);
+    await expect(makeSvc().accept('uid', 'job-1')).rejects.toMatchObject({
+      response: { code: 'JOB_ALREADY_ASSIGNED' },
+    });
     repository.findUserBySupabaseUid.mockResolvedValue({
       id: 'pro-1',
       role: Role.INDEPENDENT_PRO,
@@ -257,11 +323,14 @@ describe('JobsService', () => {
       clientId: 'client-1',
       status: JobStatus.COMPLETED,
     });
-    repository.updateStatus.mockResolvedValue({
-      ...jobBase,
-      status: JobStatus.CLOSED,
+    repository.approveCompletionAtomically.mockResolvedValue({
+      job: { ...jobBase, status: JobStatus.CLOSED },
+      didTransition: true,
     });
     await makeSvc().approveCompletion('uid', 'job-1');
+    expect(escrowService.cancelSilentAcceptance).toHaveBeenCalledWith('job-1');
+    expect(repository.approveCompletionAtomically).toHaveBeenCalled();
+    expect(escrowPayout.executePayoutForJob).not.toHaveBeenCalled();
     repository.findById.mockResolvedValue({
       ...jobBase,
       clientId: 'other',
@@ -280,6 +349,14 @@ describe('JobsService', () => {
     ).rejects.toMatchObject({
       response: { code: 'JOB_INVALID_STATUS_TRANSITION' },
     });
+    repository.findById.mockResolvedValue({
+      ...jobBase,
+      clientId: 'client-1',
+      status: JobStatus.CLOSED,
+    });
+    await expect(
+      makeSvc().approveCompletion('uid', 'job-1'),
+    ).resolves.toMatchObject({ status: JobStatus.CLOSED });
   });
 
   it('retryPayout solo SUPER_ADMIN', async () => {
@@ -521,6 +598,131 @@ describe('JobsService', () => {
       clientId: 'other',
       professional: { userId: 'other-pro' },
     });
+    await expect(makeSvc().getById('uid', 'job-1')).rejects.toMatchObject({
+      response: { code: 'JOB_ACCESS_DENIED' },
+    });
+  });
+
+  it('approveCompletion en modo gateway dispara executePayoutForJob', async () => {
+    repository.findUserBySupabaseUid.mockResolvedValue({
+      id: 'client-1',
+      role: Role.CLIENT,
+    });
+    repository.findById.mockResolvedValue({
+      ...jobBase,
+      clientId: 'client-1',
+      status: JobStatus.COMPLETED,
+    });
+    repository.approveCompletionAtomically.mockResolvedValue({
+      job: { ...jobBase, status: JobStatus.CLOSED },
+      didTransition: true,
+    });
+    await makeSvc('gateway').approveCompletion('uid', 'job-1');
+    expect(escrowPayout.executePayoutForJob).toHaveBeenCalled();
+  });
+
+  it('approveCompletion no audita ni ejecuta payout si didTransition=false', async () => {
+    repository.findUserBySupabaseUid.mockResolvedValue({
+      id: 'c1',
+      role: Role.CLIENT,
+    });
+    repository.findById.mockResolvedValue({
+      ...jobBase,
+      clientId: 'c1',
+      status: JobStatus.COMPLETED,
+    });
+    repository.approveCompletionAtomically.mockResolvedValue({
+      job: { ...jobBase, status: JobStatus.CLOSED },
+      didTransition: false,
+    });
+    const svc = makeSvc('gateway');
+    const spy = vi.spyOn(svc as never, 'auditJobStatusChange');
+    await svc.approveCompletion('uid', 'job-1');
+    expect(escrowPayout.executePayoutForJob).not.toHaveBeenCalled();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('approveCompletion ejecuta releaseInTx interno (release + clear bull job)', async () => {
+    repository.findUserBySupabaseUid.mockResolvedValue({
+      id: 'client-1',
+      role: Role.CLIENT,
+    });
+    repository.findById.mockResolvedValue({
+      ...jobBase,
+      clientId: 'client-1',
+      status: JobStatus.COMPLETED,
+    });
+    repository.approveCompletionAtomically.mockImplementationOnce(
+      async (input) => {
+        await input.releaseInTx({} as never);
+        return {
+          job: { ...jobBase, status: JobStatus.CLOSED },
+          didTransition: true,
+        };
+      },
+    );
+
+    await makeSvc().approveCompletion('uid', 'job-1');
+    expect(escrowRepository.release).toHaveBeenCalledWith(
+      'job-1',
+      'client-1',
+      expect.anything(),
+      { setPayoutPending: true },
+    );
+    expect(escrowRepository.setBullJobId).toHaveBeenCalledWith(
+      'job-1',
+      null,
+      expect.anything(),
+    );
+  });
+
+  it('approveCompletion mapea INVALID_ESCROW_TRANSITION y propaga otros errores', async () => {
+    repository.findUserBySupabaseUid.mockResolvedValue({
+      id: 'client-1',
+      role: Role.CLIENT,
+    });
+    repository.findById.mockResolvedValue({
+      ...jobBase,
+      clientId: 'client-1',
+      status: JobStatus.COMPLETED,
+    });
+    repository.approveCompletionAtomically.mockRejectedValueOnce(
+      new Error('INVALID_ESCROW_TRANSITION'),
+    );
+    await expect(
+      makeSvc().approveCompletion('uid', 'job-1'),
+    ).rejects.toMatchObject({
+      response: { code: 'INVALID_ESCROW_TRANSITION' },
+    });
+
+    repository.approveCompletionAtomically.mockRejectedValueOnce(
+      new Error('other-error'),
+    );
+    await expect(makeSvc().approveCompletion('uid', 'job-1')).rejects.toThrow(
+      'other-error',
+    );
+  });
+
+  it('approveCompletion falla si transición atómica devuelve null', async () => {
+    repository.findUserBySupabaseUid.mockResolvedValue({
+      id: 'client-1',
+      role: Role.CLIENT,
+    });
+    repository.findById.mockResolvedValue({
+      ...jobBase,
+      clientId: 'client-1',
+      status: JobStatus.COMPLETED,
+    });
+    repository.approveCompletionAtomically.mockResolvedValue(null);
+    await expect(
+      makeSvc().approveCompletion('uid', 'job-1'),
+    ).rejects.toMatchObject({
+      response: { code: 'JOB_INVALID_STATUS_TRANSITION' },
+    });
+  });
+
+  it('getById falla con JOB_ACCESS_DENIED cuando no existe usuario', async () => {
+    repository.findUserBySupabaseUid.mockResolvedValue(null);
     await expect(makeSvc().getById('uid', 'job-1')).rejects.toMatchObject({
       response: { code: 'JOB_ACCESS_DENIED' },
     });

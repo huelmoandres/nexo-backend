@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
-import sharp from 'sharp';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import sharp = require('sharp');
 import { aiConfig } from '@config/ai.config';
 
 export interface ImagePrepResult {
@@ -42,7 +43,8 @@ export class ImagePrepService {
         fit: 'inside',
         withoutEnlargement: true,
       })
-      .webp({ quality: this.cfg.image.quality })
+      // Rekognition no acepta WebP en Bytes; usar JPEG para evitar InvalidImageFormat.
+      .jpeg({ quality: this.cfg.image.quality, mozjpeg: true })
       .toBuffer();
 
     const durationMs = Date.now() - start;

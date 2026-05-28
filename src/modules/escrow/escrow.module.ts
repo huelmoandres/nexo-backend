@@ -11,10 +11,15 @@ import { PayoutAccountsModule } from '@modules/payout-accounts/payout-accounts.m
 import { StorageModule } from '@modules/storage/storage.module';
 import { PrismaModule } from '@prisma/prisma.module';
 import { AdminEscrowPayoutController } from './admin-escrow-payout.controller';
-import { SILENT_ACCEPTANCE_QUEUE } from './escrow.constants';
+import {
+  PAYOUT_RECOVERY_QUEUE,
+  SILENT_ACCEPTANCE_QUEUE,
+} from './escrow.constants';
 import { EscrowPayoutService } from './escrow-payout.service';
 import { EscrowRepository } from './escrow.repository';
 import { EscrowService } from './escrow.service';
+import { PayoutRecoveryBootstrap } from './payout-recovery.bootstrap';
+import { PayoutRecoveryProcessor } from './payout-recovery.processor';
 import { SilentAcceptanceProcessor } from './silent-acceptance.processor';
 
 @Module({
@@ -28,7 +33,10 @@ import { SilentAcceptanceProcessor } from './silent-acceptance.processor';
     PaymentGatewayModule,
     PayoutAccountsModule,
     StorageModule,
-    BullModule.registerQueue({ name: SILENT_ACCEPTANCE_QUEUE }),
+    BullModule.registerQueue(
+      { name: SILENT_ACCEPTANCE_QUEUE },
+      { name: PAYOUT_RECOVERY_QUEUE },
+    ),
   ],
   controllers: [AdminEscrowPayoutController],
   providers: [
@@ -36,6 +44,8 @@ import { SilentAcceptanceProcessor } from './silent-acceptance.processor';
     EscrowService,
     EscrowPayoutService,
     SilentAcceptanceProcessor,
+    PayoutRecoveryProcessor,
+    PayoutRecoveryBootstrap,
   ],
   exports: [EscrowService, EscrowRepository, EscrowPayoutService],
 })

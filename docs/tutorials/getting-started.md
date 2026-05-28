@@ -33,7 +33,7 @@ Crea el archivo `.env` en la raíz del proyecto copiando el template:
 cp .env.example .env
 ```
 
-Edita `.env` con los siguientes valores. Todos son obligatorios — la aplicación no arranca si falta alguno:
+Edita `.env` con los siguientes valores base. Para una guía completa y defaults reales de runtime, tomá como fuente de verdad `.env.example`:
 
 ```env
 # ─── Base de Datos Principal ───────────────────────────────────────────────────
@@ -50,11 +50,19 @@ REDIS_URL="redis://localhost:6379"
 # ─── MongoDB (solo para chats) ──────────────────────────────────────────────────
 MONGODB_URI="mongodb://localhost:27017/nexos_chats"
 
-# ─── AWS / Cloudflare R2 (archivos KYC y evidencias) ───────────────────────────
-S3_BUCKET_NAME="nexos-evidencias"
-S3_ACCESS_KEY_ID="tu-access-key"
-S3_SECRET_ACCESS_KEY="tu-secret-key"
-S3_ENDPOINT="https://tu-cuenta.r2.cloudflarestorage.com"
+# ─── Cloudflare R2 (archivos: portfolio/KYC) ───────────────────────────────────
+R2_ACCOUNT_ID="<tu-account-id>"
+R2_ACCESS_KEY_ID="<tu-access-key>"
+R2_SECRET_ACCESS_KEY="<tu-secret-key>"
+R2_ENDPOINT="https://<tu-account-id>.r2.cloudflarestorage.com"
+R2_BUCKET_PUBLIC="nexos-public"
+R2_BUCKET_KYC="nexos-kyc"
+
+# ─── IA (moderación) ────────────────────────────────────────────────────────────
+AI_OPENAI_API_KEY="<tu-openai-key>"
+AI_AWS_REGION="us-east-1"
+AI_AWS_ACCESS_KEY_ID="<tu-aws-access-key-id>"
+AI_AWS_SECRET_ACCESS_KEY="<tu-aws-secret-access-key>"
 
 # ─── Sentry ────────────────────────────────────────────────────────────────────
 SENTRY_DSN="https://tu-dsn@sentry.io/proyecto"

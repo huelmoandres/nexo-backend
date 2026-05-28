@@ -116,7 +116,10 @@ describe('GeoRepository', () => {
       name: 'Montevideo',
       slug: 'montevideo',
     });
-    const found = await repo.findStateByCountryAndParsedName('c1', 'Montevideo');
+    const found = await repo.findStateByCountryAndParsedName(
+      'c1',
+      'Montevideo',
+    );
     expect(found?.id).toBe('s1');
     expect(prisma.state.findMany).not.toHaveBeenCalled();
   });
@@ -135,14 +138,23 @@ describe('GeoRepository', () => {
     const { repo, prisma } = makeRepo();
     prisma.state.findFirst.mockResolvedValue(null);
     prisma.state.findMany.mockResolvedValue([]);
-    const found = await repo.findStateByCountryAndParsedName('c1', 'Inexistente');
+    const found = await repo.findStateByCountryAndParsedName(
+      'c1',
+      'Inexistente',
+    );
     expect(found).toBeNull();
   });
 
   it('findNeighborhoodByCityAndParsedName por slug', async () => {
     const { repo, prisma } = makeRepo();
-    prisma.neighborhood.findFirst.mockResolvedValue({ id: 'n1', name: 'Pocitos' });
-    const found = await repo.findNeighborhoodByCityAndParsedName('ci1', 'Pocitos');
+    prisma.neighborhood.findFirst.mockResolvedValue({
+      id: 'n1',
+      name: 'Pocitos',
+    });
+    const found = await repo.findNeighborhoodByCityAndParsedName(
+      'ci1',
+      'Pocitos',
+    );
     expect(found?.id).toBe('n1');
   });
 
@@ -177,7 +189,10 @@ describe('GeoRepository', () => {
     prisma.neighborhood.findMany.mockResolvedValue([
       { id: 'n2', name: 'Pocitos', slug: 'pocitos' },
     ]);
-    const found = await repo.findNeighborhoodByCityAndParsedName('ci1', 'Pocitos');
+    const found = await repo.findNeighborhoodByCityAndParsedName(
+      'ci1',
+      'Pocitos',
+    );
     expect(found?.id).toBe('n2');
   });
 

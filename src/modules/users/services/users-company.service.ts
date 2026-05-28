@@ -75,7 +75,8 @@ export class UsersCompanyService {
     supabaseUid: string,
     dto: CreateEmployeeDto,
   ): Promise<CompanyEmployeeCreatedResponseDto> {
-    const admin = await this.usersRepository.findBySupabaseUidForMe(supabaseUid);
+    const admin =
+      await this.usersRepository.findBySupabaseUidForMe(supabaseUid);
     if (!admin) {
       throw new NotFoundException(
         buildProblem(
@@ -97,7 +98,10 @@ export class UsersCompanyService {
     const company = admin.ownedCompany;
     if (!company) {
       throw new NotFoundException(
-        buildProblem('USER_NOT_FOUND', 'No se encontró la empresa administrada.'),
+        buildProblem(
+          'USER_NOT_FOUND',
+          'No se encontró la empresa administrada.',
+        ),
       );
     }
 

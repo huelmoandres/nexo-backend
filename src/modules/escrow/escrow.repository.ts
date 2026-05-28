@@ -61,8 +61,8 @@ export class EscrowRepository {
     tx?: Prisma.TransactionClient,
   ): Promise<EscrowTransaction> {
     const run = async (client: Prisma.TransactionClient) => {
-      const escrow = await client.escrowTransaction.update({
-        where: { jobId },
+      const updated = await client.escrowTransaction.updateMany({
+        where: { jobId, status: EscrowStatus.PENDING },
         data: {
           status: EscrowStatus.HELD,
           amountCents: data.amountCents,
@@ -73,6 +73,20 @@ export class EscrowRepository {
           exchangeRateId: data.exchangeRateId,
           providerReference: data.providerReference,
         },
+      });
+
+      if (updated.count !== 1) {
+        const current = await client.escrowTransaction.findUnique({
+          where: { jobId },
+        });
+        if (current?.status === EscrowStatus.HELD) {
+          return current;
+        }
+        throw new Error('INVALID_ESCROW_TRANSITION');
+      }
+
+      const escrow = await client.escrowTransaction.findUniqueOrThrow({
+        where: { jobId },
       });
       await client.auditLog.create({
         data: {
@@ -100,14 +114,8 @@ export class EscrowRepository {
     options?: { setPayoutPending?: boolean },
   ): Promise<EscrowTransaction> {
     const run = async (client: Prisma.TransactionClient) => {
-      const current = await client.escrowTransaction.findUniqueOrThrow({
-        where: { jobId },
-      });
-      if (current.status !== EscrowStatus.HELD) {
-        throw new Error('INVALID_ESCROW_TRANSITION');
-      }
-      const escrow = await client.escrowTransaction.update({
-        where: { jobId },
+      const updated = await client.escrowTransaction.updateMany({
+        where: { jobId, status: EscrowStatus.HELD },
         data: {
           status: EscrowStatus.RELEASED,
           releasedAt: new Date(),
@@ -115,6 +123,20 @@ export class EscrowRepository {
             ? { payoutStatus: EscrowPayoutStatus.PENDING }
             : {}),
         },
+      });
+
+      if (updated.count !== 1) {
+        const current = await client.escrowTransaction.findUnique({
+          where: { jobId },
+        });
+        if (current?.status === EscrowStatus.RELEASED) {
+          return current;
+        }
+        throw new Error('INVALID_ESCROW_TRANSITION');
+      }
+
+      const escrow = await client.escrowTransaction.findUniqueOrThrow({
+        where: { jobId },
       });
       await client.auditLog.create({
         data: {
@@ -313,6 +335,43 @@ export class EscrowRepository {
       where: {
         status: EscrowStatus.RELEASED,
         payoutStatus: EscrowPayoutStatus.PENDING,
+      },
+    });
+  }
+
+  listRecoverableGatewayPayouts(params: { take: number }) {
+    return this.prisma.escrowTransaction.findMany({
+      where: {
+        status: EscrowStatus.RELEASED,
+        payoutStatus: EscrowPayoutStatus.PENDING,
+        payoutAttempts: { none: {} },
+      },
+      orderBy: { releasedAt: 'asc' },
+      take: params.take,
+      include: {
+        job: {
+          select: {
+            id: true,
+            clientId: true,
+          },
+        },
+      },
+    });
+  }
+
+  listStuckPayoutAttempts(params: { take: number; olderThan: Date }) {
+    return this.prisma.payoutAttempt.findMany({
+      where: {
+        status: PayoutAttemptStatus.PENDING,
+        createdAt: { lt: params.olderThan },
+        escrowTransaction: {
+          status: EscrowStatus.RELEASED,
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: params.take,
+      include: {
+        escrowTransaction: true,
       },
     });
   }

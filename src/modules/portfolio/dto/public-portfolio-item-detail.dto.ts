@@ -32,6 +32,19 @@ export class PublicPortfolioPhotoDto {
   })
   fileKey!: string;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'URL pública permanente cuando `R2_PUBLIC_BASE_URL` está configurado en el servidor.',
+  })
+  publicUrl!: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'URL firmada GET (TTL ~15 min) para vista previa del dueño en el editor. Solo en `GET .../mine`.',
+  })
+  previewUrl?: string;
+
   @ApiPropertyOptional({ nullable: true })
   caption!: string | null;
 

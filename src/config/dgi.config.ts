@@ -21,7 +21,10 @@ export const dgiConfig = registerAs('dgi', () => ({
   ),
   staleWatchdogCron: process.env['DGI_STALE_WATCHDOG_CRON'] ?? '*/5 * * * *',
   orphanCleanupCron: process.env['DGI_ORPHAN_CLEANUP_CRON'] ?? '0 3 * * *',
-  orphanMinAgeHours: parseInt(process.env['DGI_ORPHAN_MIN_AGE_HOURS'] ?? '24', 10),
+  orphanMinAgeHours: parseInt(
+    process.env['DGI_ORPHAN_MIN_AGE_HOURS'] ?? '24',
+    10,
+  ),
   staleWatchdogJobId: 'dgi-stale-watchdog',
   orphanCleanupJobId: 'dgi-orphan-cleanup',
   allowedHosts: [

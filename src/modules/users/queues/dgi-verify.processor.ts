@@ -62,6 +62,14 @@ export class DgiVerifyProcessor extends WorkerHost {
     const { subjectType, subjectId, storageKey, expectedRut, trustProfileId } =
       job.data;
 
+    this.logger.log({
+      op: 'dgi.verify.start',
+      jobId: job.id,
+      subjectType,
+      subjectId,
+      storageKey,
+    });
+
     try {
       await this.runVerification(
         subjectType,
@@ -83,6 +91,17 @@ export class DgiVerifyProcessor extends WorkerHost {
         DGI_TECHNICAL_REJECTION_REASON,
       );
     }
+
+    const subject = await this.usersRepository.findDgiSubjectById({
+      subjectType,
+      subjectId,
+    });
+    this.logger.log({
+      op: 'dgi.verify.done',
+      jobId: job.id,
+      subjectId,
+      status: subject?.dgiVerificationStatus,
+    });
   }
 
   @OnWorkerEvent('failed')
@@ -211,7 +230,12 @@ export class DgiVerifyProcessor extends WorkerHost {
         dgiRazonSocial: lookup.razonSocial,
         documentStatus: VerificationDocumentStatus.APPROVED,
       });
-      await this.notifyVerified(subjectType, subjectId, trustProfileId, lookup.razonSocial);
+      await this.notifyVerified(
+        subjectType,
+        subjectId,
+        trustProfileId,
+        lookup.razonSocial,
+      );
       this.logger.log({
         op: 'dgi.verify.qrSuccess',
         subjectType,

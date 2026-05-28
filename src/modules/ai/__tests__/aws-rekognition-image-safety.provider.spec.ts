@@ -81,4 +81,45 @@ describe('AwsRekognitionImageSafetyProvider', () => {
       expect.objectContaining({ Image: { Bytes: buf } }),
     );
   });
+
+  it('constructor usa credenciales estáticas cuando vienen en config', () => {
+    new AwsRekognitionImageSafetyProvider(
+      {
+        aws: {
+          region: 'us-east-1',
+          accessKeyId: 'ak',
+          secretAccessKey: 'sk',
+        },
+      } as never,
+    );
+    expect(mocks.RekognitionClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        region: 'us-east-1',
+        credentials: expect.objectContaining({
+          accessKeyId: 'ak',
+          secretAccessKey: 'sk',
+        }),
+      }),
+    );
+  });
+
+  it('constructor incluye sessionToken cuando está presente', () => {
+    new AwsRekognitionImageSafetyProvider(
+      {
+        aws: {
+          region: 'us-east-1',
+          accessKeyId: 'ak2',
+          secretAccessKey: 'sk2',
+          sessionToken: 'st2',
+        },
+      } as never,
+    );
+    expect(mocks.RekognitionClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        credentials: expect.objectContaining({
+          sessionToken: 'st2',
+        }),
+      }),
+    );
+  });
 });

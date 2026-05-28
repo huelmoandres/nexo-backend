@@ -97,7 +97,12 @@ describe('UsersController', () => {
   it('createCompanyEmployee delega al service', async () => {
     const usersService = {
       createCompanyEmployee: vi.fn().mockResolvedValue({
-        employee: { id: 'e1', email: 'op@test.com', fullName: 'Op', role: Role.COMPANY_EMPLOYEE },
+        employee: {
+          id: 'e1',
+          email: 'op@test.com',
+          fullName: 'Op',
+          role: Role.COMPANY_EMPLOYEE,
+        },
       }),
     };
     const controller = new UsersController(usersService as never);

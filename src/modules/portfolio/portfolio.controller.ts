@@ -29,9 +29,17 @@ import { Roles } from '@modules/users/decorators/roles.decorator';
 import { RolesGuard } from '@modules/users/guards/roles.guard';
 import { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
 import {
+  AddPortfolioPhotosBatchDto,
+  AddPortfolioPhotosBatchResponseDto,
+} from './dto/add-portfolio-photos-batch.dto';
+import {
   PresignPortfolioPhotoDto,
   PresignPortfolioPhotoResponseDto,
 } from './dto/presign-portfolio-photo.dto';
+import {
+  PresignPortfolioPhotosBatchDto,
+  PresignPortfolioPhotosBatchResponseDto,
+} from './dto/presign-portfolio-photos-batch.dto';
 import { CreatePortfolioItemDto } from './dto/create-portfolio-item.dto';
 import { ListMyPortfolioQueryDto } from './dto/list-my-portfolio-query.dto';
 import {
@@ -127,6 +135,34 @@ export class PortfolioController {
     return this.portfolioService.listMyItems(sub, query);
   }
 
+  @Get('items/:id/mine')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('supabase-jwt')
+  @ApiOperation({
+    summary: 'Detalle de un PortfolioItem propio (owner)',
+    description:
+      'Incluye fotos y metadatos para edición. Cualquier status no soft-deleted del dueño.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Detalle owner',
+    type: PublicPortfolioItemDetailDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'PORTFOLIO_ITEM_NOT_FOUND',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  async getMyPortfolioItemById(
+    @CurrentUser('sub') sub: string,
+    @Param('id', ParseUUIDPipe) itemId: string,
+  ): Promise<PublicPortfolioItemDetailDto> {
+    return this.portfolioService.getMyPortfolioItemById(sub, itemId);
+  }
+
   @Public()
   @Get('items/:id')
   @HttpCode(HttpStatus.OK)
@@ -218,6 +254,34 @@ export class PortfolioController {
     return this.portfolioService.presignPhoto(sub, itemId, dto);
   }
 
+  @Post('items/:id/photos/presign-batch')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('supabase-jwt')
+  @ApiOperation({
+    summary: 'Presignar varias fotos de portfolio en un solo request',
+    description:
+      'Valida cupos restantes del plan y devuelve un array de URLs firmadas.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    type: PresignPortfolioPhotosBatchResponseDto,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'PORTFOLIO_PHOTOS_LIMIT_REACHED',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  async presignPhotosBatch(
+    @CurrentUser('sub') sub: string,
+    @Param('id', ParseUUIDPipe) itemId: string,
+    @Body() dto: PresignPortfolioPhotosBatchDto,
+  ): Promise<PresignPortfolioPhotosBatchResponseDto> {
+    return this.portfolioService.presignPhotosBatch(sub, itemId, dto);
+  }
+
   @Post('items/:id/photos')
   @UseGuards(SupabaseAuthGuard, RolesGuard)
   @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
@@ -264,6 +328,29 @@ export class PortfolioController {
     return this.portfolioService.addPhoto(sub, itemId, dto);
   }
 
+  @Post('items/:id/photos/batch')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiBearerAuth('supabase-jwt')
+  @ApiOperation({
+    summary: 'Registrar varias fotos de portfolio en un solo request',
+    description:
+      'Cada fileKey debe haberse subido antes vía presigned PUT. Reutiliza validaciones de addPhoto.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiResponse({
+    status: 201,
+    type: AddPortfolioPhotosBatchResponseDto,
+  })
+  async addPhotosBatch(
+    @CurrentUser('sub') sub: string,
+    @Param('id', ParseUUIDPipe) itemId: string,
+    @Body() dto: AddPortfolioPhotosBatchDto,
+  ): Promise<AddPortfolioPhotosBatchResponseDto> {
+    return this.portfolioService.addPhotosBatch(sub, itemId, dto);
+  }
+
   @Post('items/:id/publish')
   @UseGuards(SupabaseAuthGuard, RolesGuard)
   @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
@@ -290,7 +377,7 @@ export class PortfolioController {
   @ApiResponse({
     status: 409,
     description:
-      'PORTFOLIO_ITEM_NOT_DRAFT, PORTFOLIO_PHOTOS_REQUIRED o ' +
+      'PORTFOLIO_ITEM_NOT_DRAFT, PORTFOLIO_MIN_PHOTOS_REQUIRED o ' +
       'PORTFOLIO_PHOTOS_NOT_READY (con photoIds)',
     schema: { $ref: '#/components/schemas/ProblemDetail' },
   })
@@ -304,6 +391,34 @@ export class PortfolioController {
     @Param('id', ParseUUIDPipe) itemId: string,
   ): Promise<PortfolioItemResponseDto> {
     return this.portfolioService.publishItem(sub, itemId);
+  }
+
+  @Post('items/:id/unpublish')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('supabase-jwt')
+  @ApiOperation({
+    summary: 'Despublica un PortfolioItem',
+    description:
+      'Transiciona PUBLISHED → DRAFT para que el profesional pueda editar y republicar luego.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Item despublicado',
+    type: PortfolioItemResponseDto,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'PORTFOLIO_ITEM_NOT_PUBLISHED',
+    schema: { $ref: '#/components/schemas/ProblemDetail' },
+  })
+  async unpublishItem(
+    @CurrentUser('sub') sub: string,
+    @Param('id', ParseUUIDPipe) itemId: string,
+  ): Promise<PortfolioItemResponseDto> {
+    return this.portfolioService.unpublishItem(sub, itemId);
   }
 
   @Post('items/:id/request-verification')

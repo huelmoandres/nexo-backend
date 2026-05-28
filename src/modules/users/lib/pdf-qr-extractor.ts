@@ -1,6 +1,6 @@
 import { pdfToPng } from 'pdf-to-png-converter';
 import jsQR from 'jsqr';
-import sharp from 'sharp';
+import sharp = require('sharp');
 import { Logger } from '@nestjs/common';
 
 const logger = new Logger('PdfQrExtractor');

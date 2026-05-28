@@ -5,6 +5,7 @@ import { MercadoPagoPaymentGatewayService } from '../mercadopago-payment-gateway
 
 const preferenceCreate = vi.fn();
 const paymentGet = vi.fn();
+const paymentSearch = vi.fn();
 const merchantOrderGet = vi.fn();
 
 vi.mock('mercadopago', () => {
@@ -13,6 +14,7 @@ vi.mock('mercadopago', () => {
   }
   class Payment {
     get = paymentGet;
+    search = paymentSearch;
   }
   class MerchantOrder {
     get = merchantOrderGet;
@@ -42,6 +44,7 @@ describe('MercadoPagoPaymentGatewayService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    paymentSearch.mockResolvedValue({ results: [] });
     preferenceCreate.mockResolvedValue({
       id: 'pref-1',
       init_point: 'https://mp.test/pay',
@@ -82,7 +85,7 @@ describe('MercadoPagoPaymentGatewayService', () => {
     expect(status.externalReference).toBe('job-uuid');
   });
 
-  it('payout delega al mock', async () => {
+  it('validate/issuePayout/issueRefund delegan al mock', async () => {
     const r = await gw.validatePayoutDestination({
       method: 'MERCADOPAGO',
       identifierType: 'MP_CVU',
@@ -96,6 +99,142 @@ describe('MercadoPagoPaymentGatewayService', () => {
       netAmountCents: 1,
       destination: {} as never,
     });
+  });
+
+  it('reconcilePayoutByIdempotencyKey busca por external_reference en MP', async () => {
+    paymentSearch.mockResolvedValueOnce({
+      results: [{ id: 42, status: 'approved' }],
+    });
+    const reconciled = await gw.reconcilePayoutByIdempotencyKey({
+      escrowTransactionId: 'e1',
+      idempotencyKey: 'payout:e1:attempt:1',
+    });
+    expect(reconciled).toEqual({
+      success: true,
+      providerReference: '42',
+      providerStatus: 'approved',
+    });
+    expect(paymentSearch).toHaveBeenCalledWith({
+      options: {
+        external_reference: 'payout:e1:attempt:1',
+        sort: 'date_created',
+        criteria: 'desc',
+      },
+    });
+  });
+
+  it('reconcilePayoutByIdempotencyKey consulta providerReference antes de search', async () => {
+    paymentGet.mockResolvedValueOnce({
+      id: 77,
+      status: 'approved',
+    });
+    const reconciled = await gw.reconcilePayoutByIdempotencyKey({
+      escrowTransactionId: 'e1',
+      idempotencyKey: 'payout:e1:attempt:1',
+      providerReference: '77',
+    });
+    expect(reconciled?.providerReference).toBe('77');
+    expect(paymentGet).toHaveBeenCalledWith({ id: '77' });
+    expect(paymentSearch).not.toHaveBeenCalled();
+  });
+
+  it('reconcilePayoutByIdempotencyKey sin token delega al mock', async () => {
+    const noToken = new MercadoPagoPaymentGatewayService(
+      { ...cfg, mercadoPagoAccessToken: '' } as never,
+      mockFallback,
+    );
+    await noToken.issuePayout({
+      escrowTransactionId: 'e1',
+      amountCents: 1,
+      netAmountCents: 1,
+      destination: {} as never,
+      idempotencyKey: 'payout:e1:attempt:1',
+    });
+    const reconciled = await noToken.reconcilePayoutByIdempotencyKey({
+      escrowTransactionId: 'e1',
+      idempotencyKey: 'payout:e1:attempt:1',
+    });
+    expect(reconciled?.success).toBe(true);
+    expect(paymentSearch).not.toHaveBeenCalled();
+  });
+
+  it('reconcilePayoutByIdempotencyKey devuelve null si MP no tiene terminal', async () => {
+    paymentSearch.mockResolvedValueOnce({
+      results: [{ id: 5, status: 'pending' }],
+    });
+    await expect(
+      gw.reconcilePayoutByIdempotencyKey({
+        escrowTransactionId: 'e1',
+        idempotencyKey: 'payout:e1:attempt:2',
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it('reconcilePayoutByIdempotencyKey continúa a search si get por providerReference falla', async () => {
+    paymentGet.mockRejectedValueOnce('mp-get-down');
+    paymentSearch.mockResolvedValueOnce({
+      results: [{ id: 90, status: 'approved' }],
+    });
+    await expect(
+      gw.reconcilePayoutByIdempotencyKey({
+        escrowTransactionId: 'e1',
+        idempotencyKey: 'payout:e1:attempt:get-fail',
+        providerReference: '90',
+      }),
+    ).resolves.toEqual({
+      success: true,
+      providerReference: '90',
+      providerStatus: 'approved',
+    });
+    expect(paymentSearch).toHaveBeenCalled();
+  });
+
+  it('reconcilePayoutByIdempotencyKey usa search si get devuelve estado no terminal', async () => {
+    paymentGet.mockResolvedValueOnce({ id: 90, status: 'pending' });
+    paymentSearch.mockResolvedValueOnce({
+      results: [{ id: 91, status: 'approved' }],
+    });
+    await expect(
+      gw.reconcilePayoutByIdempotencyKey({
+        escrowTransactionId: 'e1',
+        idempotencyKey: 'payout:e1:attempt:get-pending',
+        providerReference: '90',
+      }),
+    ).resolves.toEqual({
+      success: true,
+      providerReference: '91',
+      providerStatus: 'approved',
+    });
+  });
+
+  it('reconcilePayoutByIdempotencyKey devuelve null si search falla', async () => {
+    paymentSearch.mockRejectedValueOnce('mp-search-down');
+    await expect(
+      gw.reconcilePayoutByIdempotencyKey({
+        escrowTransactionId: 'e1',
+        idempotencyKey: 'payout:e1:attempt:search-fail',
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it('reconcilePayoutByIdempotencyKey maneja errores Error en get/search y search sin results', async () => {
+    paymentGet.mockRejectedValueOnce(new Error('mp-get-error'));
+    paymentSearch.mockResolvedValueOnce({});
+    await expect(
+      gw.reconcilePayoutByIdempotencyKey({
+        escrowTransactionId: 'e1',
+        idempotencyKey: 'payout:e1:attempt:no-results',
+        providerReference: '98',
+      }),
+    ).resolves.toBeNull();
+
+    paymentSearch.mockRejectedValueOnce(new Error('mp-search-error'));
+    await expect(
+      gw.reconcilePayoutByIdempotencyKey({
+        escrowTransactionId: 'e1',
+        idempotencyKey: 'payout:e1:attempt:search-error',
+      }),
+    ).resolves.toBeNull();
   });
 
   it('verifyWebhookSignature siempre false', () => {
@@ -236,6 +375,17 @@ describe('MercadoPagoPaymentGatewayService', () => {
       expect.objectContaining({
         body: expect.not.objectContaining({
           notification_url: expect.anything(),
+        }),
+      }),
+    );
+  });
+
+  it('createPaymentLink incluye notification_url cuando está configurada', async () => {
+    await gw.createPaymentLink({ jobId: 'j-notify', amountCents: 100 });
+    expect(preferenceCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          notification_url: 'https://api.test/webhooks/mp',
         }),
       }),
     );

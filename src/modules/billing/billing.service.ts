@@ -1,10 +1,17 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  AuditContextService,
+  ProcessAuditService,
+  runCriticalProcess,
+  sanitizeForProcessAudit,
+} from '@common/observability';
 import { ConfigType } from '@nestjs/config';
 import {
   Role,
   SubscriptionBillingStatus,
   SubscriptionPlan,
   type BillingSubscription,
+  type Prisma,
 } from '@prisma/client';
 import { addDays } from 'date-fns';
 import { billingConfig } from '@config/billing.config';
@@ -32,6 +39,7 @@ import {
 } from './billing-usd-uyu.util';
 import { BillingRepository } from './billing.repository';
 import type { SubscribeBillingDto } from './dto/subscribe-billing.dto';
+import { PaymentWebhookIdempotencyRepository } from '@modules/payments/payment-webhook-idempotency.repository';
 import { MERCADOPAGO_SUBSCRIPTION_CLIENT_TOKEN } from './mercadopago-subscription.token';
 import type { IMercadoPagoSubscriptionClient } from './mercadopago-subscription.interface';
 
@@ -58,6 +66,9 @@ export class BillingService {
     private readonly payCfg: ConfigType<typeof paymentsConfig>,
     @Inject(MERCADOPAGO_SUBSCRIPTION_CLIENT_TOKEN)
     private readonly mpClient: IMercadoPagoSubscriptionClient,
+    private readonly auditContext: AuditContextService,
+    private readonly processAudit: ProcessAuditService,
+    private readonly webhookIdempotency: PaymentWebhookIdempotencyRepository,
   ) {}
 
   listPlans() {
@@ -135,7 +146,7 @@ export class BillingService {
       subject.subjectId,
     );
 
-    let mpPreapprovalId: string;
+    let mpPreapprovalId: string | undefined;
     let initPoint: string;
     try {
       const pre = await this.mpClient.createPreapproval({
@@ -177,21 +188,47 @@ export class BillingService {
       lastDunningAt: null,
     };
 
-    const row = existing
-      ? await this.billingRepo.update(existing.id, data)
-      : await this.billingRepo.create(
-          subject.kind === 'professional'
-            ? {
-                professionalProfile: { connect: { id: subject.subjectId } },
-                ...data,
-              }
-            : {
-                company: { connect: { id: subject.subjectId } },
-                ...data,
-              },
-        );
+    let row: BillingSubscription;
+    try {
+      row = await this.prisma.$transaction(async (tx) => {
+        let saved: BillingSubscription;
+        if (existing) {
+          saved = await tx.billingSubscription.update({
+            where: { id: existing.id },
+            data,
+          });
+        } else if (subject.kind === 'professional') {
+          saved = await tx.billingSubscription.create({
+            data: {
+              ...data,
+              professionalProfileId: subject.subjectId,
+            },
+          });
+        } else {
+          saved = await tx.billingSubscription.create({
+            data: {
+              ...data,
+              companyId: subject.subjectId,
+            },
+          });
+        }
+        await this.syncProfilePlan(subject, dto.plan, tx);
+        return saved;
+      });
+    } catch (err: unknown) {
+      await this.compensateSubscribeMpPreapproval(mpPreapprovalId);
+      const detail =
+        err instanceof Error ? err.message : 'persist subscription failed';
+      this.logger.error(
+        { err: detail, mpPreapprovalId },
+        'subscribe DB failed',
+      );
+      throw problemException(
+        'BILLING_SUBSCRIBE_FAILED',
+        process.env['NODE_ENV'] !== 'production' ? detail : undefined,
+      );
+    }
 
-    await this.syncProfilePlan(subject, dto.plan);
     return {
       subscriptionId: row.id,
       initPoint,
@@ -212,20 +249,32 @@ export class BillingService {
       try {
         await this.mpClient.cancelPreapproval(row.mpPreapprovalId);
       } catch (err: unknown) {
-        const detail =
-          err instanceof Error ? err.message : 'cancelPreapproval failed';
-        this.logger.warn({ err: detail, id: row.id }, 'cancel MP failed');
-        throw problemException(
-          'BILLING_CANCEL_FAILED',
-          process.env['NODE_ENV'] !== 'production' ? detail : undefined,
-        );
+        if (!this.isMpPreapprovalAlreadyCanceled(err)) {
+          const detail =
+            err instanceof Error ? err.message : 'cancelPreapproval failed';
+          this.logger.warn({ err: detail, id: row.id }, 'cancel MP failed');
+          throw problemException(
+            'BILLING_CANCEL_FAILED',
+            process.env['NODE_ENV'] !== 'production' ? detail : undefined,
+          );
+        }
       }
     }
-    const updated = await this.billingRepo.update(row.id, {
-      status: SubscriptionBillingStatus.CANCELED,
-      cancelAtPeriodEnd: true,
-    });
-    return this.toSubscriptionDto(updated);
+    try {
+      const updated = await this.billingRepo.update(row.id, {
+        status: SubscriptionBillingStatus.CANCELED,
+        cancelAtPeriodEnd: true,
+      });
+      return this.toSubscriptionDto(updated);
+    } catch (err: unknown) {
+      const detail =
+        err instanceof Error ? err.message : 'cancel DB update failed';
+      this.logger.error(
+        { err: detail, id: row.id },
+        'cancel DB failed after MP',
+      );
+      throw problemException('SERVICE_UNAVAILABLE');
+    }
   }
 
   async handleMercadoPagoSubscriptionWebhook(
@@ -235,6 +284,44 @@ export class BillingService {
     queryDataId?: string,
     queryTopic?: string,
   ): Promise<{ ok: true }> {
+    const op = 'billing.webhook.mercadopago';
+    const requestSummary = sanitizeForProcessAudit({
+      queryId,
+      queryDataId,
+      queryTopic,
+      type: body.type,
+      topic: body.topic,
+    });
+    return runCriticalProcess({
+      logger: this.logger,
+      processAudit: this.processAudit,
+      auditContext: this.auditContext,
+      op,
+      domain: 'BILLING',
+      source: 'WEBHOOK',
+      requestSummary,
+      externalRef: queryDataId ?? queryId,
+      skipAuditOnSuccess: true,
+      fn: async () => {
+        await this.processMercadoPagoSubscriptionWebhook(
+          headers,
+          body,
+          queryId,
+          queryDataId,
+          queryTopic,
+        );
+        return { ok: true as const };
+      },
+    });
+  }
+
+  private async processMercadoPagoSubscriptionWebhook(
+    headers: MercadoPagoWebhookHeaders,
+    body: MercadoPagoWebhookBodyDto,
+    queryId?: string,
+    queryDataId?: string,
+    queryTopic?: string,
+  ): Promise<void> {
     if (this.payCfg.provider !== 'mercadopago') {
       throw problemException('BILLING_WEBHOOK_INVALID');
     }
@@ -243,11 +330,11 @@ export class BillingService {
       .toLowerCase();
     const isIpnLegacy = Boolean(queryTopic?.trim());
     const resourceId = isIpnLegacy
-      ? (queryId?.trim() || '')
-      : (queryDataId?.trim() ||
+      ? queryId?.trim() || ''
+      : queryDataId?.trim() ||
         (body.data?.id != null ? String(body.data.id) : '') ||
         queryId?.trim() ||
-        '');
+        '';
     if (!resourceId) {
       throw problemException('BILLING_WEBHOOK_INVALID');
     }
@@ -267,24 +354,42 @@ export class BillingService {
       }
     }
 
-    if (notificationTopic === 'payment') {
-      await this.handleSubscriptionPaymentWebhook(resourceId);
-      return { ok: true };
+    const idempotencyKey = `billing:mp:notify:${
+      notificationTopic || 'unknown'
+    }:${resourceId}`;
+    const begin = await this.webhookIdempotency.begin({
+      idempotencyKey,
+      provider: 'mercadopago',
+      operation: 'billing.webhook.mercadopago',
+      externalRef: resourceId,
+      staleProcessingMs: this.payCfg.webhookIdempotencyStaleMs,
+    });
+    if (begin === 'completed') {
+      return;
+    }
+    if (begin === 'in_progress') {
+      throw problemException('SERVICE_UNAVAILABLE');
     }
 
-    if (
-      notificationTopic.includes('preapproval') ||
-      notificationTopic === 'subscription_preapproval'
-    ) {
-      await this.syncFromMpPreapproval(resourceId);
-      return { ok: true };
+    try {
+      if (notificationTopic === 'payment') {
+        await this.handleSubscriptionPaymentWebhook(resourceId);
+      } else if (
+        notificationTopic.includes('preapproval') ||
+        notificationTopic === 'subscription_preapproval'
+      ) {
+        await this.syncFromMpPreapproval(resourceId);
+      } else {
+        this.logger.log(
+          { resourceId, topic: notificationTopic },
+          'subscription webhook topic ignored — ACK 200',
+        );
+      }
+      await this.webhookIdempotency.complete(idempotencyKey);
+    } catch (err: unknown) {
+      await this.webhookIdempotency.abandon(idempotencyKey);
+      throw err;
     }
-
-    this.logger.log(
-      { resourceId, topic: notificationTopic },
-      'subscription webhook topic ignored — ACK 200',
-    );
-    return { ok: true };
   }
 
   private async handleSubscriptionPaymentWebhook(paymentId: string) {
@@ -297,12 +402,13 @@ export class BillingService {
     );
     if (!res.ok) {
       this.logger.warn({ paymentId }, 'subscription payment fetch failed');
-      return;
+      throw problemException('SERVICE_UNAVAILABLE');
     }
-    const payment = (await res.json()) as {
-      status?: string;
-      external_reference?: string;
-    };
+    const rawPayment: unknown = await res.json();
+    const payment =
+      typeof rawPayment === 'object' && rawPayment !== null
+        ? (rawPayment as { status?: string; external_reference?: string })
+        : {};
     const ref = payment.external_reference;
     if (!ref || !parseSubscriptionExternalReference(ref)) {
       return;
@@ -486,21 +592,54 @@ export class BillingService {
     return created.id;
   }
 
+  private async compensateSubscribeMpPreapproval(
+    mpPreapprovalId: string | undefined,
+  ): Promise<void> {
+    if (!mpPreapprovalId) {
+      return;
+    }
+    try {
+      await this.mpClient.cancelPreapproval(mpPreapprovalId);
+    } catch (err: unknown) {
+      const detail =
+        err instanceof Error ? err.message : 'compensate cancelPreapproval';
+      this.logger.error(
+        { err: detail, mpPreapprovalId },
+        'subscribe compensate: cancelPreapproval failed',
+      );
+    }
+  }
+
+  private isMpPreapprovalAlreadyCanceled(err: unknown): boolean {
+    const msg = (
+      err instanceof Error ? err.message : String(err)
+    ).toLowerCase();
+    return (
+      msg.includes('already') ||
+      msg.includes('not found') ||
+      msg.includes('404') ||
+      msg.includes('cancelled') ||
+      msg.includes('canceled')
+    );
+  }
+
   private async syncProfilePlan(
     subject: BillingSubject,
     plan: SubscriptionPlan,
+    tx?: Prisma.TransactionClient,
   ): Promise<void> {
     const planDefinitionId =
       plan === SubscriptionPlan.FREE
         ? CATALOG_PLAN_IDS.FREE
         : CATALOG_PLAN_IDS[plan as 'PRO' | 'BUSINESS'];
+    const client = tx ?? this.prisma;
     if (subject.kind === 'professional') {
-      await this.prisma.professionalProfile.update({
+      await client.professionalProfile.update({
         where: { id: subject.subjectId },
         data: { subscriptionPlan: plan, planDefinitionId },
       });
     } else {
-      await this.prisma.company.update({
+      await client.company.update({
         where: { id: subject.subjectId },
         data: { subscriptionPlan: plan, planDefinitionId },
       });

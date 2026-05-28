@@ -32,6 +32,7 @@ describe('PortfolioRepository', () => {
       portfolioItem: {
         create: vi.fn(),
         findFirst: vi.fn(),
+        findUnique: vi.fn(),
         update: vi.fn(),
         updateMany: vi.fn(),
         findMany: vi.fn(),
@@ -1273,6 +1274,152 @@ describe('PortfolioRepository', () => {
     });
   });
 
+  describe('owner lookups', () => {
+    it('findOwnerUserIdByItemId devuelve supabaseUid o null', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.findUnique.mockResolvedValueOnce({
+        professional: { user: { supabaseUid: 'sub-1' } },
+      });
+      await expect(repo.findOwnerUserIdByItemId('item-1')).resolves.toBe(
+        'sub-1',
+      );
+
+      prisma.portfolioItem.findUnique.mockResolvedValueOnce(null);
+      await expect(repo.findOwnerUserIdByItemId('missing')).resolves.toBeNull();
+    });
+
+    it('findOwnerPortfolioItemDetail devuelve null si no existe', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        repo.findOwnerPortfolioItemDetail('item-x', 'prof-1'),
+      ).resolves.toBeNull();
+    });
+
+    it('findOwnerPortfolioItemDetail construye detalle owner y primer nombre', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.findFirst.mockResolvedValueOnce({
+        id: 'item-1',
+        professionalId: 'prof-1',
+        categoryId: 'cat-1',
+        title: 'Titulo',
+        description: 'descripcion larga',
+        status: PortfolioItemStatus.PUBLISHED,
+        jobId: 'job-1',
+        verifiedFromJob: true,
+        aiModerationStatus: AiModerationStatus.OK,
+        aiModerationReason: null,
+        aiModerationModelRef: null,
+        aiModeratedAt: null,
+        publishedAt: new Date(),
+        cleanedUpAt: null,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        category: { id: 'cat-1', name: 'Cat' },
+        job: {
+          id: 'job-1',
+          title: 'Job',
+          completedAt: new Date(),
+          category: { id: 'cat-1', name: 'Cat' },
+        },
+        photos: [{ id: 'ph-1', fileKey: 'k', caption: null, displayOrder: 1 }],
+        consent: {
+          status: ConsentStatus.ACCEPTED,
+          clientUserId: 'client-1',
+        },
+      });
+      prisma.user.findUnique.mockResolvedValueOnce({ fullName: 'Juan Perez' });
+      const out = await repo.findOwnerPortfolioItemDetail('item-1', 'prof-1');
+      expect(out?.item.id).toBe('item-1');
+      expect(out?.verifiedJobClientFirstName).toBe('Juan');
+    });
+
+    it('findOwnerPortfolioItemDetail no consulta user si no está verified+accepted', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.findFirst.mockResolvedValueOnce({
+        id: 'item-2',
+        professionalId: 'prof-1',
+        categoryId: 'cat-1',
+        title: 'Titulo',
+        description: 'descripcion',
+        status: PortfolioItemStatus.PUBLISHED,
+        jobId: null,
+        verifiedFromJob: false,
+        aiModerationStatus: AiModerationStatus.OK,
+        aiModerationReason: null,
+        aiModerationModelRef: null,
+        aiModeratedAt: null,
+        publishedAt: new Date(),
+        cleanedUpAt: null,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        category: { id: 'cat-1', name: 'Cat' },
+        job: null,
+        photos: [],
+        consent: null,
+      });
+      const out = await repo.findOwnerPortfolioItemDetail('item-2', 'prof-1');
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(out?.verifiedJobClientFirstName).toBeNull();
+    });
+
+    it('findOwnerPortfolioItemDetail retorna null de nombre cuando cliente no existe', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.findFirst.mockResolvedValueOnce({
+        id: 'item-3',
+        professionalId: 'prof-1',
+        categoryId: 'cat-1',
+        title: 'Titulo',
+        description: 'descripcion',
+        status: PortfolioItemStatus.PUBLISHED,
+        jobId: 'job-1',
+        verifiedFromJob: true,
+        aiModerationStatus: AiModerationStatus.OK,
+        aiModerationReason: null,
+        aiModerationModelRef: null,
+        aiModeratedAt: null,
+        publishedAt: new Date(),
+        cleanedUpAt: null,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        category: { id: 'cat-1', name: 'Cat' },
+        job: {
+          id: 'job-1',
+          title: 'Job',
+          completedAt: new Date(),
+          category: { id: 'cat-1', name: 'Cat' },
+        },
+        photos: [],
+        consent: {
+          status: ConsentStatus.ACCEPTED,
+          clientUserId: 'client-missing',
+        },
+      });
+      prisma.user.findUnique.mockResolvedValueOnce(null);
+      const out = await repo.findOwnerPortfolioItemDetail('item-3', 'prof-1');
+      expect(out?.verifiedJobClientFirstName).toBeNull();
+    });
+  });
+
+  describe('transition helpers', () => {
+    it('transitionToDraft actualiza status y limpia publishedAt', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.portfolioItem.update.mockResolvedValueOnce({ id: 'item-1' });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+      await PortfolioRepository.prototype.transitionToDraft.call(
+        repo,
+        'item-1',
+      );
+      expect(prisma.portfolioItem.update).toHaveBeenCalledWith({
+        where: { id: 'item-1' },
+        data: { status: PortfolioItemStatus.DRAFT, publishedAt: null },
+      });
+    });
+  });
+
   describe('moderación humana y reportes', () => {
     it('findInternalUserIdBySupabaseUid', async () => {
       const { repo, prisma } = makeRepo();
@@ -1448,6 +1595,9 @@ describe('PortfolioRepository', () => {
     const makeAiVerdictTxRepo = () => {
       const tx = {
         portfolioItem: {
+          findUnique: vi.fn().mockResolvedValue({
+            status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+          }),
           update: vi.fn().mockResolvedValue({ id: 'item-1' }),
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
@@ -1498,6 +1648,22 @@ describe('PortfolioRepository', () => {
       );
       expect(tx.portfolioModerationLog.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ status: 'OK' }),
+      });
+    });
+
+    it('re-moderación OK desde HIDDEN_PENDING_REVIEW registra AUTO_RESTORE_AFTER_CORRECTION', async () => {
+      const { repo, tx } = makeAiVerdictTxRepo();
+      await repo.applyAiModerationVerdict({
+        itemId: 'item-1',
+        aiModerationStatus: AiModerationStatus.OK,
+        modelRef: 'aws:rekognition:v1',
+        transitionType: 'RE_MODERATION',
+      });
+
+      expect(tx.portfolioModerationLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          transitionType: 'AUTO_RESTORE_AFTER_CORRECTION',
+        }),
       });
     });
 
@@ -1668,6 +1834,63 @@ describe('PortfolioRepository', () => {
         }),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('applyAdminPortfolioModeration: restore_draft usa expectedStatus hidden_by_admin', async () => {
+      const { repo, prisma, tx } = makeModerateTxRepo();
+      prisma.user.findFirst.mockResolvedValueOnce({ id: 'admin-2' });
+      await repo.applyAdminPortfolioModeration({
+        adminSupabaseUid: 'sub-r',
+        itemId: 'item-r',
+        action: 'restore_draft',
+      });
+      expect(tx.portfolioItem.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: PortfolioItemStatus.HIDDEN_BY_ADMIN,
+          }),
+          data: { status: PortfolioItemStatus.DRAFT },
+        }),
+      );
+    });
+
+    it('applyAdminPortfolioModeration: restore_draft lanza conflicto específico', async () => {
+      const tx = {
+        portfolioItem: {
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+        portfolioModerationLog: { create: vi.fn() },
+        auditLog: { create: vi.fn() },
+      };
+      const prisma = {
+        user: { findFirst: vi.fn().mockResolvedValue({ id: 'admin-1' }) },
+        portfolioItem: {
+          create: vi.fn(),
+          findFirst: vi.fn(),
+          update: vi.fn(),
+          updateMany: vi.fn(),
+          findMany: vi.fn(),
+          count: vi.fn(),
+        },
+        category: { findFirst: vi.fn() },
+        job: { findFirst: vi.fn() },
+        portfolioPhoto: {
+          count: vi.fn(),
+          findFirst: vi.fn(),
+          findMany: vi.fn(),
+        },
+        $transaction: vi.fn((fn: (t: typeof tx) => unknown) =>
+          Promise.resolve(fn(tx)),
+        ),
+      };
+      const repo = new PortfolioRepository(prisma as never);
+      await expect(
+        repo.applyAdminPortfolioModeration({
+          adminSupabaseUid: 'sub-a',
+          itemId: 'item-r',
+          action: 'restore_draft',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
   });
 });

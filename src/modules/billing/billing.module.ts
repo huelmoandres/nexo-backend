@@ -7,6 +7,7 @@ import { AuthModule } from '@modules/auth/auth.module';
 import { AuthorizationModule } from '@modules/authorization/authorization.module';
 import { ExchangeRatesModule } from '@modules/exchange-rates/exchange-rates.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
+import { PaymentsModule } from '@modules/payments/payments.module';
 import { PrismaModule } from '@prisma/prisma.module';
 import { BILLING_DUNNING_QUEUE } from './billing.constants';
 import { BillingController } from './billing.controller';
@@ -27,6 +28,7 @@ import { SubscriptionDunningProcessor } from './subscription-dunning.processor';
     AuthorizationModule,
     ExchangeRatesModule,
     NotificationsModule,
+    PaymentsModule,
     BullModule.registerQueue({ name: BILLING_DUNNING_QUEUE }),
   ],
   controllers: [BillingController, BillingWebhooksController],

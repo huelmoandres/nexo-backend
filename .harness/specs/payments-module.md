@@ -17,16 +17,27 @@
 | POST | `/payments/webhook` | Público + `x-webhook-secret` | Mock / E2E |
 | POST | `/payments/webhooks/mercadopago` | Público + firma `x-signature` | Notificaciones MP; consulta payment antes de fondear |
 
+### 2.1 Idempotencia de webhooks (2026-05-27)
+
+- Tabla `PaymentWebhookIdempotency` (Postgres): clave `mp:notify:{topic}:{resourceId}` (MP) o `mock:escrow-fund:{jobId}:{providerReference}` (mock/E2E).
+- Tras validar firma/secreto: `begin` → si `COMPLETED`, ACK `{ ok: true }` sin re-llamar MP ni `fundEscrow`.
+- Si otro worker está en `PROCESSING` y no expiró `PAYMENTS_WEBHOOK_IDEMPOTENCY_STALE_MS` (default 120s): **503** `SERVICE_UNAVAILABLE` para que MP reintente.
+- Éxito o skip (no approved, merchant_order sin pago): `complete`. Error transitorio / fallo de fondeo: `abandon` para permitir reintento.
+
 ## 3. Config
 
-Ver `.env.example`: `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET`, `MERCADOPAGO_NOTIFICATION_URL`, `MERCADOPAGO_SANDBOX`, back URLs.
+Ver `.env.example`: `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET`, `MERCADOPAGO_NOTIFICATION_URL`, `MERCADOPAGO_SANDBOX`, `PAYMENTS_WEBHOOK_IDEMPOTENCY_STALE_MS`, back URLs.
 
 **Prueba sandbox:** [mercadopago-checkout-pro-sandbox.md](../../docs/how-to/mercadopago-checkout-pro-sandbox.md). Postman: carpeta **E2E — Mercado Pago Checkout Pro (sandbox)** en `postman/nexos-api.postman_collection.json`.
 
 ## 4. Payouts
 
+Ver contrato completo (idempotencia, `external_reference`, recovery): [payments-psp.md](../../docs/explanation/payments-psp.md) § *Contrato de idempotencia*.
+
 - `PAYOUT_MODE=manual` (default): tras `RELEASED`, `payoutStatus=PENDING`; admin confirma con comprobante S3. Ver [admin-payout-manual-mercadopago.md](../../docs/how-to/admin-payout-manual-mercadopago.md).
-- `PAYOUT_MODE=gateway`: `issuePayout` vía mock/API (provider MP delega al mock hoy).
+- `PAYOUT_MODE=gateway`: `issuePayout` vía mock (emisión real MP pendiente MLU). Al implementar emisión real: `external_reference` y `X-Idempotency-Key` = `payout:{escrowId}:attempt:{n}`.
+- `reconcilePayoutByIdempotencyKey` (provider `mercadopago` + token): `GET /v1/payments/{id}` si hay `providerReference`; si no, `GET /v1/payments/search?external_reference={idempotencyKey}`; sin token → mock.
+- Recovery: `recoverStuckPayoutAttempts` reconcilia antes de reemitir `issuePayout`.
 - Checkout Pro: `MERCADOPAGO_MAX_INSTALLMENTS` (default 12) en preference.
 
 ## 5. Suscripciones SaaS (billing)

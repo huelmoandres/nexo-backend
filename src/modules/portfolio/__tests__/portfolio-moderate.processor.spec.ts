@@ -1,5 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { AiModerationStatus, ModerationTransitionType } from '@prisma/client';
+import {
+  AiModerationStatus,
+  ModerationTransitionType,
+  PortfolioItemStatus,
+} from '@prisma/client';
+import { REALTIME_PUSH_EVENT } from '@modules/realtime/realtime.constants';
 import {
   PortfolioModerateProcessor,
   PORTFOLIO_MODERATE_JOB,
@@ -7,7 +12,13 @@ import {
 } from '../queues/portfolio-moderate.processor';
 
 const repoMock = {
-  applyAiModerationVerdict: vi.fn().mockResolvedValue({ id: 'item-1' }),
+  applyAiModerationVerdict: vi.fn().mockResolvedValue({
+    id: 'item-1',
+    status: PortfolioItemStatus.PUBLISHED,
+    aiModerationStatus: AiModerationStatus.OK,
+    updatedAt: new Date('2026-05-27T11:00:00.000Z'),
+  }),
+  findOwnerUserIdByItemId: vi.fn().mockResolvedValue('supabase-sub-1'),
 };
 
 const moderationMock = {
@@ -22,13 +33,17 @@ const storageMock = {
 };
 
 const aiCfg = { policyVersion: '1.0.0' };
+const storageCfg = { r2BucketPublic: 'nexos-public' };
+const eventEmitterMock = { emit: vi.fn() };
 
 function makeProcessor() {
   return new PortfolioModerateProcessor(
     repoMock as never,
     moderationMock,
     storageMock as never,
+    storageCfg as never,
     aiCfg as never,
+    eventEmitterMock as never,
   );
 }
 
@@ -62,6 +77,32 @@ describe('PortfolioModerateProcessor', () => {
         modelRef: 'aws:rekognition:v1',
         transitionType: ModerationTransitionType.INITIAL,
         policyVersion: '1.0.0',
+      }),
+    );
+    expect(eventEmitterMock.emit).toHaveBeenCalledWith(
+      REALTIME_PUSH_EVENT,
+      expect.objectContaining({
+        userId: 'supabase-sub-1',
+        event: 'portfolio.moderation.completed',
+      }),
+    );
+  });
+
+  it('respeta transitionType=RE_MODERATION cuando viene en el job', async () => {
+    const processor = makeProcessor();
+    await processor.process(
+      makeJob({
+        itemId: 'item-remod',
+        photoFileKeys: ['photos/img1.jpg'],
+        text: 'texto',
+        transitionType: ModerationTransitionType.RE_MODERATION,
+      }),
+    );
+
+    expect(repoMock.applyAiModerationVerdict).toHaveBeenCalledWith(
+      expect.objectContaining({
+        itemId: 'item-remod',
+        transitionType: ModerationTransitionType.RE_MODERATION,
       }),
     );
   });
@@ -105,6 +146,7 @@ describe('PortfolioModerateProcessor', () => {
         itemId: 'item-2',
         aiModerationStatus: AiModerationStatus.FLAGGED,
         modelRef: 'ai:error:fail-closed',
+        transitionType: ModerationTransitionType.INITIAL,
         errorCode: 'AI_PROVIDER_ERROR',
       }),
     );
@@ -197,7 +239,54 @@ describe('PortfolioModerateProcessor', () => {
     );
 
     expect(storageMock.downloadObject).toHaveBeenCalledTimes(2);
-    expect(storageMock.downloadObject).toHaveBeenCalledWith('photos/a.jpg');
-    expect(storageMock.downloadObject).toHaveBeenCalledWith('photos/b.jpg');
+    expect(storageMock.downloadObject).toHaveBeenCalledWith(
+      'photos/a.jpg',
+      'nexos-public',
+    );
+    expect(storageMock.downloadObject).toHaveBeenCalledWith(
+      'photos/b.jpg',
+      'nexos-public',
+    );
+  });
+
+  it('no emite realtime si no encuentra owner del item', async () => {
+    repoMock.findOwnerUserIdByItemId.mockResolvedValueOnce(null);
+    const processor = makeProcessor();
+    await processor.process(
+      makeJob({
+        itemId: 'item-no-owner',
+        photoFileKeys: ['photos/a.jpg'],
+        text: 'texto',
+      }),
+    );
+    expect(eventEmitterMock.emit).not.toHaveBeenCalled();
+  });
+
+  it('captura error en lookup owner realtime sin romper proceso', async () => {
+    repoMock.findOwnerUserIdByItemId.mockRejectedValueOnce(
+      new Error('lookup-fail'),
+    );
+    const processor = makeProcessor();
+    await processor.process(
+      makeJob({
+        itemId: 'item-owner-error',
+        photoFileKeys: ['photos/a.jpg'],
+        text: 'texto',
+      }),
+    );
+    expect(moderationMock.moderate).toHaveBeenCalled();
+  });
+
+  it('captura error no-Error en lookup owner realtime sin romper proceso', async () => {
+    repoMock.findOwnerUserIdByItemId.mockRejectedValueOnce('lookup-string-fail');
+    const processor = makeProcessor();
+    await processor.process(
+      makeJob({
+        itemId: 'item-owner-error-string',
+        photoFileKeys: ['photos/a.jpg'],
+        text: 'texto',
+      }),
+    );
+    expect(moderationMock.moderate).toHaveBeenCalled();
   });
 });

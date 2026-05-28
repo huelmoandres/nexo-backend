@@ -1,6 +1,8 @@
 import { Inject, Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { ConfigType } from '@nestjs/config';
 import { Job } from 'bullmq';
+import { storageConfig } from '@config/storage.config';
 import { STORAGE_SERVICE_TOKEN } from '@modules/storage/storage.constants';
 import type { IStorageService } from '@modules/storage/interfaces/storage.service.interface';
 import { PrismaService } from '@prisma/prisma.service';
@@ -24,6 +26,8 @@ export class PortfolioCleanupProcessor extends WorkerHost {
   constructor(
     @Inject(STORAGE_SERVICE_TOKEN)
     private readonly storage: IStorageService,
+    @Inject(storageConfig.KEY)
+    private readonly storageCfg: ConfigType<typeof storageConfig>,
     private readonly prisma: PrismaService,
   ) {
     super();
@@ -45,7 +49,7 @@ export class PortfolioCleanupProcessor extends WorkerHost {
       try {
         await this.storage.deleteObjectAsSystem(
           photo.fileKey,
-          undefined,
+          this.storageCfg.r2BucketPublic,
           `portfolio-cleanup:item=${itemId}`,
         );
         deleted++;

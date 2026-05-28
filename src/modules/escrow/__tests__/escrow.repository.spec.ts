@@ -15,6 +15,7 @@ describe('EscrowRepository', () => {
       findUniqueOrThrow: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
     },
@@ -56,7 +57,8 @@ describe('EscrowRepository', () => {
       escrowTransaction: prisma.escrowTransaction,
       auditLog: prisma.auditLog,
     };
-    prisma.escrowTransaction.update.mockResolvedValue({ id: 'e1' });
+    prisma.escrowTransaction.updateMany.mockResolvedValue({ count: 1 });
+    prisma.escrowTransaction.findUniqueOrThrow.mockResolvedValue({ id: 'e1' });
     await repo.fundEscrow(
       'job-1',
       {
@@ -94,7 +96,8 @@ describe('EscrowRepository', () => {
   });
 
   it('fundEscrow actualiza HELD y audit', async () => {
-    prisma.escrowTransaction.update.mockResolvedValue({ id: 'e1' });
+    prisma.escrowTransaction.updateMany.mockResolvedValue({ count: 1 });
+    prisma.escrowTransaction.findUniqueOrThrow.mockResolvedValue({ id: 'e1' });
     await repo.fundEscrow(
       'job-1',
       {
@@ -115,8 +118,54 @@ describe('EscrowRepository', () => {
     );
   });
 
-  it('release falla si no HELD', async () => {
-    prisma.escrowTransaction.findUniqueOrThrow.mockResolvedValue({
+  it('fundEscrow idempotente si ya HELD', async () => {
+    prisma.escrowTransaction.updateMany.mockResolvedValue({ count: 0 });
+    prisma.escrowTransaction.findUnique.mockResolvedValue({
+      id: 'e1',
+      status: EscrowStatus.HELD,
+    });
+    const result = await repo.fundEscrow(
+      'job-1',
+      {
+        amountCents: 100,
+        commissionCents: 10,
+        netAmountCents: 90,
+        jobCurrencyId: 'c1',
+        jobAmountCents: 100,
+        exchangeRateId: null,
+        providerReference: 'ref',
+      },
+      'user-1',
+    );
+    expect(result.status).toBe(EscrowStatus.HELD);
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('fundEscrow falla transición inválida', async () => {
+    prisma.escrowTransaction.updateMany.mockResolvedValue({ count: 0 });
+    prisma.escrowTransaction.findUnique.mockResolvedValue({
+      status: EscrowStatus.RELEASED,
+    });
+    await expect(
+      repo.fundEscrow(
+        'job-1',
+        {
+          amountCents: 1,
+          commissionCents: 0,
+          netAmountCents: 1,
+          jobCurrencyId: 'c',
+          jobAmountCents: 1,
+          exchangeRateId: null,
+          providerReference: 'r',
+        },
+        'u1',
+      ),
+    ).rejects.toThrow('INVALID_ESCROW_TRANSITION');
+  });
+
+  it('release falla si no HELD ni RELEASED', async () => {
+    prisma.escrowTransaction.updateMany.mockResolvedValue({ count: 0 });
+    prisma.escrowTransaction.findUnique.mockResolvedValue({
       status: EscrowStatus.PENDING,
     });
     await expect(repo.release('job-1', 'u1')).rejects.toThrow(
@@ -124,11 +173,20 @@ describe('EscrowRepository', () => {
     );
   });
 
-  it('release con tx', async () => {
-    prisma.escrowTransaction.findUniqueOrThrow.mockResolvedValue({
-      status: EscrowStatus.HELD,
+  it('release idempotente si ya RELEASED', async () => {
+    prisma.escrowTransaction.updateMany.mockResolvedValue({ count: 0 });
+    prisma.escrowTransaction.findUnique.mockResolvedValue({
+      id: 'e1',
+      status: EscrowStatus.RELEASED,
     });
-    prisma.escrowTransaction.update.mockResolvedValue({ id: 'e1' });
+    const result = await repo.release('job-1', 'u1');
+    expect(result.status).toBe(EscrowStatus.RELEASED);
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('release con tx', async () => {
+    prisma.escrowTransaction.updateMany.mockResolvedValue({ count: 1 });
+    prisma.escrowTransaction.findUniqueOrThrow.mockResolvedValue({ id: 'e1' });
     const tx = {
       escrowTransaction: prisma.escrowTransaction,
       auditLog: prisma.auditLog,
@@ -137,10 +195,8 @@ describe('EscrowRepository', () => {
   });
 
   it('release OK', async () => {
-    prisma.escrowTransaction.findUniqueOrThrow.mockResolvedValue({
-      status: EscrowStatus.HELD,
-    });
-    prisma.escrowTransaction.update.mockResolvedValue({ id: 'e1' });
+    prisma.escrowTransaction.updateMany.mockResolvedValue({ count: 1 });
+    prisma.escrowTransaction.findUniqueOrThrow.mockResolvedValue({ id: 'e1' });
     await repo.release('job-1', 'u1');
     expect(prisma.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -150,13 +206,12 @@ describe('EscrowRepository', () => {
   });
 
   it('release con setPayoutPending marca payout PENDING', async () => {
-    prisma.escrowTransaction.findUniqueOrThrow.mockResolvedValue({
-      status: EscrowStatus.HELD,
-    });
-    prisma.escrowTransaction.update.mockResolvedValue({ id: 'e1' });
+    prisma.escrowTransaction.updateMany.mockResolvedValue({ count: 1 });
+    prisma.escrowTransaction.findUniqueOrThrow.mockResolvedValue({ id: 'e1' });
     await repo.release('job-1', 'u1', undefined, { setPayoutPending: true });
-    expect(prisma.escrowTransaction.update).toHaveBeenCalledWith(
+    expect(prisma.escrowTransaction.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: { jobId: 'job-1', status: EscrowStatus.HELD },
         data: expect.objectContaining({
           status: EscrowStatus.RELEASED,
           payoutStatus: EscrowPayoutStatus.PENDING,
@@ -201,6 +256,32 @@ describe('EscrowRepository', () => {
     await repo.countPendingManualPayouts();
     expect(prisma.escrowTransaction.findMany).toHaveBeenCalled();
     expect(prisma.escrowTransaction.count).toHaveBeenCalled();
+  });
+
+  it('listRecoverableGatewayPayouts y listStuckPayoutAttempts', async () => {
+    prisma.escrowTransaction.findMany.mockResolvedValueOnce([]);
+    prisma.payoutAttempt.findMany.mockResolvedValueOnce([]);
+    const olderThan = new Date('2026-01-01T00:00:00Z');
+    await repo.listRecoverableGatewayPayouts({ take: 5 });
+    await repo.listStuckPayoutAttempts({ take: 3, olderThan });
+    expect(prisma.escrowTransaction.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: EscrowStatus.RELEASED,
+          payoutStatus: EscrowPayoutStatus.PENDING,
+        }),
+        take: 5,
+      }),
+    );
+    expect(prisma.payoutAttempt.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: PayoutAttemptStatus.PENDING,
+          createdAt: { lt: olderThan },
+        }),
+        take: 3,
+      }),
+    );
   });
 
   it('completePayoutAttempt FAILED', async () => {

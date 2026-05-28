@@ -636,7 +636,12 @@ describe('UsersProfileService', () => {
         latitude: -34.9,
         longitude: -56.15,
         formattedAddress: 'Calle X',
-        geo: { stateId: null, cityId: null, countryId: 'c1', neighborhoodId: null },
+        geo: {
+          stateId: null,
+          cityId: null,
+          countryId: 'c1',
+          neighborhoodId: null,
+        },
         created: { city: false, neighborhood: false },
         source: 'google',
       }),

@@ -16,6 +16,7 @@ describe('PortfolioCleanupProcessor', () => {
     };
     const processor = new PortfolioCleanupProcessor(
       storage as never,
+      { r2BucketPublic: 'nexos-public', r2BucketKyc: 'nexos-kyc' } as never,
       prisma as never,
     );
     return { processor, storage, prisma };
@@ -45,7 +46,7 @@ describe('PortfolioCleanupProcessor', () => {
     expect(storage.deleteObjectAsSystem).toHaveBeenCalledTimes(2);
     expect(storage.deleteObjectAsSystem).toHaveBeenCalledWith(
       'users/prof-1/portfolio/item-1/a.webp',
-      undefined,
+      'nexos-public',
       'portfolio-cleanup:item=item-1',
     );
   });

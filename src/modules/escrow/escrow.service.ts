@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { logOp, ProcessAuditService } from '@common/observability';
 import { ConfigType } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -19,11 +20,14 @@ import { PayoutAttemptTrigger } from '@prisma/client';
 
 @Injectable()
 export class EscrowService {
+  private readonly logger = new Logger(EscrowService.name);
+
   constructor(
     private readonly repository: EscrowRepository,
     private readonly escrowPayout: EscrowPayoutService,
     private readonly prisma: PrismaService,
     private readonly exchangeRatesService: ExchangeRatesService,
+    private readonly processAudit: ProcessAuditService,
     @InjectQueue(SILENT_ACCEPTANCE_QUEUE)
     private readonly silentQueue: Queue,
     @Inject(escrowConfig.KEY)
@@ -60,6 +64,12 @@ export class EscrowService {
       (conversion.heldAmountCents * this.cfg.commissionRateBps) / 10_000,
     );
     const netAmountCents = conversion.heldAmountCents - commissionCents;
+    logOp(this.logger, 'log', {
+      op: 'escrow.fund',
+      phase: 'start',
+      jobId,
+      providerReference,
+    });
     await this.repository.fundEscrow(
       jobId,
       {
@@ -73,6 +83,7 @@ export class EscrowService {
       },
       auditUserId,
     );
+    logOp(this.logger, 'log', { op: 'escrow.fund', phase: 'done', jobId });
   }
 
   async scheduleSilentAcceptance(
@@ -110,16 +121,40 @@ export class EscrowService {
   async releaseForJob(jobId: string, auditUserId: string): Promise<void> {
     await this.cancelSilentAcceptance(jobId);
     const manual = this.payoutCfg.mode === 'manual';
+    logOp(this.logger, 'log', { op: 'escrow.release', phase: 'start', jobId });
     try {
       await this.repository.release(jobId, auditUserId, undefined, {
         setPayoutPending: manual,
       });
     } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
       if (err instanceof Error && err.message === 'INVALID_ESCROW_TRANSITION') {
+        await this.processAudit.record({
+          domain: 'ESCROW',
+          operation: 'escrow.release',
+          outcome: 'FAILURE',
+          source: 'HTTP',
+          severity: 'warn',
+          entityType: 'Job',
+          entityId: jobId,
+          problemCode: 'INVALID_ESCROW_TRANSITION',
+          errorMessage: message,
+        });
         throw problemException('INVALID_ESCROW_TRANSITION');
       }
+      await this.processAudit.record({
+        domain: 'ESCROW',
+        operation: 'escrow.release',
+        outcome: 'FAILURE',
+        source: 'HTTP',
+        severity: 'error',
+        entityType: 'Job',
+        entityId: jobId,
+        errorMessage: message,
+      });
       throw err;
     }
+    logOp(this.logger, 'log', { op: 'escrow.release', phase: 'done', jobId });
     if (manual) {
       return;
     }

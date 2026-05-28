@@ -244,7 +244,7 @@ Para tests/seeds que necesitan setupear items ya verificados sin pasar por el fl
 │  DRAFT   │ ← POST /portfolio/items
 └──────────┘
      │
-     │ POST /publish (con ≥1 foto + HEAD OK + AI OK)
+     │ POST /publish (con ≥2 fotos + HEAD OK + AI OK)
      ▼
 ┌────────────┐
 │ PUBLISHED  │ ◀──────────────────────────────────┐
@@ -259,7 +259,7 @@ Para tests/seeds que necesitan setupear items ya verificados sin pasar por el fl
      │ admin rechaza
      ▼
 ┌─────────────────┐
-│ HIDDEN_BY_ADMIN │ ─── admin reactiva ───▶ PUBLISHED
+│ HIDDEN_BY_ADMIN │ ─── admin rehabilita ─▶ DRAFT
 └─────────────────┘
 ```
 
@@ -267,12 +267,13 @@ Transiciones permitidas:
 
 | Origen | Destino | Trigger |
 |--------|---------|---------|
-| `DRAFT` | `PUBLISHED` | `POST /publish` con ≥1 foto, HEAD OK y moderación IA OK |
+| `DRAFT` | `PUBLISHED` | `POST /publish` con ≥2 fotos, HEAD OK y moderación IA OK |
+| `PUBLISHED` | `DRAFT` | Owner despublica (`POST /items/:id/unpublish`) |
 | `PUBLISHED` | `HIDDEN_PENDING_REVIEW` | IA flag tras re-moderación; reporte de cliente con `INAPPROPRIATE`; reporte público |
 | `HIDDEN_PENDING_REVIEW` | `PUBLISHED` | Admin aprueba (`ADMIN_OVERRIDE`) o IA aprueba tras corrección del pro (`AUTO_RESTORE_AFTER_CORRECTION`) |
 | `HIDDEN_PENDING_REVIEW` | `HIDDEN_BY_ADMIN` | Admin rechaza |
 | `PUBLISHED` | `HIDDEN_BY_ADMIN` | Admin oculta manualmente (sin paso intermedio) |
-| `HIDDEN_BY_ADMIN` | `PUBLISHED` | Admin reactiva |
+| `HIDDEN_BY_ADMIN` | `DRAFT` | Admin rehabilita explícitamente (`restore_draft`) |
 | Cualquiera | (soft-delete) | Owner elimina; encola `portfolio-cleanup` |
 
 ---
@@ -290,6 +291,18 @@ Prefijo HTTP global del proyecto: **`/api`**. La mayoría de rutas de este domin
   - Si `jobId` presente: verificar que el `Job` pertenece al pro, está en `CLOSED` y `job.categoryId === dto.categoryId`. Si no coincide la categoría: `409` slug `PORTFOLIO_CATEGORY_MISMATCH_JOB`.
   - El item se crea en `DRAFT`.
 
+#### B1. Presignar varias fotos (batch)
+- **Ruta:** `POST /portfolio/items/:id/photos/presign-batch`
+- **Body:** `{ photos: [{ fileExtension? }] }` (1..N, N acotado por cupos restantes del plan).
+- **Respuesta:** `{ photos: [{ uploadUrl, key }] }`
+- **Bucket:** siempre `R2_BUCKET_PUBLIC` (`nexos-public`).
+
+#### B2. Registrar varias fotos (batch)
+- **Ruta:** `POST /portfolio/items/:id/photos/batch`
+- **Body:** `{ photos: [{ fileKey, caption?, displayOrder? }] }`
+- **Respuesta:** `{ photos: PortfolioPhoto[] }`
+- El cliente sube cada archivo con PUT a R2 en paralelo; este endpoint solo persiste metadatos en una llamada.
+
 #### B. Agregar foto
 - **Ruta:** `POST /portfolio/items/:id/photos`
 - **DTO (`AddPortfolioPhotoDto`):** `fileKey` (string con regex canónica), `caption?` (max 280), `displayOrder?` (int).
@@ -299,6 +312,10 @@ Prefijo HTTP global del proyecto: **`/api`**. La mayoría de rutas de este domin
   - Si `displayOrder` omitido → `MAX(displayOrder) + 1` calculado **dentro de la transacción**.
   - Si `displayOrder` explícito en posición intermedia → shift +1 atómico de las posteriores.
   - Máximo 10 fotos por item: si excede → `409 PORTFOLIO_PHOTOS_LIMIT_REACHED`.
+- **Re-moderación:** si `PORTFOLIO_AI_ENABLED=true` y el item estaba:
+  - `PUBLISHED`, o
+  - `HIDDEN_PENDING_REVIEW` con `aiModerationStatus=FLAGGED` (corrección de contenido),
+  el servidor transiciona (o mantiene) `HIDDEN_PENDING_REVIEW` con `aiModerationStatus=PENDING` y encola `portfolio-moderate` con `transitionType=RE_MODERATION`.
 
 #### C. Eliminar foto
 - **Ruta:** `DELETE /portfolio/items/:id/photos/:photoId`
@@ -306,6 +323,8 @@ Prefijo HTTP global del proyecto: **`/api`**. La mayoría de rutas de este domin
   1. `tx.portfolioPhoto.delete({ where: { id: photoId } })`.
   2. `tx.portfolioPhoto.updateMany({ where: { portfolioItemId, displayOrder: { gt: deleted.displayOrder } }, data: { displayOrder: { decrement: 1 } } })`.
 - Si la DB falla a mitad, ambos efectos revierten.
+- Si el item está `PUBLISHED`, la eliminación se rechaza con `409 PORTFOLIO_ITEM_NOT_DRAFT`: primero debe despublicarse (`POST /portfolio/items/:id/unpublish`) para editar fotos.
+- **Re-moderación:** misma regla que en alta de fotos: si `PORTFOLIO_AI_ENABLED=true` y el item estaba `PUBLISHED` o `HIDDEN_PENDING_REVIEW + FLAGGED`, se encola `portfolio-moderate` con `transitionType=RE_MODERATION`.
 
 #### D. Actualizar item
 - **Ruta:** `PATCH /portfolio/items/:id`
@@ -313,11 +332,15 @@ Prefijo HTTP global del proyecto: **`/api`**. La mayoría de rutas de este domin
 - **Validaciones:**
   - Si el item está `verifiedFromJob = true` y `dto.categoryId` distinto al actual: `409 PORTFOLIO_CATEGORY_FROZEN_POST_VERIFICATION`.
   - Si el item está `verifiedFromJob = true` y intenta cambiar `jobId`: el trigger DB rechaza con `check_violation`.
-  - Si toca fotos o descripción y el item estaba `PUBLISHED`, se encola **re-moderación** en BullMQ (`portfolio-moderate`).
+- Si toca fotos/texto y el item estaba:
+  - `PUBLISHED`, o
+  - `HIDDEN_PENDING_REVIEW` con `aiModerationStatus=FLAGGED`,
+  se encola **re-moderación** en BullMQ (`portfolio-moderate`, `transitionType=RE_MODERATION`).
 
 #### E. Publicar item
 - **Ruta:** `POST /portfolio/items/:id/publish`
-- **Pre-condición:** item en `DRAFT` con ≥1 foto.
+- **Pre-condición:** item en `DRAFT` con ≥2 fotos.
+- **Bloqueo admin:** si el item está `HIDDEN_BY_ADMIN`, el owner no puede volver a publicar; solo `SUPER_ADMIN` puede rehabilitarlo primero a `DRAFT`.
 - **Lógica:**
   1. **HEAD checks paralelos** (`Promise.allSettled` con timeout `PORTFOLIO_PHOTOS_HEAD_TIMEOUT_MS`, default 2000ms) sobre cada `fileKey` vía `StorageService.assertObjectExists(fileKey)`. Cache positiva en Redis `storage:exists:<fileKey>` TTL 60s.
   2. Discriminación de errores:
@@ -327,6 +350,11 @@ Prefijo HTTP global del proyecto: **`/api`**. La mayoría de rutas de este domin
   4. Encola `portfolio-moderate` en BullMQ.
 
 #### F. Solicitar verificación al cliente
+#### E2. Despublicar item (owner)
+- **Ruta:** `POST /portfolio/items/:id/unpublish`
+- **Pre-condición:** item en `PUBLISHED`.
+- **Resultado:** transición `PUBLISHED -> DRAFT` para permitir edición controlada antes de volver a publicar.
+
 
 > **Implementación (2026-05):** creación de `PortfolioConsent`, notificación in-app al cliente (`NotificationsService`; push/email pueden quedar diferidos según entorno), encolado BullMQ `portfolio-consent-reminder` con delay configurable (`PORTFOLIO_REMINDER_DELAY_DAYS`) y processor operativo (§6).
 
@@ -346,6 +374,13 @@ Prefijo HTTP global del proyecto: **`/api`**. La mayoría de rutas de este domin
 #### H. Listar mis items
 - **Ruta:** `GET /portfolio/items/mine`
 - **Query:** extiende `PaginationQueryDto`. Devuelve items en **cualquier status** del pro autenticado.
+
+#### I. Detalle de un item propio (owner)
+- **Ruta:** `GET /portfolio/items/:id/mine`
+- **Auth:** JWT, `INDEPENDENT_PRO` | `COMPANY_ADMIN`, ownership del item.
+- **Response:** `PublicPortfolioItemDetailDto` (metadata + `category`, `job` opcional, `photos[]` ordenadas por `displayOrder`). Cualquier status no soft-deleted del dueño (incluye `DRAFT`, `HIDDEN_*`).
+- **Fotos en la respuesta:** cada elemento incluye `fileKey`, `publicUrl` (si `R2_PUBLIC_BASE_URL` está configurado) y **`previewUrl`** (URL firmada GET ~15 min sobre `nexos-public`) para que el editor muestre miniaturas aunque el dominio `pub-*.r2.dev` no esté alineado todavía. El frontend debe preferir `previewUrl` en el editor propio; la vidriera pública usa `publicUrl` o arma la URL con `VITE_PUBLIC_STORAGE_BASE_URL`.
+- **Errores:** `404 PORTFOLIO_ITEM_NOT_FOUND` si no existe, está soft-deleted o no pertenece al pro autenticado.
 
 ### 4.2 Para el cliente (con token, no necesita auth)
 
@@ -393,7 +428,10 @@ Prefijo HTTP global del proyecto: **`/api`**. La mayoría de rutas de este domin
 ### 4.4 Admin (`Role: SUPER_ADMIN`) y reportes
 
 - `GET /portfolio/moderation/queue` — **`SUPER_ADMIN`**. Lista items en estado **`HIDDEN_PENDING_REVIEW`** (incluye los que llegaron por reporte, decline `INAPPROPRIATE` o flujos que pongan ese status). Paginado.
-- `PATCH /portfolio/items/:id/moderate` — **`SUPER_ADMIN`**. Body `{ action: 'approve' | 'hide', reason?: string }`. Solo si el ítem está `HIDDEN_PENDING_REVIEW`; transiciona y registra `ADMIN_OVERRIDE` en `PortfolioModerationLog` + `AuditLog`.
+- `PATCH /portfolio/items/:id/moderate` — **`SUPER_ADMIN`**. Body `{ action: 'approve' | 'hide' | 'restore_draft', reason?: string }`.
+  - `approve` / `hide`: solo si el ítem está `HIDDEN_PENDING_REVIEW`.
+  - `restore_draft`: solo si el ítem está `HIDDEN_BY_ADMIN` (rehabilitación explícita).
+  - Todas registran `ADMIN_OVERRIDE` en `PortfolioModerationLog` + `AuditLog`.
 - `POST /portfolio/items/:id/report` — Usuario **autenticado** (no hace falta rol admin): reporta un ítem `PUBLISHED` ajeno; pasa a `HIDDEN_PENDING_REVIEW` y auditoría `PORTFOLIO_ITEM_REPORTED`.
 
 *(Prefijo HTTP: `/api/portfolio/...`.)*
@@ -428,11 +466,12 @@ El provider crudo es **privado** dentro del decorator. Lint rule (`no-restricted
 
 Se encola en:
 - `POST /publish`
-- Cualquier `PATCH` que toque fotos o descripción de un item `PUBLISHED` (re-moderación).
+- Cualquier `PATCH`/edición de fotos de un item `PUBLISHED` o `HIDDEN_PENDING_REVIEW` con `FLAGGED` (re-moderación por corrección).
 - Retry tras `provider_unavailable`.
 
 Resultado:
-- `OK` → `aiModerationStatus = OK`, item permanece o vuelve a `PUBLISHED`. Si venía de `HIDDEN_PENDING_REVIEW`, se registra `transitionType: AUTO_RESTORE_AFTER_CORRECTION` en el log.
+- `OK` → `aiModerationStatus = OK`, item permanece o vuelve a `PUBLISHED`.
+  - Si la corrida era `RE_MODERATION` y el item venía de `HIDDEN_PENDING_REVIEW`, registrar `transitionType: AUTO_RESTORE_AFTER_CORRECTION` en `PortfolioModerationLog`.
 - `FLAGGED` → `aiModerationStatus = FLAGGED`, item pasa a `HIDDEN_PENDING_REVIEW`. **Notificación inmediata al pro** con el `aiModerationReason` legible y deep-link al item.
 - `ERROR` (timeout / 5xx / provider caído) → `aiModerationStatus = PENDING`, `aiModerationReason = 'provider_unavailable'`. Reintento exponencial.
 
@@ -464,6 +503,32 @@ Cada implementación de `ContentModerationProvider` está **obligada** a usar `f
 ### 5.5 Sanitización de PII (Layer 0)
 
 `PiiSanitizer` (regex para emails, teléfonos, IBAN uruguayo, cédulas, URLs con tokens) se ejecuta **dentro del decorator del provider**, antes de cualquier `logger.*` o `throw`. Ver [security-roles.md](../../docs/reference/security-roles.md) sección "Sanitización en Moderación IA" para detalles.
+
+### 5.6 Realtime (estado de moderación)
+
+Para evitar que el frontend quede desactualizado tras `publish`/edición (y para diferenciar correctamente `PENDING` vs `FLAGGED`), el worker emite un evento realtime al completar la moderación.
+
+- **Transporte:** Socket.IO (server→client), ver spec: [realtime-module.md](realtime-module.md).
+- **Evento:** `portfolio.moderation.completed`
+- **Emisor:** worker BullMQ `portfolio-moderate` luego de persistir el veredicto (`applyAiModerationVerdict`).
+- **Audiencia:** room `user:<sub>` del profesional dueño del item.
+- **Fuente de verdad:** el frontend invalida queries y re-fetch por HTTP; el payload es mínimo.
+
+Payload mínimo (informativo):
+
+```ts
+{
+  itemId: string;
+  status: PortfolioItemStatus;
+  aiModerationStatus: AiModerationStatus;
+  transitionType: ModerationTransitionType;
+  updatedAt: string; // ISO
+}
+```
+
+Fallback:
+
+- Si el socket está caído, el frontend debe hacer refetch al reconectar y/o polling condicional mientras `aiModerationStatus = PENDING` para evitar estado zombie.
 
 ---
 
@@ -584,6 +649,13 @@ export const portfolioConfig = registerAs('portfolio', () => ({
 }));
 ```
 
+Credenciales del proveedor de imágenes (Rekognition) se leen desde `src/config/ai.config.ts` con este orden:
+
+- `AI_AWS_ACCESS_KEY_ID` / `AI_AWS_SECRET_ACCESS_KEY` / `AI_AWS_SESSION_TOKEN` (preferido).
+- Fallback compatible: `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`.
+- Región: `AI_AWS_REGION` (default `us-east-1`).
+- `ImagePrepService` normaliza imágenes a **JPEG** (no WebP) antes de invocar Rekognition para evitar `InvalidImageFormatException`.
+
 ---
 
 ## 10. Excepciones Esperadas (RFC 7807)
@@ -599,8 +671,11 @@ Los slugs canónicos viven en [api-standards.md](../../docs/reference/api-standa
 | 404 | `PORTFOLIO_ITEM_NOT_FOUND` | Item inexistente, no del dueño esperado o no público al consultar lectura pública. |
 | 404 | `CONSENT_TOKEN_NOT_FOUND` | Token de consent inexistente. |
 | 409 | `PORTFOLIO_CATEGORY_MISMATCH_JOB` | `categoryId` distinto al `job.categoryId` cuando hay `jobId`. |
+| 409 | `PORTFOLIO_ITEM_NOT_PUBLISHED` | Intento de despublicar un item que no está publicado. |
+| 409 | `PORTFOLIO_BLOCKED_BY_ADMIN` | Intento de publicar un item bloqueado por `SUPER_ADMIN` (`HIDDEN_BY_ADMIN`). |
 | 409 | `PORTFOLIO_CATEGORY_FROZEN_POST_VERIFICATION` | Intento de cambiar `categoryId` cuando `verifiedFromJob = true`. |
 | 409 | `PORTFOLIO_PHOTOS_LIMIT_REACHED` | Más de 10 fotos en un item. |
+| 409 | `PORTFOLIO_MIN_PHOTOS_REQUIRED` | El item debe tener al menos 2 fotos para publicar. |
 | 409 | `PORTFOLIO_FILEKEY_DUPLICATE` | `fileKey` ya existe en la DB. |
 | 409 | `PORTFOLIO_PHOTOS_NOT_READY` | HEAD 404 en alguna foto al publicar. |
 | 409 | `PORTFOLIO_ALREADY_VERIFIED` | Race en `accept` del consent. |
@@ -609,6 +684,7 @@ Los slugs canónicos viven en [api-standards.md](../../docs/reference/api-standa
 | 409 | `PORTFOLIO_ITEM_NOT_REPORTABLE` | Reporte sobre ítem que no está `PUBLISHED`. |
 | 409 | `PORTFOLIO_ITEM_ALREADY_FLAGGED` | Reporte duplicado o ítem ya en revisión. |
 | 409 | `PORTFOLIO_NOT_IN_MODERATION_QUEUE` | Moderación admin sobre ítem que no está `HIDDEN_PENDING_REVIEW`. |
+| 409 | `PORTFOLIO_NOT_HIDDEN_BY_ADMIN` | Rehabilitación admin solicitada sobre ítem que no está `HIDDEN_BY_ADMIN`. |
 | 410 | `CONSENT_TOKEN_EXPIRED` | Token consent vencido. |
 | 410 | `CONSENT_ALREADY_RESOLVED` | Consent ya respondido. |
 | 429 | `TOO_MANY_REQUESTS` | Rate limiting (`ThrottlerGuard` u otros límites por IP/ruta). |

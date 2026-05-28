@@ -96,6 +96,7 @@ function buildConfig(
     r2AccessKeyConfigured: true,
     r2SecretKeyConfigured: true,
     r2BucketPublic: 'nexos-public',
+    r2PublicBaseUrl: '',
     r2BucketKyc: 'nexos-kyc',
     presignedUrlTtlSeconds: 900,
     ...overrides,
@@ -597,7 +598,9 @@ describe('R2StorageService', () => {
       const date = new Date('2026-01-01');
       mocks.mockSend
         .mockResolvedValueOnce({
-          Contents: [{ Key: 'users/u1/verification/a.pdf', LastModified: date }],
+          Contents: [
+            { Key: 'users/u1/verification/a.pdf', LastModified: date },
+          ],
           IsTruncated: true,
           NextContinuationToken: 'tok',
         })

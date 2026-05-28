@@ -1,5 +1,10 @@
 import { Inject, Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
+import {
+  AuditContextService,
+  ProcessAuditService,
+  runWorkerWithAudit,
+} from '@common/observability';
 import { ConfigType } from '@nestjs/config';
 import { Job } from 'bullmq';
 import {
@@ -36,20 +41,41 @@ export class DgiMaintenanceProcessor extends WorkerHost {
     private readonly usersCfg: ConfigType<typeof usersConfig>,
     @Inject(dgiConfig.KEY)
     private readonly dgiCfg: ConfigType<typeof dgiConfig>,
+    private readonly auditContext: AuditContextService,
+    private readonly processAudit: ProcessAuditService,
   ) {
     super();
   }
 
   async process(job: Job): Promise<void> {
-    if (job.name === DGI_STALE_WATCHDOG_JOB) {
-      await this.runStaleWatchdog();
-      return;
-    }
-    if (job.name === DGI_ORPHAN_CLEANUP_JOB) {
-      await this.runOrphanCleanup();
-      return;
-    }
-    this.logger.warn({ op: 'dgi.maintenance.unknownJob', jobName: job.name });
+    const op =
+      job.name === DGI_STALE_WATCHDOG_JOB
+        ? 'dgi.staleWatchdog'
+        : job.name === DGI_ORPHAN_CLEANUP_JOB
+          ? 'dgi.orphanCleanup'
+          : 'dgi.maintenance.unknown';
+    await runWorkerWithAudit({
+      logger: this.logger,
+      auditContext: this.auditContext,
+      processAudit: this.processAudit,
+      job,
+      op,
+      domain: 'DGI',
+      fn: async () => {
+        if (job.name === DGI_STALE_WATCHDOG_JOB) {
+          await this.runStaleWatchdog();
+          return;
+        }
+        if (job.name === DGI_ORPHAN_CLEANUP_JOB) {
+          await this.runOrphanCleanup();
+          return;
+        }
+        this.logger.warn({
+          op: 'dgi.maintenance.unknownJob',
+          jobName: job.name,
+        });
+      },
+    });
   }
 
   private async runStaleWatchdog(): Promise<void> {

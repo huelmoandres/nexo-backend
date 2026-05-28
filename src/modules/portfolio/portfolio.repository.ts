@@ -286,6 +286,17 @@ export class PortfolioRepository {
     });
   }
 
+  /** Transición owner/admin hacia DRAFT (despublicar o rehabilitar). */
+  async transitionToDraft(itemId: string): Promise<PortfolioItem> {
+    return this.prisma.portfolioItem.update({
+      where: { id: itemId },
+      data: {
+        status: PortfolioItemStatus.DRAFT,
+        publishedAt: null,
+      },
+    });
+  }
+
   /**
    * Transición DRAFT → HIDDEN_PENDING_REVIEW con estado de moderación PENDING.
    *
@@ -347,6 +358,18 @@ export class PortfolioRepository {
           : 'ERROR';
 
     return this.prisma.$transaction(async (tx) => {
+      const current = await tx.portfolioItem.findUnique({
+        where: { id: itemId },
+        select: { status: true },
+      });
+
+      const resolvedTransitionType =
+        transitionType === ModerationTransitionType.RE_MODERATION &&
+        aiModerationStatus === AiModerationStatus.OK &&
+        current?.status === PortfolioItemStatus.HIDDEN_PENDING_REVIEW
+          ? ModerationTransitionType.AUTO_RESTORE_AFTER_CORRECTION
+          : transitionType;
+
       const updated = await tx.portfolioItem.update({
         where: { id: itemId },
         data: {
@@ -365,7 +388,7 @@ export class PortfolioRepository {
         data: {
           portfolioItemId: itemId,
           modelRef,
-          transitionType,
+          transitionType: resolvedTransitionType,
           status: logStatus,
           reason: reason ?? null,
           scores: scores ? (scores as Prisma.InputJsonValue) : undefined,
@@ -378,6 +401,22 @@ export class PortfolioRepository {
 
       return updated;
     });
+  }
+
+  async findOwnerUserIdByItemId(itemId: string): Promise<string | null> {
+    const item = await this.prisma.portfolioItem.findUnique({
+      where: { id: itemId },
+      select: {
+        professional: {
+          select: {
+            user: {
+              select: { supabaseUid: true },
+            },
+          },
+        },
+      },
+    });
+    return item?.professional.user.supabaseUid ?? null;
   }
 
   /**
@@ -917,6 +956,84 @@ export class PortfolioRepository {
     };
   }
 
+  /**
+   * Detalle owner de un item del profesional (cualquier status no soft-deleted).
+   */
+  async findOwnerPortfolioItemDetail(
+    itemId: string,
+    professionalId: string,
+  ): Promise<{
+    item: PortfolioItem;
+    category: { id: string; name: string };
+    job: {
+      id: string;
+      title: string;
+      completedAt: Date | null;
+      category: { id: string; name: string };
+    } | null;
+    photos: Array<{
+      id: string;
+      fileKey: string;
+      caption: string | null;
+      displayOrder: number;
+    }>;
+    verifiedJobClientFirstName: string | null;
+  } | null> {
+    const row = await this.prisma.portfolioItem.findFirst({
+      where: {
+        id: itemId,
+        professionalId,
+        deletedAt: null,
+      },
+      include: {
+        category: { select: { id: true, name: true } },
+        job: {
+          select: {
+            id: true,
+            title: true,
+            completedAt: true,
+            category: { select: { id: true, name: true } },
+          },
+        },
+        photos: {
+          orderBy: { displayOrder: 'asc' },
+          select: {
+            id: true,
+            fileKey: true,
+            caption: true,
+            displayOrder: true,
+          },
+        },
+        consent: {
+          select: { status: true, clientUserId: true },
+        },
+      },
+    });
+    if (!row) {
+      return null;
+    }
+
+    let verifiedJobClientFirstName: string | null = null;
+    if (row.verifiedFromJob && row.consent?.status === ConsentStatus.ACCEPTED) {
+      const client = await this.prisma.user.findUnique({
+        where: { id: row.consent.clientUserId },
+        select: { fullName: true },
+      });
+      const first = client?.fullName?.trim().split(/\s+/).filter(Boolean)[0];
+      verifiedJobClientFirstName = first ?? null;
+    }
+
+    const { category, job, photos, consent, ...item } = row;
+    void consent;
+    return {
+      item,
+      category,
+      job,
+      photos,
+      verifiedJobClientFirstName,
+    };
+  }
+
   /** Resuelve `User.id` interno desde el `sub` del JWT (Supabase). */
   async findInternalUserIdBySupabaseUid(
     supabaseUid: string,
@@ -1058,7 +1175,7 @@ export class PortfolioRepository {
   async applyAdminPortfolioModeration(input: {
     adminSupabaseUid: string;
     itemId: string;
-    action: 'approve' | 'hide';
+    action: 'approve' | 'hide' | 'restore_draft';
     reason?: string | null;
   }): Promise<void> {
     const adminUserId = await this.findInternalUserIdBySupabaseUid(
@@ -1076,7 +1193,9 @@ export class PortfolioRepository {
     const nextStatus =
       input.action === 'approve'
         ? PortfolioItemStatus.PUBLISHED
-        : PortfolioItemStatus.HIDDEN_BY_ADMIN;
+        : input.action === 'hide'
+          ? PortfolioItemStatus.HIDDEN_BY_ADMIN
+          : PortfolioItemStatus.DRAFT;
     const logStatus = input.action === 'approve' ? 'OK' : 'FLAGGED';
     const trimmedReason =
       input.reason !== undefined && input.reason !== null
@@ -1084,19 +1203,27 @@ export class PortfolioRepository {
         : null;
 
     await this.prisma.$transaction(async (tx) => {
+      const expectedStatus =
+        input.action === 'restore_draft'
+          ? PortfolioItemStatus.HIDDEN_BY_ADMIN
+          : PortfolioItemStatus.HIDDEN_PENDING_REVIEW;
       const updated = await tx.portfolioItem.updateMany({
         where: {
           id: input.itemId,
           deletedAt: null,
-          status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+          status: expectedStatus,
         },
         data: { status: nextStatus },
       });
       if (updated.count === 0) {
         throw new ConflictException(
           buildProblem(
-            'PORTFOLIO_NOT_IN_MODERATION_QUEUE',
-            'El ítem no está en cola de moderación o ya fue resuelto.',
+            input.action === 'restore_draft'
+              ? 'PORTFOLIO_NOT_HIDDEN_BY_ADMIN'
+              : 'PORTFOLIO_NOT_IN_MODERATION_QUEUE',
+            input.action === 'restore_draft'
+              ? 'El ítem no está oculto por admin o ya fue rehabilitado.'
+              : 'El ítem no está en cola de moderación o ya fue resuelto.',
           ),
         );
       }

@@ -141,6 +141,7 @@ describe('UsersRepository', () => {
       $executeRawUnsafe: vi.fn().mockResolvedValue(1),
       professionalIdentity: { create: vi.fn().mockResolvedValue({}) },
       trustProfile: { create: vi.fn().mockResolvedValue({}) },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
       user: { update: userUpdate },
     };
 

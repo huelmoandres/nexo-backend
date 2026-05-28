@@ -12,6 +12,7 @@ import type {
   IPaymentGateway,
   IssuePayoutInput,
   IssuePayoutResult,
+  ReconcilePayoutInput,
   ValidatePayoutDestinationInput,
   ValidatePayoutDestinationResult,
 } from './payment-gateway.interface';
@@ -19,6 +20,10 @@ import {
   verifyMercadoPagoWebhookSignature,
   type MercadoPagoWebhookHeaders,
 } from './mercadopago-signature.util';
+import {
+  mapMpPaymentToPayoutResult,
+  pickPayoutFromMpSearchResults,
+} from './mercadopago-payout-reconcile.util';
 
 @Injectable()
 export class MercadoPagoPaymentGatewayService implements IPaymentGateway {
@@ -189,5 +194,59 @@ export class MercadoPagoPaymentGatewayService implements IPaymentGateway {
 
   async issuePayout(input: IssuePayoutInput): Promise<IssuePayoutResult> {
     return this.mockFallback.issuePayout(input);
+  }
+
+  /**
+   * Reconciliación read-only contra MP: GET por `providerReference` o
+   * `GET /v1/payments/search?external_reference={idempotencyKey}`.
+   * Sin token configurado delega al mock (dev/tests).
+   */
+  async reconcilePayoutByIdempotencyKey(
+    input: ReconcilePayoutInput,
+  ): Promise<IssuePayoutResult | null> {
+    if (!this.cfg.mercadoPagoAccessToken.trim()) {
+      return this.mockFallback.reconcilePayoutByIdempotencyKey(input);
+    }
+
+    const paymentApi = new Payment(this.client());
+    const providerRef = input.providerReference?.trim();
+
+    if (providerRef) {
+      try {
+        const payment = await paymentApi.get({ id: providerRef });
+        const mapped = mapMpPaymentToPayoutResult(payment);
+        if (mapped) {
+          return mapped;
+        }
+      } catch (err: unknown) {
+        this.logger.warn(
+          {
+            providerReference: providerRef,
+            err: err instanceof Error ? err.message : String(err),
+          },
+          'MP payout reconcile by providerReference failed',
+        );
+      }
+    }
+
+    try {
+      const search = await paymentApi.search({
+        options: {
+          external_reference: input.idempotencyKey,
+          sort: 'date_created',
+          criteria: 'desc',
+        },
+      });
+      return pickPayoutFromMpSearchResults(search.results ?? []);
+    } catch (err: unknown) {
+      this.logger.warn(
+        {
+          idempotencyKey: input.idempotencyKey,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        'MP payout reconcile search failed',
+      );
+      return null;
+    }
   }
 }

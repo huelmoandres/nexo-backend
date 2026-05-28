@@ -127,7 +127,11 @@ export class GeoResolveService {
     const parsedDto = this.toParsedDto(parsed);
     const created = { city: false, neighborhood: false };
 
-    const anchored = await this.resolveAnchoredEntities(dto, country.id, parsed);
+    const anchored = await this.resolveAnchoredEntities(
+      dto,
+      country.id,
+      parsed,
+    );
     let state = anchored.state;
     let city = anchored.city;
 
@@ -226,8 +230,9 @@ export class GeoResolveService {
   }
 
   private async canUpsertNeighborhoodFromGoogle(city: City): Promise<boolean> {
-    const neighborhoods =
-      await this.geoRepository.findNeighborhoodsByCityId(city.id);
+    const neighborhoods = await this.geoRepository.findNeighborhoodsByCityId(
+      city.id,
+    );
     if (neighborhoods.length <= 1) return false;
     return neighborhoods.some((n) => n.slug !== 'centro');
   }
@@ -308,12 +313,15 @@ export class GeoResolveService {
       resolved: false,
       latitude: null,
       longitude: null,
-      formattedAddress: geocoded?.formattedAddress ?? dto.addressLine?.trim() ?? null,
+      formattedAddress:
+        geocoded?.formattedAddress ?? dto.addressLine?.trim() ?? null,
       geo: null,
       reason: 'OUTSIDE_URUGUAY',
       created: { city: false, neighborhood: false },
       source: geocoded ? 'google' : null,
-      parsed: geocoded ? this.toParsedDto(this.parseComponents(geocoded)) : null,
+      parsed: geocoded
+        ? this.toParsedDto(this.parseComponents(geocoded))
+        : null,
       placeId: this.outputPlaceId(dto.placeId, geocoded ?? null),
     };
   }

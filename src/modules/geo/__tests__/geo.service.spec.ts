@@ -196,10 +196,22 @@ describe('GeoService', () => {
   it('listCities y listNeighborhoods mapean resumen', async () => {
     const { service } = makeService();
     expect(await service.listCities('s1')).toEqual([
-      { id: 'ci1', name: 'Montevideo', slug: 'montevideo', latitude: null, longitude: null },
+      {
+        id: 'ci1',
+        name: 'Montevideo',
+        slug: 'montevideo',
+        latitude: null,
+        longitude: null,
+      },
     ]);
     expect(await service.listNeighborhoods('ci1')).toEqual([
-      { id: 'n1', name: 'Pocitos', slug: 'pocitos', latitude: null, longitude: null },
+      {
+        id: 'n1',
+        name: 'Pocitos',
+        slug: 'pocitos',
+        latitude: null,
+        longitude: null,
+      },
     ]);
   });
 

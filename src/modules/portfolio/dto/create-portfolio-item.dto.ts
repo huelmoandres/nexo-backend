@@ -15,7 +15,9 @@ export class CreatePortfolioItemDto {
     example: 'Reforma de cocina integral',
   })
   @IsString()
-  @Length(3, 100)
+  @Length(3, 100, {
+    message: 'El título debe tener entre 3 y 100 caracteres.',
+  })
   title!: string;
 
   @ApiProperty({
@@ -24,7 +26,9 @@ export class CreatePortfolioItemDto {
     example: 'Reforma completa con mesada de cuarzo, gabinetes a medida...',
   })
   @IsString()
-  @Length(10, 2000)
+  @Length(10, 2000, {
+    message: 'La descripción debe tener entre 10 y 2000 caracteres.',
+  })
   description!: string;
 
   @ApiProperty({ format: 'uuid' })

@@ -43,5 +43,9 @@ export const paymentsConfig = registerAs('payments', () => {
       const n = parseInt(raw, 10);
       return Number.isFinite(n) && n >= 1 && n <= 36 ? n : undefined;
     })(),
+    webhookIdempotencyStaleMs: parseInt(
+      process.env['PAYMENTS_WEBHOOK_IDEMPOTENCY_STALE_MS'] ?? '120000',
+      10,
+    ),
   };
 });

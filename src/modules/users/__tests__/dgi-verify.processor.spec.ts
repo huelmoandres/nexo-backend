@@ -285,7 +285,9 @@ describe('DgiVerifyProcessor', () => {
     usersRepository.findDgiSubjectById.mockResolvedValue(null);
     const processor = makeProcessor();
     await processor.process(makeJob());
-    expect(notifications.notifyDgiVerificationManualReview).not.toHaveBeenCalled();
+    expect(
+      notifications.notifyDgiVerificationManualReview,
+    ).not.toHaveBeenCalled();
   });
 
   it('notifica verificado tras éxito QR', async () => {

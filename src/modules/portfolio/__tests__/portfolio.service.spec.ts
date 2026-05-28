@@ -14,6 +14,7 @@ import {
 } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { PORTFOLIO_CONSENT_REMINDER_JOB } from '../portfolio.constants';
+import { PORTFOLIO_MODERATE_JOB } from '../queues/portfolio-moderate.processor';
 import { PortfolioService } from '../portfolio.service';
 
 describe('PortfolioService', () => {
@@ -37,10 +38,12 @@ describe('PortfolioService', () => {
     softDeleteItem: ReturnType<typeof vi.fn>;
     findPhotosByItemId: ReturnType<typeof vi.fn>;
     transitionToPublished: ReturnType<typeof vi.fn>;
+    transitionToDraft: ReturnType<typeof vi.fn>;
     transitionToAiPending: ReturnType<typeof vi.fn>;
     listByProfessional: ReturnType<typeof vi.fn>;
     listPublishedItemsByProfessionalId: ReturnType<typeof vi.fn>;
     findPublishedPortfolioItemPublicDetail: ReturnType<typeof vi.fn>;
+    findOwnerPortfolioItemDetail: ReturnType<typeof vi.fn>;
     findInternalUserIdBySupabaseUid: ReturnType<typeof vi.fn>;
     listModerationQueue: ReturnType<typeof vi.fn>;
     reportPublishedPortfolioItem: ReturnType<typeof vi.fn>;
@@ -57,6 +60,7 @@ describe('PortfolioService', () => {
   type StorageMock = {
     assertObjectExists: ReturnType<typeof vi.fn>;
     generatePresignedPutUrl: ReturnType<typeof vi.fn>;
+    generatePresignedGetUrl: ReturnType<typeof vi.fn>;
   };
   type CacheMock = {
     isExistsCached: ReturnType<typeof vi.fn>;
@@ -89,6 +93,11 @@ describe('PortfolioService', () => {
       storage?: Partial<StorageMock>;
       cache?: CacheMock;
       moderation?: ModerationMock;
+      storageCfg?: Partial<{
+        r2BucketPublic: string;
+        r2BucketKyc: string;
+        r2PublicBaseUrl: string;
+      }>;
       configOverrides?: Partial<{
         maxPhotosPerItem: number;
         photosHeadTimeoutMs: number;
@@ -127,12 +136,14 @@ describe('PortfolioService', () => {
       softDeleteItem: vi.fn(),
       findPhotosByItemId: vi.fn(),
       transitionToPublished: vi.fn(),
+      transitionToDraft: vi.fn(),
       transitionToAiPending: vi.fn(),
       listByProfessional: vi.fn(),
       listPublishedItemsByProfessionalId: vi
         .fn()
         .mockResolvedValue({ items: [], total: 0 }),
       findPublishedPortfolioItemPublicDetail: vi.fn().mockResolvedValue(null),
+      findOwnerPortfolioItemDetail: vi.fn().mockResolvedValue(null),
       findInternalUserIdBySupabaseUid: vi.fn(),
       listModerationQueue: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       reportPublishedPortfolioItem: vi.fn().mockResolvedValue(undefined),
@@ -155,6 +166,9 @@ describe('PortfolioService', () => {
       generatePresignedPutUrl: vi
         .fn()
         .mockResolvedValue({ uploadUrl: 'https://r2/upload' }),
+      generatePresignedGetUrl: vi
+        .fn()
+        .mockResolvedValue('https://r2/preview-signed'),
       ...(deps.storage ?? {}),
     };
     const cache: CacheMock = deps.cache ?? {
@@ -182,6 +196,12 @@ describe('PortfolioService', () => {
       ...deps.notifications,
     };
     const entitlements = deps.entitlements ?? defaultEntitlementsMock();
+    const storageCfg = {
+      r2BucketPublic: 'nexos-public',
+      r2BucketKyc: 'nexos-kyc',
+      r2PublicBaseUrl: 'https://pub.example.r2.dev',
+      ...(deps.storageCfg ?? {}),
+    };
     return {
       service: new PortfolioService(
         repo as never,
@@ -194,6 +214,7 @@ describe('PortfolioService', () => {
         moderateQueue as never,
         notifications as never,
         entitlements as never,
+        storageCfg as never,
       ),
       repo,
       cleanupQueue,
@@ -428,9 +449,11 @@ describe('PortfolioService', () => {
           userId: 'user-1',
           professionalProfileId: 'prof-1',
         }),
-        findItemForOwner: vi
-          .fn()
-          .mockResolvedValue({ id: 'item-1', professionalId: 'prof-1' }),
+        findItemForOwner: vi.fn().mockResolvedValue({
+          id: 'item-1',
+          professionalId: 'prof-1',
+          status: PortfolioItemStatus.DRAFT,
+        }),
       });
 
       const result = await service.presignPhoto('sub-1', 'item-1', {
@@ -443,8 +466,50 @@ describe('PortfolioService', () => {
       expect(storage.generatePresignedPutUrl).toHaveBeenCalledWith({
         key: result.key,
         contentType: 'image/png',
+        bucket: 'nexos-public',
       });
       expect(repo.findItemForOwner).toHaveBeenCalledWith('item-1', 'prof-1');
+    });
+  });
+
+  describe('presignPhotosBatch', () => {
+    it('devuelve un presign por foto y valida cupos', async () => {
+      const { service, storage } = makeService({
+        findProfessionalBySupabaseUid: vi.fn().mockResolvedValue({
+          userId: 'user-1',
+          professionalProfileId: 'prof-1',
+        }),
+        findItemForOwner: vi
+          .fn()
+          .mockResolvedValue({ id: 'item-1', professionalId: 'prof-1' }),
+        countPhotosByItemId: vi.fn().mockResolvedValue(2),
+      });
+
+      const result = await service.presignPhotosBatch('sub-1', 'item-1', {
+        photos: [{ fileExtension: 'jpg' }, { fileExtension: 'png' }],
+      });
+
+      expect(result.photos).toHaveLength(2);
+      expect(storage.generatePresignedPutUrl).toHaveBeenCalledTimes(2);
+    });
+
+    it('rechaza lote que excede cupos restantes', async () => {
+      const { service } = makeService({
+        findProfessionalBySupabaseUid: vi.fn().mockResolvedValue({
+          userId: 'user-1',
+          professionalProfileId: 'prof-1',
+        }),
+        findItemForOwner: vi
+          .fn()
+          .mockResolvedValue({ id: 'item-1', professionalId: 'prof-1' }),
+        countPhotosByItemId: vi.fn().mockResolvedValue(9),
+      });
+
+      await expect(
+        service.presignPhotosBatch('sub-1', 'item-1', {
+          photos: [{ fileExtension: 'jpg' }, { fileExtension: 'png' }],
+        }),
+      ).rejects.toThrow(ConflictException);
     });
   });
 
@@ -487,6 +552,92 @@ describe('PortfolioService', () => {
       });
       expect(result.displayOrder).toBe(1);
       expect(result.fileKey).toBe(validFileKey);
+    });
+
+    it('si estaba PUBLISHED y AI enabled, encola re-moderación', async () => {
+      const moderateQueueAdd = vi.fn().mockResolvedValue(undefined);
+      const transitionToAiPending = vi.fn().mockResolvedValue({
+        id: 'item-1',
+        professionalId: 'prof-1',
+        categoryId: 'cat-1',
+        title: 'Original',
+        description: 'Descripción original con más de diez caracteres.',
+        status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+        jobId: null,
+        verifiedFromJob: false,
+        aiModerationStatus: AiModerationStatus.PENDING,
+        publishedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const { service, repo } = baseRepoState({
+        findItemForOwner: vi.fn().mockResolvedValue({
+          id: 'item-1',
+          professionalId: 'prof-1',
+          categoryId: 'cat-1',
+          title: 'Original',
+          description: 'Descripción original con más de diez caracteres.',
+          status: PortfolioItemStatus.PUBLISHED,
+          jobId: null,
+          verifiedFromJob: false,
+        }),
+        transitionToAiPending,
+        findPhotosByItemId: vi
+          .fn()
+          .mockResolvedValue([{ fileKey: validFileKey }]),
+      });
+
+      (
+        service as unknown as { config: { ai: { enabled: boolean } } }
+      ).config.ai.enabled = true;
+      (
+        service as unknown as {
+          moderateQueue: { add: typeof moderateQueueAdd };
+        }
+      ).moderateQueue.add = moderateQueueAdd;
+
+      await service.addPhoto('sub-1', 'item-1', { fileKey: validFileKey });
+
+      expect(repo.transitionToAiPending).toHaveBeenCalledWith('item-1');
+      expect(moderateQueueAdd).toHaveBeenCalledTimes(1);
+    });
+
+    it('si estaba HIDDEN_PENDING_REVIEW + FLAGGED, agregar foto también re-encola', async () => {
+      const moderateQueueAdd = vi.fn().mockResolvedValue(undefined);
+      const { service, repo } = baseRepoState({
+        findItemForOwner: vi.fn().mockResolvedValue({
+          id: 'item-1',
+          professionalId: 'prof-1',
+          categoryId: 'cat-1',
+          title: 'Original',
+          description: 'Descripción original con más de diez caracteres.',
+          status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+          aiModerationStatus: AiModerationStatus.FLAGGED,
+          jobId: null,
+          verifiedFromJob: false,
+        }),
+        transitionToAiPending: vi.fn().mockResolvedValue({
+          ...baseItem,
+          status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+        }),
+        findPhotosByItemId: vi
+          .fn()
+          .mockResolvedValue([{ fileKey: validFileKey }]),
+      });
+
+      (
+        service as unknown as { config: { ai: { enabled: boolean } } }
+      ).config.ai.enabled = true;
+      (
+        service as unknown as {
+          moderateQueue: { add: typeof moderateQueueAdd };
+        }
+      ).moderateQueue.add = moderateQueueAdd;
+
+      await service.addPhoto('sub-1', 'item-1', { fileKey: validFileKey });
+      expect(repo.transitionToAiPending).toHaveBeenCalledWith('item-1');
+      expect(moderateQueueAdd).toHaveBeenCalledTimes(1);
     });
 
     it('happy path con displayOrder y caption', async () => {
@@ -614,6 +765,7 @@ describe('PortfolioService', () => {
         findItemForOwner: vi
           .fn()
           .mockResolvedValue({ id: 'item-1', professionalId: 'prof-1' }),
+        countPhotosByItemId: vi.fn().mockResolvedValue(3),
         deletePhotoWithReorder: vi.fn().mockResolvedValue(undefined),
         ...extras,
       });
@@ -627,6 +779,56 @@ describe('PortfolioService', () => {
         'item-1',
         'photo-1',
       );
+    });
+
+    it('si estaba PUBLISHED: rechaza borrado y exige despublicar', async () => {
+      const { service, repo } = baseDeleteState({
+        findItemForOwner: vi.fn().mockResolvedValue({
+          id: 'item-1',
+          professionalId: 'prof-1',
+          status: PortfolioItemStatus.PUBLISHED,
+        }),
+      });
+
+      await expect(
+        service.deletePhoto('sub-1', 'item-1', 'photo-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(repo.deletePhotoWithReorder).not.toHaveBeenCalled();
+    });
+
+    it('si estaba HIDDEN_PENDING_REVIEW + FLAGGED, borrar foto también re-encola', async () => {
+      const moderateQueueAdd = vi.fn().mockResolvedValue(undefined);
+      const { service, repo } = baseDeleteState({
+        findItemForOwner: vi.fn().mockResolvedValue({
+          id: 'item-1',
+          professionalId: 'prof-1',
+          categoryId: 'cat-1',
+          title: 'Original',
+          description: 'Descripción original con más de diez caracteres.',
+          status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+          aiModerationStatus: AiModerationStatus.FLAGGED,
+          jobId: null,
+          verifiedFromJob: false,
+        }),
+        transitionToAiPending: vi.fn().mockResolvedValue({
+          ...baseItem,
+          status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+        }),
+        findPhotosByItemId: vi.fn().mockResolvedValue([]),
+      });
+
+      (
+        service as unknown as { config: { ai: { enabled: boolean } } }
+      ).config.ai.enabled = true;
+      (
+        service as unknown as {
+          moderateQueue: { add: typeof moderateQueueAdd };
+        }
+      ).moderateQueue.add = moderateQueueAdd;
+
+      await service.deletePhoto('sub-1', 'item-1', 'photo-1');
+      expect(repo.transitionToAiPending).toHaveBeenCalledWith('item-1');
+      expect(moderateQueueAdd).toHaveBeenCalledTimes(1);
     });
 
     it('rechaza si el item no pertenece al pro (PORTFOLIO_ITEM_NOT_FOUND)', async () => {
@@ -695,7 +897,9 @@ describe('PortfolioService', () => {
             description:
               data.description ??
               'Descripción original con más de diez caracteres.',
-            status: PortfolioItemStatus.DRAFT,
+            status:
+              (itemOverrides.status as PortfolioItemStatus | undefined) ??
+              PortfolioItemStatus.DRAFT,
             jobId: null,
             verifiedFromJob: itemOverrides.verifiedFromJob ?? false,
             aiModerationStatus: AiModerationStatus.PENDING,
@@ -797,6 +1001,150 @@ describe('PortfolioService', () => {
 
       expect(repo.updateItem).not.toHaveBeenCalled();
       expect(result.id).toBe('item-1');
+    });
+
+    it('si estaba PUBLISHED y AI enabled, transiciona a PENDING y encola moderación', async () => {
+      const moderateQueueAdd = vi.fn().mockResolvedValue(undefined);
+      const findPhotosByItemId = vi.fn().mockResolvedValue([
+        { id: 'ph-1', fileKey: 'k1.jpg' },
+        { id: 'ph-2', fileKey: 'k2.jpg' },
+      ]);
+      const transitionToAiPending = vi.fn().mockResolvedValue({
+        id: 'item-1',
+        professionalId: 'prof-1',
+        categoryId: 'cat-1',
+        title: 'Nuevo título',
+        description: 'Nueva descripción con más de diez caracteres válidos.',
+        status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+        jobId: null,
+        verifiedFromJob: false,
+        aiModerationStatus: AiModerationStatus.PENDING,
+        publishedAt: new Date('2026-05-01T00:00:00Z'),
+        createdAt: new Date('2026-05-01T00:00:00Z'),
+        updatedAt: new Date(),
+      });
+
+      const { service, repo } = baseUpdateState(
+        { status: PortfolioItemStatus.PUBLISHED },
+        {
+          findPhotosByItemId,
+          transitionToAiPending,
+        },
+      );
+
+      // Habilitamos IA en config y mockeamos queue
+      (
+        service as unknown as { config: { ai: { enabled: boolean } } }
+      ).config.ai.enabled = true;
+      (
+        service as unknown as {
+          moderateQueue: { add: typeof moderateQueueAdd };
+        }
+      ).moderateQueue.add = moderateQueueAdd;
+
+      const result = await service.updateItem('sub-1', 'item-1', {
+        title: 'Nuevo título',
+        description: 'Nueva descripción con más de diez caracteres válidos.',
+      });
+
+      expect(repo.findPhotosByItemId).toHaveBeenCalledWith('item-1');
+      expect(repo.transitionToAiPending).toHaveBeenCalledWith('item-1');
+      expect(moderateQueueAdd).toHaveBeenCalledTimes(1);
+      const [jobName, payload, opts] = moderateQueueAdd.mock.calls[0];
+      expect(jobName).toBe(PORTFOLIO_MODERATE_JOB);
+      expect(payload).toEqual({
+        itemId: 'item-1',
+        photoFileKeys: ['k1.jpg', 'k2.jpg'],
+        text: 'Nuevo título\nNueva descripción con más de diez caracteres válidos.',
+        transitionType: 'RE_MODERATION',
+      });
+      expect(opts).toMatchObject({
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: 100,
+        removeOnFail: 50,
+      });
+      expect(result.status).toBe(PortfolioItemStatus.HIDDEN_PENDING_REVIEW);
+    });
+
+    it('si estaba HIDDEN_PENDING_REVIEW + FLAGGED y AI enabled, vuelve a encolar re-moderación', async () => {
+      const moderateQueueAdd = vi.fn().mockResolvedValue(undefined);
+      const findPhotosByItemId = vi
+        .fn()
+        .mockResolvedValue([{ fileKey: 'k1.jpg' }]);
+      const transitionToAiPending = vi.fn().mockResolvedValue({
+        id: 'item-1',
+        professionalId: 'prof-1',
+        categoryId: 'cat-1',
+        title: 'Nuevo título',
+        description: 'Nueva descripción con más de diez caracteres válidos.',
+        status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+        jobId: null,
+        verifiedFromJob: false,
+        aiModerationStatus: AiModerationStatus.PENDING,
+        publishedAt: new Date('2026-05-01T00:00:00Z'),
+        createdAt: new Date('2026-05-01T00:00:00Z'),
+        updatedAt: new Date(),
+      });
+
+      const { service, repo } = baseUpdateState(
+        {
+          status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+          aiModerationStatus: AiModerationStatus.FLAGGED,
+        },
+        {
+          findPhotosByItemId,
+          transitionToAiPending,
+        },
+      );
+
+      (
+        service as unknown as { config: { ai: { enabled: boolean } } }
+      ).config.ai.enabled = true;
+      (
+        service as unknown as {
+          moderateQueue: { add: typeof moderateQueueAdd };
+        }
+      ).moderateQueue.add = moderateQueueAdd;
+
+      await service.updateItem('sub-1', 'item-1', {
+        title: 'Nuevo título',
+      });
+
+      expect(repo.findPhotosByItemId).toHaveBeenCalledWith('item-1');
+      expect(repo.transitionToAiPending).toHaveBeenCalledWith('item-1');
+      expect(moderateQueueAdd).toHaveBeenCalledWith(
+        PORTFOLIO_MODERATE_JOB,
+        expect.objectContaining({
+          itemId: 'item-1',
+          transitionType: 'RE_MODERATION',
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('si está HIDDEN_PENDING_REVIEW pero aiModerationStatus=PENDING, no re-encola', async () => {
+      const moderateQueueAdd = vi.fn().mockResolvedValue(undefined);
+      const { service, repo } = baseUpdateState({
+        status: PortfolioItemStatus.HIDDEN_PENDING_REVIEW,
+        aiModerationStatus: AiModerationStatus.PENDING,
+      });
+
+      (
+        service as unknown as { config: { ai: { enabled: boolean } } }
+      ).config.ai.enabled = true;
+      (
+        service as unknown as {
+          moderateQueue: { add: typeof moderateQueueAdd };
+        }
+      ).moderateQueue.add = moderateQueueAdd;
+
+      await service.updateItem('sub-1', 'item-1', {
+        title: 'Solo ajuste menor',
+      });
+
+      expect(repo.transitionToAiPending).not.toHaveBeenCalled();
+      expect(moderateQueueAdd).not.toHaveBeenCalled();
     });
   });
 
@@ -948,7 +1296,20 @@ describe('PortfolioService', () => {
       }
     });
 
-    it('item sin fotos: lanza 409 PORTFOLIO_PHOTOS_REQUIRED', async () => {
+    it('item bloqueado por admin: lanza 409 PORTFOLIO_BLOCKED_BY_ADMIN', async () => {
+      const { service } = basePublishState({
+        findItemForOwner: vi.fn().mockResolvedValue({
+          ...draftItem,
+          status: PortfolioItemStatus.HIDDEN_BY_ADMIN,
+        }),
+      });
+
+      await expect(service.publishItem('sub-1', 'item-1')).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('item con menos de 2 fotos: lanza 409 PORTFOLIO_MIN_PHOTOS_REQUIRED', async () => {
       const { service } = basePublishState({
         findPhotosByItemId: vi.fn().mockResolvedValue([]),
       });
@@ -960,7 +1321,7 @@ describe('PortfolioService', () => {
         expect(err).toBeInstanceOf(ConflictException);
         expect(
           ((err as ConflictException).getResponse() as { code: string }).code,
-        ).toBe('PORTFOLIO_PHOTOS_REQUIRED');
+        ).toBe('PORTFOLIO_MIN_PHOTOS_REQUIRED');
       }
     });
 
@@ -1003,14 +1364,14 @@ describe('PortfolioService', () => {
         .mockResolvedValue(undefined);
       const { service, repo } = basePublishState(
         {
-          findPhotosByItemId: vi.fn().mockResolvedValue([photo1]),
+          findPhotosByItemId: vi.fn().mockResolvedValue([photo1, photo2]),
         },
         { storage: { assertObjectExists: assertSpy } },
       );
 
       const result = await service.publishItem('sub-1', 'item-1');
 
-      expect(assertSpy).toHaveBeenCalledTimes(2);
+      expect(assertSpy).toHaveBeenCalledTimes(3);
       expect(repo.transitionToPublished).toHaveBeenCalledOnce();
       expect(result.status).toBe(PortfolioItemStatus.PUBLISHED);
     });
@@ -1022,7 +1383,7 @@ describe('PortfolioService', () => {
         .mockRejectedValue(new ServiceUnavailableException('5xx'));
       const { service } = basePublishState(
         {
-          findPhotosByItemId: vi.fn().mockResolvedValue([photo1]),
+          findPhotosByItemId: vi.fn().mockResolvedValue([photo1, photo2]),
         },
         { storage: { assertObjectExists: assertSpy } },
       );
@@ -1063,7 +1424,7 @@ describe('PortfolioService', () => {
         .mockRejectedValueOnce(new NotFoundException('no'));
       const { service } = basePublishState(
         {
-          findPhotosByItemId: vi.fn().mockResolvedValue([photo1]),
+          findPhotosByItemId: vi.fn().mockResolvedValue([photo1, photo2]),
         },
         { storage: { assertObjectExists: assertSpy } },
       );
@@ -1121,7 +1482,7 @@ describe('PortfolioService', () => {
       const assertSpy = vi.fn().mockRejectedValue(new Error('boom'));
       const { service } = basePublishState(
         {
-          findPhotosByItemId: vi.fn().mockResolvedValue([photo1]),
+          findPhotosByItemId: vi.fn().mockResolvedValue([photo1, photo2]),
         },
         { storage: { assertObjectExists: assertSpy } },
       );
@@ -1146,7 +1507,7 @@ describe('PortfolioService', () => {
             professionalProfileId: 'prof-1',
           }),
           findItemForOwner: vi.fn().mockResolvedValue(draftItem),
-          findPhotosByItemId: vi.fn().mockResolvedValue([photo1]),
+          findPhotosByItemId: vi.fn().mockResolvedValue([photo1, photo2]),
           transitionToAiPending,
         },
         {
@@ -1165,6 +1526,47 @@ describe('PortfolioService', () => {
       );
       expect(repo.transitionToPublished).not.toHaveBeenCalled();
       expect(result.status).toBe(PortfolioItemStatus.HIDDEN_PENDING_REVIEW);
+    });
+  });
+
+  describe('unpublishItem', () => {
+    it('PUBLISHED -> DRAFT', async () => {
+      const { service, repo } = makeService({
+        findProfessionalBySupabaseUid: vi.fn().mockResolvedValue({
+          userId: 'user-1',
+          professionalProfileId: 'prof-1',
+        }),
+        findItemForOwner: vi.fn().mockResolvedValue({
+          ...baseItem,
+          status: PortfolioItemStatus.PUBLISHED,
+        }),
+        transitionToDraft: vi.fn().mockResolvedValue({
+          ...baseItem,
+          status: PortfolioItemStatus.DRAFT,
+          publishedAt: null,
+        }),
+      });
+
+      const result = await service.unpublishItem('sub-1', 'item-1');
+      expect(repo.transitionToDraft).toHaveBeenCalledWith('item-1');
+      expect(result.status).toBe(PortfolioItemStatus.DRAFT);
+    });
+
+    it('si no está publicado: 409 PORTFOLIO_ITEM_NOT_PUBLISHED', async () => {
+      const { service } = makeService({
+        findProfessionalBySupabaseUid: vi.fn().mockResolvedValue({
+          userId: 'user-1',
+          professionalProfileId: 'prof-1',
+        }),
+        findItemForOwner: vi.fn().mockResolvedValue({
+          ...baseItem,
+          status: PortfolioItemStatus.DRAFT,
+        }),
+      });
+
+      await expect(service.unpublishItem('sub-1', 'item-1')).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 
@@ -1241,6 +1643,47 @@ describe('PortfolioService', () => {
       );
       expect(result.items[0].status).toBe(PortfolioItemStatus.PUBLISHED);
       expect(result.meta.total).toBe(1);
+    });
+  });
+
+  describe('getMyPortfolioItemById', () => {
+    it('404 cuando el repo devuelve null', async () => {
+      const { service } = makeService({
+        findOwnerPortfolioItemDetail: vi.fn().mockResolvedValue(null),
+      });
+      await expect(
+        service.getMyPortfolioItemById('sub-1', 'missing'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('mapea detalle owner con fotos', async () => {
+      const item = { ...baseItem, status: PortfolioItemStatus.DRAFT };
+      const { service, repo } = makeService({
+        findProfessionalBySupabaseUid: vi.fn().mockResolvedValue({
+          userId: 'user-1',
+          professionalProfileId: 'prof-1',
+        }),
+        findOwnerPortfolioItemDetail: vi.fn().mockResolvedValue({
+          item,
+          category: { id: 'cat-1', name: 'Limpieza' },
+          job: null,
+          photos: [
+            { id: 'ph-1', fileKey: 'k.jpg', caption: null, displayOrder: 1 },
+          ],
+          verifiedJobClientFirstName: null,
+        }),
+      });
+
+      const dto = await service.getMyPortfolioItemById('sub-1', 'item-1');
+
+      expect(repo.findOwnerPortfolioItemDetail).toHaveBeenCalledWith(
+        'item-1',
+        'prof-1',
+      );
+      expect(dto.status).toBe(PortfolioItemStatus.DRAFT);
+      expect(dto.photos).toHaveLength(1);
+      expect(dto.photos[0].previewUrl).toBe('https://r2/preview-signed');
+      expect(dto.photos[0].publicUrl).toBe('https://pub.example.r2.dev/k.jpg');
     });
   });
 

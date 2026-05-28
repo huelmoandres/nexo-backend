@@ -27,12 +27,20 @@ describe('DgiMaintenanceProcessor', () => {
     deleteObjectAsSystem: vi.fn(),
   };
 
+  const auditContext = {
+    ensureWorkerContext: vi.fn().mockReturnValue({ correlationId: 'corr' }),
+    getCorrelationId: vi.fn().mockReturnValue('corr'),
+  };
+  const processAudit = { record: vi.fn().mockResolvedValue(undefined) };
+
   const processor = new DgiMaintenanceProcessor(
     usersRepository as never,
     notifications as never,
     storage as never,
     usersConfig() as never,
     dgiConfig() as never,
+    auditContext as never,
+    processAudit as never,
   );
 
   beforeEach(() => {
@@ -42,7 +50,10 @@ describe('DgiMaintenanceProcessor', () => {
   it('watchdog no-op cuando no hay sujetos stale', async () => {
     usersRepository.findStaleDgiProcessingSubjects.mockResolvedValue([]);
 
-    await processor.process({ name: DGI_STALE_WATCHDOG_JOB, data: {} } as never);
+    await processor.process({
+      name: DGI_STALE_WATCHDOG_JOB,
+      data: {},
+    } as never);
 
     expect(usersRepository.applyDgiVerificationResult).not.toHaveBeenCalled();
     expect(notifications.notifyDgiVerificationRejected).not.toHaveBeenCalled();
@@ -64,7 +75,10 @@ describe('DgiMaintenanceProcessor', () => {
       },
     ]);
 
-    await processor.process({ name: DGI_STALE_WATCHDOG_JOB, data: {} } as never);
+    await processor.process({
+      name: DGI_STALE_WATCHDOG_JOB,
+      data: {},
+    } as never);
 
     expect(usersRepository.applyDgiVerificationResult).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -73,7 +87,9 @@ describe('DgiMaintenanceProcessor', () => {
         documentStatus: VerificationDocumentStatus.REJECTED,
       }),
     );
-    expect(notifications.notifyDgiVerificationRejected).toHaveBeenCalledTimes(2);
+    expect(notifications.notifyDgiVerificationRejected).toHaveBeenCalledTimes(
+      2,
+    );
   });
 
   it('orphan cleanup borra keys no referenciadas y antiguas', async () => {
@@ -90,7 +106,10 @@ describe('DgiMaintenanceProcessor', () => {
       { key: kept, lastModified: old },
     ]);
 
-    await processor.process({ name: DGI_ORPHAN_CLEANUP_JOB, data: {} } as never);
+    await processor.process({
+      name: DGI_ORPHAN_CLEANUP_JOB,
+      data: {},
+    } as never);
 
     expect(storage.deleteObjectAsSystem).toHaveBeenCalledTimes(1);
     expect(storage.deleteObjectAsSystem).toHaveBeenCalledWith(
@@ -114,7 +133,10 @@ describe('DgiMaintenanceProcessor', () => {
       { key: 'users/u1/kyc/doc.pdf', lastModified: old },
     ]);
 
-    await processor.process({ name: DGI_ORPHAN_CLEANUP_JOB, data: {} } as never);
+    await processor.process({
+      name: DGI_ORPHAN_CLEANUP_JOB,
+      data: {},
+    } as never);
 
     expect(storage.deleteObjectAsSystem).not.toHaveBeenCalled();
   });
@@ -130,7 +152,10 @@ describe('DgiMaintenanceProcessor', () => {
       { key: orphan, lastModified: recent },
     ]);
 
-    await processor.process({ name: DGI_ORPHAN_CLEANUP_JOB, data: {} } as never);
+    await processor.process({
+      name: DGI_ORPHAN_CLEANUP_JOB,
+      data: {},
+    } as never);
 
     expect(storage.deleteObjectAsSystem).not.toHaveBeenCalled();
   });
@@ -147,7 +172,10 @@ describe('DgiMaintenanceProcessor', () => {
     ]);
     storage.deleteObjectAsSystem.mockRejectedValueOnce(new Error('r2-error'));
 
-    await processor.process({ name: DGI_ORPHAN_CLEANUP_JOB, data: {} } as never);
+    await processor.process({
+      name: DGI_ORPHAN_CLEANUP_JOB,
+      data: {},
+    } as never);
 
     expect(storage.deleteObjectAsSystem).toHaveBeenCalled();
   });
@@ -164,7 +192,10 @@ describe('DgiMaintenanceProcessor', () => {
     ]);
     storage.deleteObjectAsSystem.mockRejectedValueOnce('r2-string');
 
-    await processor.process({ name: DGI_ORPHAN_CLEANUP_JOB, data: {} } as never);
+    await processor.process({
+      name: DGI_ORPHAN_CLEANUP_JOB,
+      data: {},
+    } as never);
 
     expect(storage.deleteObjectAsSystem).toHaveBeenCalled();
   });

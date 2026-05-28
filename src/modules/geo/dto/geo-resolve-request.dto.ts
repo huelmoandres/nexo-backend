@@ -72,7 +72,8 @@ export class GeoResolveRequestDto {
 
   @ApiPropertyOptional({
     example: 'La Estiva',
-    description: 'Barrio libre cuando no está en catálogo; se upsertea si hay cityId.',
+    description:
+      'Barrio libre cuando no está en catálogo; se upsertea si hay cityId.',
     maxLength: 120,
   })
   @IsOptional()

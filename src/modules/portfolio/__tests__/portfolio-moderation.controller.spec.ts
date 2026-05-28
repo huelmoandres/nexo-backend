@@ -36,6 +36,17 @@ describe('PortfolioModerationController', () => {
     );
   });
 
+  it('moderatePortfolioItem restore_draft delega', async () => {
+    const { controller, service } = make();
+    const dto = { action: 'restore_draft' as const, reason: 'rehabilitado' };
+    await controller.moderatePortfolioItem('sub-admin', 'id-1', dto);
+    expect(service.moderatePortfolioItem).toHaveBeenCalledWith(
+      'sub-admin',
+      'id-1',
+      dto,
+    );
+  });
+
   it('reportPortfolioItem delega', async () => {
     const { controller, service } = make();
     await controller.reportPortfolioItem('sub-r', 'id-2');

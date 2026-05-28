@@ -75,4 +75,67 @@ describe('MockPaymentGatewayService', () => {
     });
     expect(fail.success).toBe(false);
   });
+
+  it('issuePayout idempotente por idempotencyKey + reconcile', async () => {
+    const first = await gw.issuePayout({
+      escrowTransactionId: 'esc-1',
+      amountCents: 100,
+      netAmountCents: 90,
+      idempotencyKey: 'payout:esc-1:attempt:1',
+      destination: {
+        method: PayoutMethod.MERCADO_PAGO,
+        identifierType: PayoutIdentifierType.MP_EMAIL,
+        transferIdentifier: 'a@b.com',
+      },
+    });
+    gw.setRejectNextPayout(true);
+    const second = await gw.issuePayout({
+      escrowTransactionId: 'esc-1',
+      amountCents: 100,
+      netAmountCents: 90,
+      idempotencyKey: 'payout:esc-1:attempt:1',
+      destination: {
+        method: PayoutMethod.MERCADO_PAGO,
+        identifierType: PayoutIdentifierType.MP_EMAIL,
+        transferIdentifier: 'a@b.com',
+      },
+    });
+    expect(second).toEqual(first);
+
+    const reconciled = await gw.reconcilePayoutByIdempotencyKey({
+      escrowTransactionId: 'esc-1',
+      idempotencyKey: 'payout:esc-1:attempt:1',
+    });
+    expect(reconciled).toEqual(first);
+  });
+
+  it('issuePayout fallo con idempotencyKey queda guardado y reconcile unknown da null', async () => {
+    gw.setRejectNextPayout(true);
+    const failed = await gw.issuePayout({
+      escrowTransactionId: 'esc-f',
+      amountCents: 100,
+      netAmountCents: 90,
+      idempotencyKey: 'payout:esc-f:attempt:1',
+      destination: {
+        method: PayoutMethod.MERCADO_PAGO,
+        identifierType: PayoutIdentifierType.MP_EMAIL,
+        transferIdentifier: 'a@b.com',
+      },
+    });
+    expect(failed.success).toBe(false);
+
+    await expect(
+      gw.reconcilePayoutByIdempotencyKey({
+        escrowTransactionId: 'esc-f',
+        idempotencyKey: 'payout:esc-f:attempt:1',
+      }),
+    ).resolves.toEqual(failed);
+
+    await expect(
+      gw.reconcilePayoutByIdempotencyKey({
+        escrowTransactionId: 'esc-f',
+        idempotencyKey: 'payout:esc-f:attempt:404',
+      }),
+    ).resolves.toBeNull();
+  });
 });

@@ -328,15 +328,27 @@ describe('UsersRepository DGI', () => {
 
   it('listPendingManualDgiVerifications combina empresas y profesionales', async () => {
     const updatedAt = new Date('2026-05-01');
+    const docSubmittedAt = new Date('2026-04-30');
     const prisma = {
       company: {
         findMany: vi.fn().mockResolvedValue([
           {
             id: 'c1',
             rut: '214567890018',
+            name: 'ACME',
+            legalName: 'ACME SA',
+            tradeName: null,
             dgiRazonSocial: 'ACME',
             dgiVerificationDocKey: 'k1',
+            dgiVerificationMethod: 'TEXT_MATCH',
             updatedAt,
+            adminId: 'u-admin',
+            admin: {
+              id: 'u-admin',
+              email: 'admin@acme.uy',
+              fullName: 'Admin ACME',
+            },
+            trustProfiles: [{ id: 't-company' }],
           },
         ]),
       },
@@ -347,7 +359,27 @@ describe('UsersRepository DGI', () => {
             rut: '214567890014',
             dgiRazonSocial: null,
             dgiVerificationDocKey: 'k2',
+            dgiVerificationMethod: 'TEXT_MATCH',
             updatedAt: new Date('2026-05-02'),
+            userId: 'u-pro',
+            user: {
+              id: 'u-pro',
+              email: 'pro@example.uy',
+              fullName: 'Pro Test',
+            },
+            trustProfiles: [{ id: 't-pro' }],
+          },
+        ]),
+      },
+      verificationDocument: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            trustProfileId: 't-company',
+            createdAt: docSubmittedAt,
+          },
+          {
+            trustProfileId: 't-pro',
+            createdAt: new Date('2026-05-01'),
           },
         ]),
       },
@@ -358,6 +390,169 @@ describe('UsersRepository DGI', () => {
 
     expect(rows).toHaveLength(2);
     expect(rows[0]?.subjectId).toBe('p1');
+    expect(rows[0]?.subjectDisplayName).toBe('Pro Test');
+    expect(rows[0]?.ownerEmail).toBe('pro@example.uy');
+    expect(rows[1]?.subjectDisplayName).toBe('ACME SA');
+    expect(rows[1]?.documentSubmittedAt).toEqual(docSubmittedAt);
+    expect(rows[1]?.hasDocument).toBe(true);
+  });
+
+  it('listPendingManualDgiVerifications usa fallback de displayName y null cuando no hay trust/doc', async () => {
+    const updatedAt = new Date('2026-06-01');
+    const prisma = {
+      company: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'c2',
+            rut: '214567890019',
+            name: 'Nombre Empresa',
+            legalName: null,
+            tradeName: 'Fantasia SA',
+            dgiRazonSocial: null,
+            dgiVerificationDocKey: null,
+            dgiVerificationMethod: null,
+            updatedAt,
+            adminId: 'u-admin-2',
+            admin: {
+              id: 'u-admin-2',
+              email: 'admin2@acme.uy',
+              fullName: 'Admin 2',
+            },
+            trustProfiles: [],
+          },
+        ]),
+      },
+      professionalProfile: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'p2',
+            rut: '214567890015',
+            dgiRazonSocial: null,
+            dgiVerificationDocKey: null,
+            dgiVerificationMethod: null,
+            updatedAt,
+            userId: 'u-pro-2',
+            user: {
+              id: 'u-pro-2',
+              email: 'pro2@example.uy',
+              fullName: 'Pro 2',
+            },
+            trustProfiles: [],
+          },
+        ]),
+      },
+      verificationDocument: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    } as unknown as PrismaService;
+    const repo = new UsersRepository(prisma);
+    const rows = await repo.listPendingManualDgiVerifications();
+    const company = rows.find((r) => r.subjectType === VerificationSubjectType.COMPANY);
+    const prof = rows.find(
+      (r) => r.subjectType === VerificationSubjectType.PROFESSIONAL,
+    );
+    expect(company?.subjectDisplayName).toBe('Fantasia SA');
+    expect(company?.documentSubmittedAt).toBeNull();
+    expect(prof?.documentSubmittedAt).toBeNull();
+    expect(company?.hasDocument).toBe(false);
+    expect(prof?.hasDocument).toBe(false);
+  });
+
+  it('listPendingManualDgiVerifications prioriza primer doc por trust y fallback name cuando no hay legal/trade', async () => {
+    const updatedAt = new Date('2026-06-02');
+    const oldDoc = new Date('2026-05-01');
+    const newDoc = new Date('2026-06-01');
+    const prisma = {
+      company: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'c3',
+            rut: '214567890020',
+            name: 'Empresa Base',
+            legalName: null,
+            tradeName: null,
+            dgiRazonSocial: null,
+            dgiVerificationDocKey: null,
+            dgiVerificationMethod: null,
+            updatedAt,
+            adminId: 'u-admin-3',
+            admin: {
+              id: 'u-admin-3',
+              email: 'admin3@acme.uy',
+              fullName: 'Admin 3',
+            },
+            trustProfiles: [{ id: 't-company-3' }],
+          },
+        ]),
+      },
+      professionalProfile: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'p3',
+            rut: '214567890016',
+            dgiRazonSocial: null,
+            dgiVerificationDocKey: null,
+            dgiVerificationMethod: null,
+            updatedAt,
+            userId: 'u-pro-3',
+            user: {
+              id: 'u-pro-3',
+              email: 'pro3@example.uy',
+              fullName: 'Pro 3',
+            },
+            trustProfiles: [{ id: 't-pro-3' }],
+          },
+        ]),
+      },
+      verificationDocument: {
+        findMany: vi.fn().mockResolvedValue([
+          { trustProfileId: 't-company-3', createdAt: oldDoc },
+          { trustProfileId: 't-company-3', createdAt: newDoc },
+        ]),
+      },
+    } as unknown as PrismaService;
+    const repo = new UsersRepository(prisma);
+    const rows = await repo.listPendingManualDgiVerifications();
+    const company = rows.find((r) => r.subjectType === VerificationSubjectType.COMPANY);
+    const prof = rows.find(
+      (r) => r.subjectType === VerificationSubjectType.PROFESSIONAL,
+    );
+    expect(company?.subjectDisplayName).toBe('Empresa Base');
+    expect(company?.documentSubmittedAt).toEqual(oldDoc);
+    expect(prof?.documentSubmittedAt).toBeNull();
+  });
+
+  it('listPendingManualDgiVerifications con trust sin documento devuelve documentSubmittedAt null', async () => {
+    const updatedAt = new Date('2026-06-03');
+    const prisma = {
+      company: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'c4',
+            rut: '214567890021',
+            name: 'Empresa C4',
+            legalName: null,
+            tradeName: null,
+            dgiRazonSocial: null,
+            dgiVerificationDocKey: 'k4',
+            dgiVerificationMethod: 'TEXT_MATCH',
+            updatedAt,
+            adminId: 'u-admin-4',
+            admin: { id: 'u-admin-4', email: 'a4@acme.uy', fullName: 'Admin 4' },
+            trustProfiles: [{ id: 't-company-4' }],
+          },
+        ]),
+      },
+      professionalProfile: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      verificationDocument: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    } as unknown as PrismaService;
+    const repo = new UsersRepository(prisma);
+    const rows = await repo.listPendingManualDgiVerifications();
+    expect(rows[0]?.documentSubmittedAt).toBeNull();
   });
 
   it('findDgiVerificationSubject null si profesional sin RUT', async () => {

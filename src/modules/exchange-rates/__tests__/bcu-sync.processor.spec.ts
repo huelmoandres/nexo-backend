@@ -7,7 +7,16 @@ import { BcuSyncProcessor } from '../bcu-sync.processor';
 
 describe('BcuSyncProcessor', () => {
   const exchangeRatesService = { syncFromBcu: vi.fn().mockResolvedValue(2) };
-  const proc = new BcuSyncProcessor(exchangeRatesService as never);
+  const auditContext = {
+    ensureWorkerContext: vi.fn().mockReturnValue({ correlationId: 'corr' }),
+    getCorrelationId: vi.fn().mockReturnValue('corr'),
+  };
+  const processAudit = { record: vi.fn().mockResolvedValue(undefined) };
+  const proc = new BcuSyncProcessor(
+    exchangeRatesService as never,
+    auditContext as never,
+    processAudit as never,
+  );
 
   it('ignora jobs desconocidos', async () => {
     await proc.process({ name: 'other' } as never);

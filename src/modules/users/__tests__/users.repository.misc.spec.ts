@@ -23,7 +23,9 @@ describe('UsersRepository misc', () => {
   it('linkUserAsCompanyEmployee actualiza rol y empresa', async () => {
     const prisma = {
       user: {
-        update: vi.fn().mockResolvedValue({ id: 'u1', role: Role.COMPANY_EMPLOYEE }),
+        update: vi
+          .fn()
+          .mockResolvedValue({ id: 'u1', role: Role.COMPANY_EMPLOYEE }),
       },
     } as unknown as PrismaService;
     const repo = new UsersRepository(prisma);

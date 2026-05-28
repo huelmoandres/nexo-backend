@@ -3,6 +3,10 @@
 /node_modules
 /build
 
+# Artefactos por redirección shell mal escrita (ej. `> node script.mjs`)
+/node
+/nexos-backend@*
+
 # Logs
 logs
 *.log

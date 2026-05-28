@@ -10,11 +10,15 @@ describe('PortfolioController', () => {
       presignPhoto: vi.fn(),
       deletePhoto: vi.fn(),
       updateItem: vi.fn(),
+      unpublishItem: vi.fn(),
       softDeleteItem: vi.fn(),
       publishItem: vi.fn(),
       listMyItems: vi.fn(),
+      getMyPortfolioItemById: vi.fn(),
       getPublishedPortfolioItemById: vi.fn(),
       requestVerification: vi.fn(),
+      presignPhotosBatch: vi.fn(),
+      addPhotosBatch: vi.fn(),
     };
     return {
       controller: new PortfolioController(service as never),
@@ -68,6 +72,26 @@ describe('PortfolioController', () => {
     });
   });
 
+  describe('POST /items/:id/photos/presign-batch (presignPhotosBatch)', () => {
+    it('delega en service.presignPhotosBatch', async () => {
+      const { controller, service } = makeController();
+      const dto = { photos: [{ fileExtension: 'jpg' as const }] };
+      const expected = { photos: [{ key: 'k1', uploadUrl: 'u1' }] };
+      service.presignPhotosBatch.mockResolvedValue(expected);
+      const result = await controller.presignPhotosBatch(
+        'sub-1',
+        'item-1',
+        dto,
+      );
+      expect(service.presignPhotosBatch).toHaveBeenCalledWith(
+        'sub-1',
+        'item-1',
+        dto,
+      );
+      expect(result).toEqual(expected);
+    });
+  });
+
   describe('POST /items/:id/photos (addPhoto)', () => {
     it('delega en service.addPhoto pasando sub, itemId y dto', async () => {
       const { controller, service } = makeController();
@@ -90,6 +114,22 @@ describe('PortfolioController', () => {
       const result = await controller.addPhoto('sub-1', 'item-1', dto);
 
       expect(service.addPhoto).toHaveBeenCalledWith('sub-1', 'item-1', dto);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('POST /items/:id/photos/batch (addPhotosBatch)', () => {
+    it('delega en service.addPhotosBatch', async () => {
+      const { controller, service } = makeController();
+      const dto = { photos: [{ fileKey: 'users/p/item-1/a.jpg' }] };
+      const expected = { photos: [{ id: 'ph-1' }] };
+      service.addPhotosBatch.mockResolvedValue(expected);
+      const result = await controller.addPhotosBatch('sub-1', 'item-1', dto);
+      expect(service.addPhotosBatch).toHaveBeenCalledWith(
+        'sub-1',
+        'item-1',
+        dto,
+      );
       expect(result).toEqual(expected);
     });
   });
@@ -134,6 +174,22 @@ describe('PortfolioController', () => {
       const result = await controller.listMyItems('sub-1', query);
 
       expect(service.listMyItems).toHaveBeenCalledWith('sub-1', query);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('GET /items/:id/mine (getMyPortfolioItemById)', () => {
+    it('delega en service.getMyPortfolioItemById', async () => {
+      const { controller, service } = makeController();
+      const expected = { id: 'item-1', photos: [] };
+      service.getMyPortfolioItemById.mockResolvedValue(expected);
+
+      const result = await controller.getMyPortfolioItemById('sub-1', 'item-1');
+
+      expect(service.getMyPortfolioItemById).toHaveBeenCalledWith(
+        'sub-1',
+        'item-1',
+      );
       expect(result).toEqual(expected);
     });
   });
@@ -216,6 +272,35 @@ describe('PortfolioController', () => {
       const result = await controller.publishItem('sub-1', 'item-1');
 
       expect(service.publishItem).toHaveBeenCalledWith('sub-1', 'item-1');
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('POST /items/:id/unpublish (unpublishItem)', () => {
+    it('delega en service.unpublishItem pasando sub e itemId', async () => {
+      const { controller, service } = makeController();
+      const expected = {
+        id: 'item-1',
+        professionalId: 'prof-1',
+        categoryId: 'cat-1',
+        title: 'X',
+        description: 'YYYYYYYYYY',
+        status: PortfolioItemStatus.DRAFT,
+        jobId: null,
+        verifiedFromJob: false,
+        aiModerationStatus: AiModerationStatus.OK,
+        publishedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      service.unpublishItem.mockResolvedValue(expected);
+
+      const result = await (
+        controller as {
+          unpublishItem: (sub: string, itemId: string) => Promise<unknown>;
+        }
+      ).unpublishItem('sub-1', 'item-1');
+      expect(service.unpublishItem).toHaveBeenCalledWith('sub-1', 'item-1');
       expect(result).toEqual(expected);
     });
   });

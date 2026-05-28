@@ -9,6 +9,7 @@ describe('verifyMercadoPagoWebhookSignature', () => {
   it('normaliza data.id alfanumérico a minúsculas', () => {
     expect(normalizeMercadoPagoSignatureDataId('AbC-123')).toBe('abc-123');
     expect(normalizeMercadoPagoSignatureDataId('999')).toBe('999');
+    expect(normalizeMercadoPagoSignatureDataId('  AbC  ')).toBe('abc');
   });
 
   it('valida manifest HMAC', () => {
@@ -59,6 +60,20 @@ describe('verifyMercadoPagoWebhookSignature', () => {
     expect(
       verifyMercadoPagoWebhookSignature(
         's',
+        { 'x-signature': 'ts=1,v1=x' },
+        '1',
+      ),
+    ).toBe(false);
+    expect(
+      verifyMercadoPagoWebhookSignature(
+        's',
+        { 'x-signature': 'ts=1,v1=x', 'x-request-id': 'r' },
+        '   ',
+      ),
+    ).toBe(false);
+    expect(
+      verifyMercadoPagoWebhookSignature(
+        's',
         {
           'x-signature': 'malformed',
           'x-request-id': 'r',
@@ -74,6 +89,29 @@ describe('verifyMercadoPagoWebhookSignature', () => {
         'secret',
         {
           'x-signature': 'ts=1,v1=ab',
+          'x-request-id': 'r',
+        },
+        '1',
+      ),
+    ).toBe(false);
+  });
+
+  it('rechaza cuando faltan ts o v1 en header parseado', () => {
+    expect(
+      verifyMercadoPagoWebhookSignature(
+        'secret',
+        {
+          'x-signature': 'v1=abc',
+          'x-request-id': 'r',
+        },
+        '1',
+      ),
+    ).toBe(false);
+    expect(
+      verifyMercadoPagoWebhookSignature(
+        'secret',
+        {
+          'x-signature': 'ts=1',
           'x-request-id': 'r',
         },
         '1',

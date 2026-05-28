@@ -18,7 +18,7 @@ const CONFIDENCE_THRESHOLD = 75;
 /**
  * Implementación de IImageSafetyClassifier usando AWS Rekognition Content Moderation.
  *
- * Recibe buffer de imagen ya optimizado por ImagePrepService (~1024px WebP).
+ * Recibe buffer de imagen ya optimizado por ImagePrepService (~1024px JPEG).
  * Devuelve scores estructurados por categoría de moderación.
  */
 @Injectable()
@@ -30,7 +30,24 @@ export class AwsRekognitionImageSafetyProvider implements IImageSafetyClassifier
     @Inject(aiConfig.KEY)
     private readonly cfg: ConfigType<typeof aiConfig>,
   ) {
-    this.rekognition = new RekognitionClient({ region: this.cfg.aws.region });
+    const accessKeyId = this.cfg.aws.accessKeyId ?? '';
+    const secretAccessKey = this.cfg.aws.secretAccessKey ?? '';
+    const sessionToken = this.cfg.aws.sessionToken ?? '';
+    const hasStaticCreds =
+      accessKeyId.trim() !== '' && secretAccessKey.trim() !== '';
+
+    this.rekognition = new RekognitionClient({
+      region: this.cfg.aws.region,
+      ...(hasStaticCreds
+        ? {
+            credentials: {
+              accessKeyId,
+              secretAccessKey,
+              ...(sessionToken.trim() !== '' ? { sessionToken } : {}),
+            },
+          }
+        : {}),
+    });
   }
 
   async classify(imageBuffer: Buffer): Promise<ImageSafetyResult> {

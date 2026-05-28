@@ -12,6 +12,7 @@ import {
 } from '../services/dgi-verification.service';
 import { usersConfig } from '@config/users.config';
 import { dgiConfig } from '@config/dgi.config';
+import { storageConfig } from '@config/storage.config';
 import { Role } from '@prisma/client';
 
 const subjectBase = {
@@ -41,13 +42,19 @@ describe('DgiVerificationService', () => {
       uploadUrl: 'https://upload',
       key: 'users/u1/verification/x.pdf',
     }),
+    generatePresignedGetUrl: vi
+      .fn()
+      .mockResolvedValue('https://view.example/doc.pdf'),
   };
   const notifications = {
     notifyDgiVerificationVerified: vi.fn(),
     notifyDgiVerificationRejected: vi.fn(),
     notifyDgiVerificationManualReview: vi.fn(),
   };
-  const verifyQueue = { add: vi.fn() };
+  const verifyQueue = {
+    add: vi.fn(),
+    getJob: vi.fn().mockResolvedValue(null),
+  };
 
   const service = new DgiVerificationService(
     usersRepository as never,
@@ -55,6 +62,7 @@ describe('DgiVerificationService', () => {
     notifications as never,
     usersConfig() as never,
     dgiConfig() as never,
+    storageConfig() as never,
     verifyQueue as never,
   );
 
@@ -134,6 +142,7 @@ describe('DgiVerificationService', () => {
       notifications as never,
       usersConfig() as never,
       cfg as never,
+      storageConfig() as never,
       verifyQueue as never,
     );
     usersRepository.findDgiVerificationSubject.mockResolvedValue({
@@ -231,6 +240,56 @@ describe('DgiVerificationService', () => {
     );
   });
 
+  it('submit elimina job Bull completed antes de re-encolar', async () => {
+    const completedJob = {
+      getState: vi.fn().mockResolvedValue('completed'),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+    verifyQueue.getJob.mockResolvedValue(completedJob);
+
+    usersRepository.findDgiVerificationSubject.mockResolvedValue({
+      ...subjectBase,
+      subjectType: VerificationSubjectType.PROFESSIONAL,
+      dgiVerificationStatus: DgiVerificationStatus.REJECTED,
+    });
+
+    const key =
+      'users/u1/verification/00000000-0000-4000-8000-000000000002.pdf';
+    await service.submitVerification('sub', {
+      subjectType: VerificationSubjectType.PROFESSIONAL,
+      storageKey: key,
+    });
+
+    expect(verifyQueue.getJob).toHaveBeenCalledWith(
+      'dgi-verify:PROFESSIONAL:c1',
+    );
+    expect(completedJob.remove).toHaveBeenCalled();
+    expect(verifyQueue.add).toHaveBeenCalled();
+  });
+
+  it('submit no elimina job Bull cuando estado no es completed/failed', async () => {
+    const activeJob = {
+      getState: vi.fn().mockResolvedValue('active'),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+    verifyQueue.getJob.mockResolvedValue(activeJob);
+    usersRepository.findDgiVerificationSubject.mockResolvedValue({
+      ...subjectBase,
+      subjectType: VerificationSubjectType.PROFESSIONAL,
+      dgiVerificationStatus: DgiVerificationStatus.REJECTED,
+    });
+
+    const key =
+      'users/u1/verification/00000000-0000-4000-8000-000000000009.pdf';
+    await service.submitVerification('sub', {
+      subjectType: VerificationSubjectType.PROFESSIONAL,
+      storageKey: key,
+    });
+
+    expect(activeJob.remove).not.toHaveBeenCalled();
+    expect(verifyQueue.add).toHaveBeenCalled();
+  });
+
   it('submit continúa si falla borrar PDF anterior', async () => {
     usersRepository.findDgiVerificationSubject.mockResolvedValue({
       ...subjectBase,
@@ -317,6 +376,7 @@ describe('DgiVerificationService', () => {
 
   it('listPendingForAdmin mapea filas del repositorio', async () => {
     const updatedAt = new Date();
+    const documentSubmittedAt = new Date('2026-05-01');
     usersRepository.listPendingManualDgiVerifications.mockResolvedValue([
       {
         subjectType: VerificationSubjectType.COMPANY,
@@ -324,13 +384,89 @@ describe('DgiVerificationService', () => {
         rut: '214567890018',
         dgiRazonSocial: 'ACME',
         dgiVerificationDocKey: 'k1',
+        dgiVerificationMethod: 'TEXT_MATCH',
         updatedAt,
+        subjectDisplayName: 'ACME SA',
+        ownerUserId: 'u1',
+        ownerEmail: 'admin@acme.uy',
+        ownerFullName: 'Admin ACME',
+        documentSubmittedAt,
+        hasDocument: true,
       },
     ]);
 
     const rows = await service.listPendingForAdmin();
     expect(rows[0]?.subjectId).toBe('c1');
     expect(rows[0]?.verificationDocKey).toBe('k1');
+    expect(rows[0]?.verificationMethod).toBe('TEXT_MATCH');
+    expect(rows[0]?.subjectDisplayName).toBe('ACME SA');
+    expect(rows[0]?.hasDocument).toBe(true);
+  });
+
+  it('getAdminVerificationDocumentUrl devuelve URL firmada', async () => {
+    const docKey =
+      'users/u1/verification/00000000-0000-4000-8000-000000000001.pdf';
+    usersRepository.findDgiSubjectById.mockResolvedValue({
+      ...subjectBase,
+      subjectType: VerificationSubjectType.COMPANY,
+      dgiVerificationStatus: DgiVerificationStatus.PENDING_MANUAL_REVIEW,
+      dgiVerificationDocKey: docKey,
+    });
+
+    const res = await service.getAdminVerificationDocumentUrl(
+      VerificationSubjectType.COMPANY,
+      'c1',
+    );
+
+    expect(storage.generatePresignedGetUrl).toHaveBeenCalledWith(
+      docKey,
+      usersConfig().kycBucket,
+    );
+    expect(res.viewUrl).toBe('https://view.example/doc.pdf');
+    expect(res.expiresInSeconds).toBe(storageConfig().presignedUrlTtlSeconds);
+  });
+
+  it('getAdminVerificationDocumentUrl 404 sin documento', async () => {
+    usersRepository.findDgiSubjectById.mockResolvedValue({
+      ...subjectBase,
+      subjectType: VerificationSubjectType.COMPANY,
+      dgiVerificationStatus: DgiVerificationStatus.PENDING_MANUAL_REVIEW,
+      dgiVerificationDocKey: null,
+    });
+
+    await expect(
+      service.getAdminVerificationDocumentUrl(
+        VerificationSubjectType.COMPANY,
+        'c1',
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('getAdminVerificationDocumentUrl 404 si no existe subject', async () => {
+    usersRepository.findDgiSubjectById.mockResolvedValue(null);
+    await expect(
+      service.getAdminVerificationDocumentUrl(
+        VerificationSubjectType.COMPANY,
+        'missing',
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('getAdminVerificationDocumentUrl 409 si no está pendiente', async () => {
+    usersRepository.findDgiSubjectById.mockResolvedValue({
+      ...subjectBase,
+      subjectType: VerificationSubjectType.COMPANY,
+      dgiVerificationStatus: DgiVerificationStatus.VERIFIED_AUTO,
+      dgiVerificationDocKey:
+        'users/u1/verification/00000000-0000-4000-8000-000000000001.pdf',
+    });
+
+    await expect(
+      service.getAdminVerificationDocumentUrl(
+        VerificationSubjectType.COMPANY,
+        'c1',
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('adminReview aprueba sin razon social previa', async () => {

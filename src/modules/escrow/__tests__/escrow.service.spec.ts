@@ -28,15 +28,20 @@ describe('EscrowService', () => {
   };
   const cfg = { commissionRateBps: 500, silentAcceptanceBusinessDays: 2 };
   const payoutCfg = { mode: 'manual' as const, maxPayoutAttempts: 5 };
+  const processAudit = { record: vi.fn().mockResolvedValue(undefined) };
 
   const makeSvc = (
-    payout: { mode: 'manual' | 'gateway'; maxPayoutAttempts: number } = payoutCfg,
+    payout: {
+      mode: 'manual' | 'gateway';
+      maxPayoutAttempts: number;
+    } = payoutCfg,
   ) =>
     new EscrowService(
       repository as never,
       escrowPayout as never,
       prisma as never,
       exchangeRatesService as never,
+      processAudit as never,
       silentQueue as never,
       cfg as never,
       payout as never,
@@ -117,6 +122,13 @@ describe('EscrowService', () => {
     );
   });
 
+  it('releaseForJob relanza error desconocido no-Error', async () => {
+    repository.release.mockRejectedValue('db-string-fail');
+    await expect(makeSvc().releaseForJob('job-1', 'u1')).rejects.toBe(
+      'db-string-fail',
+    );
+  });
+
   it('releaseForJob INVALID_ESCROW_TRANSITION', async () => {
     repository.release.mockRejectedValue(
       new Error('INVALID_ESCROW_TRANSITION'),
@@ -192,9 +204,10 @@ describe('EscrowService', () => {
       status: JobStatus.CLOSED,
       clientId: 'c1',
     });
-    await makeSvc({ mode: 'gateway', maxPayoutAttempts: 5 }).processSilentAcceptance(
-      'job-1',
-    );
+    await makeSvc({
+      mode: 'gateway',
+      maxPayoutAttempts: 5,
+    }).processSilentAcceptance('job-1');
     expect(escrowPayout.executePayoutForJob).toHaveBeenCalled();
   });
 
@@ -220,9 +233,10 @@ describe('EscrowService', () => {
       status: JobStatus.COMPLETED,
       clientId: 'c1',
     });
-    await makeSvc({ mode: 'gateway', maxPayoutAttempts: 5 }).processSilentAcceptance(
-      'job-1',
-    );
+    await makeSvc({
+      mode: 'gateway',
+      maxPayoutAttempts: 5,
+    }).processSilentAcceptance('job-1');
     expect(escrowPayout.executePayoutForJob).not.toHaveBeenCalled();
   });
 

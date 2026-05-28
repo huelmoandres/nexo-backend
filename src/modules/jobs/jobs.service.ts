@@ -1,14 +1,23 @@
 import { Injectable } from '@nestjs/common';
-import { JobChangeOrderStatus, JobStatus, Role } from '@prisma/client';
+import {
+  AuditAction,
+  JobChangeOrderStatus,
+  JobStatus,
+  PayoutAttemptTrigger,
+  Role,
+} from '@prisma/client';
+import { BusinessAuditService } from '@common/observability';
 import { addBusinessDays } from 'date-fns';
 import { problemException } from '@common/errors/problem.factory';
 import { ExchangeRatesService } from '@modules/exchange-rates/exchange-rates.service';
 import { MoneyConversionService } from '@modules/exchange-rates/money-conversion.service';
 import { EscrowService } from '@modules/escrow/escrow.service';
+import { EscrowRepository } from '@modules/escrow/escrow.repository';
 import { EscrowPayoutService } from '@modules/escrow/escrow-payout.service';
 import { PayoutAccountsService } from '@modules/payout-accounts/payout-accounts.service';
 import { PayoutAccountsRepository } from '@modules/payout-accounts/payout-accounts.repository';
 import { escrowConfig } from '@config/escrow.config';
+import { payoutConfig } from '@config/payout.config';
 import { ConfigType } from '@nestjs/config';
 import { Inject } from '@nestjs/common';
 import type { CreateJobDto } from './dto/create-job.dto';
@@ -24,12 +33,33 @@ export class JobsService {
     private readonly exchangeRatesService: ExchangeRatesService,
     private readonly moneyConversion: MoneyConversionService,
     private readonly escrowService: EscrowService,
+    private readonly escrowRepository: EscrowRepository,
     private readonly escrowPayout: EscrowPayoutService,
     private readonly payoutAccounts: PayoutAccountsService,
-    private readonly payoutRepository: PayoutAccountsRepository,
+    private readonly _payoutRepository: PayoutAccountsRepository,
     @Inject(escrowConfig.KEY)
     private readonly escrowCfg: ConfigType<typeof escrowConfig>,
+    @Inject(payoutConfig.KEY)
+    private readonly payoutCfg: ConfigType<typeof payoutConfig>,
+    private readonly businessAudit: BusinessAuditService,
   ) {}
+
+  private async auditJobStatusChange(
+    userId: string,
+    jobId: string,
+    previous: JobStatus,
+    next: JobStatus,
+    action: AuditAction = AuditAction.JOB_STATUS_CHANGED,
+  ): Promise<void> {
+    await this.businessAudit.write({
+      userId,
+      action,
+      entityType: 'Job',
+      entityId: jobId,
+      previousState: JSON.stringify({ status: previous }),
+      newState: JSON.stringify({ status: next }),
+    });
+  }
 
   async create(supabaseUid: string, dto: CreateJobDto): Promise<JobDetail> {
     const user = await this.requireUser(supabaseUid, Role.CLIENT);
@@ -83,6 +113,28 @@ export class JobsService {
     return Promise.all(items.map((j) => this.enrichJob(j)));
   }
 
+  /** Trabajos asignados al perfil profesional del usuario (pro o admin de empresa). */
+  async listProfessionalMine(supabaseUid: string, page = 1, limit = 20) {
+    const user = await this.repository.findUserBySupabaseUid(supabaseUid);
+    if (
+      !user ||
+      (user.role !== Role.INDEPENDENT_PRO && user.role !== Role.COMPANY_ADMIN)
+    ) {
+      throw problemException('JOB_ACCESS_DENIED');
+    }
+    const profileId = user.professionalProfile?.id;
+    if (!profileId) {
+      throw problemException('JOB_ACCESS_DENIED');
+    }
+    const skip = (page - 1) * limit;
+    const items = await this.repository.listByProfessional(
+      profileId,
+      skip,
+      limit,
+    );
+    return Promise.all(items.map((j) => this.enrichJob(j)));
+  }
+
   async getById(supabaseUid: string, jobId: string) {
     const job = await this.requireJobAccess(supabaseUid, jobId);
     return this.enrichJob(job);
@@ -106,12 +158,16 @@ export class JobsService {
         profileId,
         payoutAccountId,
       );
-    await this.repository.assignProfessional(jobId, profileId);
-    await this.payoutRepository.assignJobPayout(jobId, resolvedPayoutId);
-    await this.escrowService.createPending(jobId);
-    await this.payoutRepository.setEscrowPayoutAccount(jobId, resolvedPayoutId);
-    const updated = await this.repository.findById(jobId);
-    return this.enrichJob(updated!);
+    const updated = await this.repository.acceptJobAtomically({
+      jobId,
+      professionalId: profileId,
+      payoutAccountId: resolvedPayoutId,
+      auditUserId: user.id,
+    });
+    if (!updated) {
+      throw problemException('JOB_ALREADY_ASSIGNED');
+    }
+    return this.enrichJob(updated);
   }
 
   async patchStatus(
@@ -125,11 +181,17 @@ export class JobsService {
     }
     const job = await this.requireJobAccess(supabaseUid, jobId);
     this.assertTransition(job, dto.status, user.role);
+    const previous = job.status;
     const updated = await this.repository.updateStatus(jobId, dto.status);
+    await this.auditJobStatusChange(user.id, jobId, previous, updated.status);
     return this.enrichJob(updated);
   }
 
   async complete(supabaseUid: string, jobId: string) {
+    const user = await this.repository.findUserBySupabaseUid(supabaseUid);
+    if (!user) {
+      throw problemException('JOB_ACCESS_DENIED');
+    }
     const job = await this.requireJobAccess(supabaseUid, jobId);
     if (job.status !== JobStatus.IN_PROGRESS) {
       throw problemException('JOB_INVALID_STATUS_TRANSITION');
@@ -143,6 +205,12 @@ export class JobsService {
       jobId,
       JobStatus.COMPLETED,
       { completedAt, approvalDeadline },
+    );
+    await this.auditJobStatusChange(
+      user.id,
+      jobId,
+      job.status,
+      JobStatus.COMPLETED,
     );
     await this.escrowService.scheduleSilentAcceptance(jobId, completedAt);
     return this.enrichJob(updated);
@@ -166,12 +234,56 @@ export class JobsService {
     if (!job || job.clientId !== user.id) {
       throw problemException(job ? 'JOB_ACCESS_DENIED' : 'JOB_NOT_FOUND');
     }
+    if (job.status === JobStatus.CLOSED) {
+      return this.enrichJob(job);
+    }
     if (job.status !== JobStatus.COMPLETED) {
       throw problemException('JOB_INVALID_STATUS_TRANSITION');
     }
-    await this.escrowService.releaseForJob(jobId, user.id);
-    const updated = await this.repository.updateStatus(jobId, JobStatus.CLOSED);
-    return this.enrichJob(updated);
+
+    await this.escrowService.cancelSilentAcceptance(jobId);
+    const manual = this.payoutCfg.mode === 'manual';
+
+    let result: { job: JobDetail; didTransition: boolean } | null;
+    try {
+      result = await this.repository.approveCompletionAtomically({
+        jobId,
+        clientId: user.id,
+        releaseInTx: async (tx) => {
+          await this.escrowRepository.release(jobId, user.id, tx, {
+            setPayoutPending: manual,
+          });
+          await this.escrowRepository.setBullJobId(jobId, null, tx);
+        },
+      });
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'INVALID_ESCROW_TRANSITION') {
+        throw problemException('INVALID_ESCROW_TRANSITION');
+      }
+      throw err;
+    }
+
+    if (!result) {
+      throw problemException('JOB_INVALID_STATUS_TRANSITION');
+    }
+
+    if (result.didTransition) {
+      await this.auditJobStatusChange(
+        user.id,
+        jobId,
+        JobStatus.COMPLETED,
+        JobStatus.CLOSED,
+      );
+      if (!manual) {
+        await this.escrowPayout.executePayoutForJob(
+          jobId,
+          user.id,
+          PayoutAttemptTrigger.RELEASE_FLOW,
+        );
+      }
+    }
+
+    return this.enrichJob(result.job);
   }
 
   async createChangeOrder(

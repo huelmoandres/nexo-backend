@@ -182,7 +182,8 @@ describe('GeoResolveService', () => {
     const riveraGeocoded = {
       latitude: -31.0,
       longitude: -55.55,
-      formattedAddress: 'Florencio Sánchez, 40000 Rivera, Departamento de Rivera, Uruguay',
+      formattedAddress:
+        'Florencio Sánchez, 40000 Rivera, Departamento de Rivera, Uruguay',
       placeId: 'ChIJ_rivera',
       components: [
         {
@@ -673,9 +674,11 @@ describe('GeoResolveService', () => {
         findStateByCountryAndParsedName: vi.fn().mockResolvedValue(rochaState),
         findCityByStateAndParsedName: vi.fn().mockResolvedValue(laPalomaCity),
         findCityById: vi.fn().mockResolvedValue(laPalomaCity),
-        findNeighborhoodsByCityId: vi.fn().mockResolvedValue([
-          { id: 'n-centro', name: 'Centro', slug: 'centro' },
-        ]),
+        findNeighborhoodsByCityId: vi
+          .fn()
+          .mockResolvedValue([
+            { id: 'n-centro', name: 'Centro', slug: 'centro' },
+          ]),
       },
       { reverseGeocode: vi.fn().mockResolvedValue(laPalomaGeocoded) },
     );
@@ -701,7 +704,10 @@ describe('GeoResolveService', () => {
       {},
       { reverseGeocode: vi.fn().mockResolvedValue(outsideUy) },
     );
-    const result = await service.resolve({ latitude: -34.9, longitude: -56.16 });
+    const result = await service.resolve({
+      latitude: -34.9,
+      longitude: -56.16,
+    });
     expect(result.resolved).toBe(false);
     expect(result.reason).toBe('OUTSIDE_URUGUAY');
     expect(geocoding.reverseGeocode).toHaveBeenCalled();
@@ -709,9 +715,9 @@ describe('GeoResolveService', () => {
 
   it('no upsertea barrio si la ciudad solo tiene un barrio en catálogo', async () => {
     const { service, repo } = makeService({
-      findNeighborhoodsByCityId: vi.fn().mockResolvedValue([
-        { id: 'n-only', name: 'Centro', slug: 'centro' },
-      ]),
+      findNeighborhoodsByCityId: vi
+        .fn()
+        .mockResolvedValue([{ id: 'n-only', name: 'Centro', slug: 'centro' }]),
     });
     const result = await service.resolve({ addressLine: 'Pocitos' });
     expect(result.geo?.neighborhoodId).toBeNull();

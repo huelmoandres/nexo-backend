@@ -32,7 +32,9 @@ describe('SubscriptionDunningBootstrap', () => {
   });
 
   it('logs warn when queue rejects with non-Error', async () => {
-    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    const warnSpy = vi
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => {});
     const queue = {
       add: vi.fn().mockRejectedValue('redis-down'),
     };

@@ -37,9 +37,40 @@ PROCESSING ──submit──▶ 409 DGI_VERIFICATION_IN_PROGRESS (salvo recuper
 | `POST` | `/users/verification/submit` | idem |
 | `GET` | `/users/verification/status?subjectType=` | idem |
 | `GET` | `/admin/verification/pending` | `SUPER_ADMIN` |
+| `GET` | `/admin/verification/:subjectType/:subjectId/document-url` | `SUPER_ADMIN` |
 | `POST` | `/admin/verification/:subjectType/:subjectId/review` | `SUPER_ADMIN` |
 
-### 3.1 `GET /users/verification/status`
+### 3.1 `GET /admin/verification/pending`
+
+Lista empresas y profesionales en `PENDING_MANUAL_REVIEW`, ordenados por `updatedAt` descendente.
+
+Respuesta (`PendingVerificationItemDto[]`):
+
+| Campo | Descripción |
+|-------|-------------|
+| `subjectType`, `subjectId` | `COMPANY` o `PROFESSIONAL` |
+| `rut`, `dgiRazonSocial` | Datos fiscales |
+| `verificationDocKey` | Key R2 del PDF (sin URL firmada en el listado) |
+| `updatedAt` | Última actualización del sujeto |
+| `verificationMethod` | p. ej. `TEXT_MATCH` |
+| `subjectDisplayName` | Empresa: `legalName ?? tradeName ?? name`; pro: `user.fullName` |
+| `ownerUserId`, `ownerEmail`, `ownerFullName` | Titular de la cuenta |
+| `documentSubmittedAt` | `createdAt` del `VerificationDocument` `RUT_PROOF` en `PENDING` |
+| `hasDocument` | `true` si existe `verificationDocKey` |
+
+### 3.2 `GET /admin/verification/:subjectType/:subjectId/document-url`
+
+URL firmada GET (bucket KYC, TTL según `presignedUrlTtlSeconds`, default 900 s) para abrir la constancia PDF en revisión.
+
+- Solo si el sujeto está en `PENDING_MANUAL_REVIEW`.
+- Requiere `dgiVerificationDocKey` válida (`VERIFICATION_DOC_KEY_PATTERN`).
+- `404` si sujeto no existe o no hay documento.
+
+Respuesta (`AdminVerificationDocumentUrlDto`): `viewUrl`, `expiresInSeconds`.
+
+### 3.3 `GET /users/verification/status`
+
+**Sin caché HTTP:** el endpoint responde con `Cache-Control: no-store` y `Pragma: no-cache` para que el cliente de polling (React Query) no reciba `304 Not Modified` y conserve un estado `PROCESSING` obsoleto.
 
 Respuesta (`VerificationStatusResponseDto`):
 
@@ -60,7 +91,7 @@ Respuesta (`VerificationStatusResponseDto`):
 
 | Cola | Job | Propósito |
 |------|-----|-----------|
-| `dgi-verify` | `verify-rut-document` | Procesamiento PDF (idempotente por `jobId: dgi-verify:{type}:{subjectId}`) |
+| `dgi-verify` | `verify-rut-document` | Procesamiento PDF; `jobId` fijo `dgi-verify:{type}:{subjectId}` deduplica solo mientras el job está en curso |
 | `dgi-maintenance` | `dgi-stale-watchdog` | Cron `DGI_STALE_WATCHDOG_CRON` (default `*/5 * * * *`) |
 | `dgi-maintenance` | `dgi-orphan-cleanup` | Cron `DGI_ORPHAN_CLEANUP_CRON` (default `0 3 * * *`) |
 
@@ -70,7 +101,11 @@ Si `dgiVerificationStatus = PROCESSING` y `updatedAt` &lt; `now - DGI_PROCESSING
 
 El worker `dgi-verify` también rechaza en `failed` (reintentos agotados) y en `catch` global no manejado.
 
-### 5.2 Variables de entorno
+### 5.2 Re-submit y cola `dgi-verify`
+
+Antes de `verifyQueue.add`, si existe un job con el mismo `jobId` en estado `completed` o `failed`, se elimina (`job.remove()`) para liberar el id. Así un re-submit tras `REJECTED` siempre encola un worker nuevo. Si el job previo sigue `waiting` | `active` | `delayed`, no se encola otro (el submit ya devuelve `409` cuando el sujeto está en `PROCESSING`).
+
+### 5.3 Variables de entorno
 
 | Variable | Default |
 |----------|---------|

@@ -29,10 +29,13 @@ constructor(private readonly configService: ConfigService) {
 - **Tests unitarios:** Pasar un objeto plano `{ clave: valor }` directamente al constructor, sin instanciar `ConfigService`.
 - **Validación en startup:** Cada archivo de config valida o aplica defaults seguros antes de exponerse. El `AppModule` registra todos los configs en `ConfigModule.forRoot({ isGlobal: true, load: [...configs] })`.
 
-## 3. Logging Profesional
-- **Motor:** Pino.
-- **Uso:** Emplear el `Logger` nativo de NestJS. No se permite `console.log` en ningún archivo dentro de `src/`.
-- **Observabilidad:** Los errores 500 y excepciones de negocio críticas se reportan automáticamente a Sentry.
+## 3. Logging y auditoría
+- **Motor:** Pino (`AppLoggerModule`) + `Logger` de NestJS en dominio. Prohibido `console.log` en `src/`.
+- **Correlation ID:** header `x-correlation-id`; ver `@common/observability` y [logging-audit.md](logging-audit.md).
+- **Logs estructurados:** campo `op` del [catálogo](../../.harness/specs/observability-catalog.md); incluir `phase` y `correlationId` en flujos críticos.
+- **AuditLog:** mutaciones de negocio (dinero, roles) — `BusinessAuditService`.
+- **ProcessAudit:** webhooks y workers — `ProcessAuditService` con payloads sanitizados.
+- **Sentry:** errores 5xx vía `GlobalExceptionFilter`; scope con `correlationId`.
 
 ## 4. Validaciones
 - **Librería:** `class-validator` con decoradores.

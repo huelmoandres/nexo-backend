@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import {
+  AuditAction,
   JobChangeOrderStatus,
   JobStatus,
-  type Job,
   type Prisma,
 } from '@prisma/client';
 import { PrismaService } from '@prisma/prisma.service';
@@ -113,6 +113,16 @@ export class JobsRepository {
     });
   }
 
+  listByProfessional(professionalId: string, skip: number, take: number) {
+    return this.prisma.job.findMany({
+      where: { professionalId, deletedAt: null },
+      include: jobInclude,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take,
+    });
+  }
+
   async assignProfessional(
     jobId: string,
     professionalId: string,
@@ -124,6 +134,62 @@ export class JobsRepository {
         status: JobStatus.ACCEPTED,
       },
       include: jobInclude,
+    });
+  }
+
+  async acceptJobAtomically(input: {
+    jobId: string;
+    professionalId: string;
+    payoutAccountId: string;
+    auditUserId: string;
+  }): Promise<JobDetail | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.job.updateMany({
+        where: {
+          id: input.jobId,
+          status: JobStatus.PENDING,
+          deletedAt: null,
+        },
+        data: {
+          professionalId: input.professionalId,
+          payoutAccountId: input.payoutAccountId,
+          status: JobStatus.ACCEPTED,
+        },
+      });
+
+      if (updated.count !== 1) {
+        return null;
+      }
+
+      await tx.escrowTransaction.upsert({
+        where: { jobId: input.jobId },
+        update: { payoutAccountId: input.payoutAccountId },
+        create: {
+          jobId: input.jobId,
+          status: 'PENDING',
+          amountCents: 0,
+          payoutAccountId: input.payoutAccountId,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: input.auditUserId,
+          action: AuditAction.JOB_ASSIGNED,
+          entityType: 'Job',
+          entityId: input.jobId,
+          previousState: JSON.stringify({ status: JobStatus.PENDING }),
+          newState: JSON.stringify({
+            status: JobStatus.ACCEPTED,
+            professionalId: input.professionalId,
+          }),
+        },
+      });
+
+      return tx.job.findUnique({
+        where: { id: input.jobId },
+        include: jobInclude,
+      });
     });
   }
 
@@ -139,6 +205,55 @@ export class JobsRepository {
       where: { id: jobId },
       data: { status, ...extra },
       include: jobInclude,
+    });
+  }
+
+  /**
+   * Cierra el job (COMPLETED → CLOSED) y ejecuta `releaseInTx` en la misma transacción.
+   * Idempotente si el job ya está CLOSED para el mismo cliente.
+   */
+  async approveCompletionAtomically(input: {
+    jobId: string;
+    clientId: string;
+    releaseInTx: (tx: Prisma.TransactionClient) => Promise<void>;
+  }): Promise<{ job: JobDetail; didTransition: boolean } | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.job.updateMany({
+        where: {
+          id: input.jobId,
+          clientId: input.clientId,
+          status: JobStatus.COMPLETED,
+          deletedAt: null,
+        },
+        data: { status: JobStatus.CLOSED },
+      });
+
+      if (updated.count !== 1) {
+        const existing = await tx.job.findFirst({
+          where: {
+            id: input.jobId,
+            clientId: input.clientId,
+            status: JobStatus.CLOSED,
+            deletedAt: null,
+          },
+          include: jobInclude,
+        });
+        if (!existing) {
+          return null;
+        }
+        return { job: existing, didTransition: false };
+      }
+
+      await input.releaseInTx(tx);
+
+      const job = await tx.job.findUnique({
+        where: { id: input.jobId },
+        include: jobInclude,
+      });
+      if (!job) {
+        return null;
+      }
+      return { job, didTransition: true };
     });
   }
 

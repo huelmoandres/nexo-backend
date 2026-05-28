@@ -96,10 +96,16 @@ import { PortfolioBullInvariantService } from './services/portfolio-bull-invaria
     {
       provide: PORTFOLIO_REDIS_CLIENT,
       inject: [authConfig.KEY],
-      useFactory: (config: ConfigType<typeof authConfig>): Redis =>
-        new Redis(config.redisUrl, {
+      useFactory: (config: ConfigType<typeof authConfig>): Redis => {
+        const redis = new Redis(config.redisUrl, {
           maxRetriesPerRequest: config.redisMaxRetriesPerRequest,
-        }),
+          enableReadyCheck: false,
+          retryStrategy: (attempt) =>
+            attempt > 5 ? null : Math.min(attempt * 250, 2000),
+        });
+        redis.on('error', () => undefined);
+        return redis;
+      },
     },
   ],
   exports: [PortfolioService],

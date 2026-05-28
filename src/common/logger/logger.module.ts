@@ -1,14 +1,29 @@
 import { Module, RequestMethod } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { LoggerModule } from 'nestjs-pino';
 
 const HEALTH_PATHS = new Set(['/health/live', '/health/ready']);
+const CORRELATION_HEADER = 'x-correlation-id';
 
 @Module({
   imports: [
     LoggerModule.forRoot({
       forRoutes: [{ path: '/{*path}', method: RequestMethod.ALL }],
       pinoHttp: {
+        genReqId: (req: IncomingMessage) => {
+          const raw = req.headers[CORRELATION_HEADER];
+          const incoming =
+            typeof raw === 'string' && raw.trim().length > 0
+              ? raw.trim()
+              : undefined;
+          return incoming ?? randomUUID();
+        },
+        customProps: (req: IncomingMessage) => ({
+          correlationId:
+            (req as IncomingMessage & { id?: string }).id ??
+            req.headers[CORRELATION_HEADER],
+        }),
         level:
           process.env['LOG_LEVEL'] ??
           (process.env['NODE_ENV'] === 'production' ? 'info' : 'debug'),

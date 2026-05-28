@@ -19,4 +19,25 @@ export class PendingVerificationItemDto {
 
   @ApiProperty()
   updatedAt!: Date;
+
+  @ApiPropertyOptional()
+  verificationMethod?: string | null;
+
+  @ApiProperty()
+  subjectDisplayName!: string;
+
+  @ApiProperty()
+  ownerUserId!: string;
+
+  @ApiProperty()
+  ownerEmail!: string;
+
+  @ApiProperty()
+  ownerFullName!: string;
+
+  @ApiPropertyOptional()
+  documentSubmittedAt?: Date | null;
+
+  @ApiProperty()
+  hasDocument!: boolean;
 }

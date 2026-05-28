@@ -25,6 +25,7 @@ import { SupabaseAuthGuard } from '@modules/auth/guards/supabase-auth.guard';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './guards/roles.guard';
 import { AdminReviewVerificationDto } from './dto/admin-review-verification.dto';
+import { AdminVerificationDocumentUrlDto } from './dto/admin-verification-document-url.dto';
 import { PendingVerificationItemDto } from './dto/pending-verification-item.dto';
 import { VerificationStatusResponseDto } from './dto/verification-status-response.dto';
 import { DgiVerificationService } from './services/dgi-verification.service';
@@ -48,6 +49,25 @@ export class AdminVerificationController {
   @ApiResponse({ status: 200, type: [PendingVerificationItemDto] })
   async listPending(): Promise<PendingVerificationItemDto[]> {
     return this.dgiVerificationService.listPendingForAdmin();
+  }
+
+  @Get(':subjectType/:subjectId/document-url')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(Role.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'URL firmada para ver la constancia PDF en revisión manual',
+  })
+  @ApiParam({ name: 'subjectType', enum: VerificationSubjectType })
+  @ApiParam({ name: 'subjectId', type: String })
+  @ApiResponse({ status: 200, type: AdminVerificationDocumentUrlDto })
+  async getDocumentUrl(
+    @Param('subjectType') subjectType: VerificationSubjectType,
+    @Param('subjectId') subjectId: string,
+  ): Promise<AdminVerificationDocumentUrlDto> {
+    return this.dgiVerificationService.getAdminVerificationDocumentUrl(
+      subjectType,
+      subjectId,
+    );
   }
 
   @Post(':subjectType/:subjectId/review')

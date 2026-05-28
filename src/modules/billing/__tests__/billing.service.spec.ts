@@ -18,6 +18,7 @@ describe('BillingService', () => {
       update: vi.fn(),
     },
     company: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+    $transaction: vi.fn(),
   };
   const billingRepo = {
     findByProfessionalProfileId: vi.fn(),
@@ -54,12 +55,43 @@ describe('BillingService', () => {
     provider: 'mercadopago' as const,
     mercadoPagoAccessToken: 't',
     mercadoPagoWebhookSecret: 'secret',
+    webhookIdempotencyStaleMs: 120_000,
+  };
+  const auditContext = {
+    getCorrelationId: vi.fn().mockReturnValue('test-correlation'),
+  };
+  const processAudit = {
+    record: vi.fn().mockResolvedValue(undefined),
+  };
+  const webhookIdempotency = {
+    begin: vi.fn().mockResolvedValue('new' as const),
+    complete: vi.fn().mockResolvedValue(undefined),
+    abandon: vi.fn().mockResolvedValue(undefined),
   };
 
   let service: BillingService;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    webhookIdempotency.begin.mockResolvedValue('new');
+    prisma.$transaction.mockImplementation(
+      async (fn: (tx: unknown) => unknown) => {
+        const tx = {
+          billingSubscription: {
+            create: vi.fn(({ data }: { data: unknown }) =>
+              billingRepo.create(data),
+            ),
+            update: vi.fn(
+              ({ where, data }: { where: { id: string }; data: unknown }) =>
+                billingRepo.update(where.id, data),
+            ),
+          },
+          professionalProfile: prisma.professionalProfile,
+          company: prisma.company,
+        };
+        return fn(tx);
+      },
+    );
     service = new BillingService(
       prisma as never,
       billingRepo as never,
@@ -69,6 +101,9 @@ describe('BillingService', () => {
       cfg as never,
       payCfg as never,
       mpClient,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
     );
     prisma.user.findUnique.mockResolvedValue({
       id: 'u1',
@@ -96,6 +131,31 @@ describe('BillingService', () => {
       result.plans.find((p) => p.code === SubscriptionPlan.BUSINESS)
         ?.amountUsdCents,
     ).toBe(5000);
+  });
+
+  it('subscribe compensa MP si falla persistencia en DB', async () => {
+    billingRepo.create.mockRejectedValue(new Error('db down'));
+    await expect(
+      service.subscribe('uid', { plan: SubscriptionPlan.PRO }),
+    ).rejects.toMatchObject({ response: { code: 'BILLING_SUBSCRIBE_FAILED' } });
+    expect(mpClient.cancelPreapproval).toHaveBeenCalledWith('mp-pre-test');
+  });
+
+  it('cancel tolera preapproval ya cancelado en MP', async () => {
+    const row = billingSubscriptionFactory.build({
+      mpPreapprovalId: 'mp-1',
+      status: SubscriptionBillingStatus.ACTIVE,
+    });
+    billingRepo.findByProfessionalProfileId.mockResolvedValue(row);
+    vi.mocked(mpClient.cancelPreapproval).mockRejectedValue(
+      new Error('preapproval already cancelled'),
+    );
+    billingRepo.update.mockResolvedValue({
+      ...row,
+      status: SubscriptionBillingStatus.CANCELED,
+    });
+    await service.cancelSubscription('uid');
+    expect(billingRepo.update).toHaveBeenCalled();
   });
 
   it('subscribe creates TRIALING subscription', async () => {
@@ -192,6 +252,9 @@ describe('BillingService', () => {
       noPlanCfg as never,
       payCfg as never,
       mpClient,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
     );
     billingRepo.create.mockResolvedValue(billingSubscriptionFactory.build());
     await svc.subscribe('uid', { plan: SubscriptionPlan.BUSINESS });
@@ -204,6 +267,37 @@ describe('BillingService', () => {
     );
     await service.subscribe('uid', { plan: SubscriptionPlan.PRO });
     expect(mpClient.createPreapprovalPlan).not.toHaveBeenCalled();
+  });
+
+  it('subscribe compensate no-op cuando no hay mpPreapprovalId', async () => {
+    vi.mocked(mpClient.createPreapproval).mockResolvedValueOnce({
+      id: undefined as unknown as string,
+      initPoint: 'https://mercadopago.test/no-id',
+      status: 'pending',
+    });
+    billingRepo.create.mockRejectedValueOnce(new Error('db down'));
+    await expect(
+      service.subscribe('uid', { plan: SubscriptionPlan.PRO }),
+    ).rejects.toMatchObject({ response: { code: 'BILLING_SUBSCRIBE_FAILED' } });
+    expect(mpClient.cancelPreapproval).not.toHaveBeenCalled();
+  });
+
+  it('subscribe compensate loguea cuando cancelPreapproval falla con no-Error', async () => {
+    billingRepo.create.mockRejectedValueOnce(new Error('db down'));
+    vi.mocked(mpClient.cancelPreapproval).mockRejectedValueOnce('cancel-fail');
+    await expect(
+      service.subscribe('uid', { plan: SubscriptionPlan.PRO }),
+    ).rejects.toMatchObject({ response: { code: 'BILLING_SUBSCRIBE_FAILED' } });
+    expect(mpClient.cancelPreapproval).toHaveBeenCalled();
+  });
+
+  it('subscribe falla con detalle genérico en producción si persistencia rompe con no-Error', async () => {
+    billingRepo.create.mockRejectedValueOnce('db-string');
+    vi.stubEnv('NODE_ENV', 'production');
+    await expect(
+      service.subscribe('uid', { plan: SubscriptionPlan.PRO }),
+    ).rejects.toMatchObject({ response: { code: 'BILLING_SUBSCRIBE_FAILED' } });
+    vi.unstubAllEnvs();
   });
 
   it('subscribe fails when rate stale', async () => {
@@ -242,6 +336,58 @@ describe('BillingService', () => {
       response: { code: 'BILLING_CANCEL_FAILED' },
     });
     vi.unstubAllEnvs();
+  });
+
+  it('cancel retorna SERVICE_UNAVAILABLE si falla update de DB post-MP', async () => {
+    const row = billingSubscriptionFactory.build({
+      status: SubscriptionBillingStatus.ACTIVE,
+      mpPreapprovalId: 'mp-1',
+    });
+    billingRepo.findByProfessionalProfileId.mockResolvedValue(row);
+    vi.mocked(mpClient.cancelPreapproval).mockResolvedValue(undefined);
+    billingRepo.update.mockRejectedValueOnce('db-update-fail');
+    await expect(service.cancelSubscription('uid')).rejects.toMatchObject({
+      response: { code: 'SERVICE_UNAVAILABLE' },
+    });
+  });
+
+  it('cancel retorna SERVICE_UNAVAILABLE si falla update de DB post-MP con Error', async () => {
+    const row = billingSubscriptionFactory.build({
+      status: SubscriptionBillingStatus.ACTIVE,
+      mpPreapprovalId: 'mp-1',
+    });
+    billingRepo.findByProfessionalProfileId.mockResolvedValue(row);
+    vi.mocked(mpClient.cancelPreapproval).mockResolvedValue(undefined);
+    billingRepo.update.mockRejectedValueOnce(new Error('db-update-error'));
+    await expect(service.cancelSubscription('uid')).rejects.toMatchObject({
+      response: { code: 'SERVICE_UNAVAILABLE' },
+    });
+  });
+
+  it('webhook retorna ok si begin ya completed', async () => {
+    webhookIdempotency.begin.mockResolvedValueOnce('completed');
+    await expect(
+      service.handleMercadoPagoSubscriptionWebhook(
+        {},
+        { type: 'subscription_preapproval' },
+        '99',
+        undefined,
+        'subscription_preapproval',
+      ),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it('webhook lanza SERVICE_UNAVAILABLE si begin in_progress', async () => {
+    webhookIdempotency.begin.mockResolvedValueOnce('in_progress');
+    await expect(
+      service.handleMercadoPagoSubscriptionWebhook(
+        {},
+        { type: 'subscription_preapproval' },
+        '99',
+        undefined,
+        'subscription_preapproval',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'SERVICE_UNAVAILABLE' } });
   });
 
   it('webhook IPN legacy ACK without signature', async () => {
@@ -467,6 +613,9 @@ describe('BillingService', () => {
       cfg as never,
       mockPay as never,
       mpClient,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
     );
     await expect(
       svc.handleMercadoPagoSubscriptionWebhook(
@@ -584,7 +733,9 @@ describe('BillingService', () => {
     ).rejects.toMatchObject({ response: { code: 'BILLING_SUBSCRIBE_FAILED' } });
 
     vi.stubEnv('NODE_ENV', 'production');
-    vi.mocked(mpClient.createPreapproval).mockRejectedValue(new Error('MP down'));
+    vi.mocked(mpClient.createPreapproval).mockRejectedValue(
+      new Error('MP down'),
+    );
     await expect(
       service.subscribe('uid', { plan: SubscriptionPlan.PRO }),
     ).rejects.toMatchObject({
@@ -603,6 +754,9 @@ describe('BillingService', () => {
       cfg as never,
       { ...payCfg, provider: 'mock' as const } as never,
       mpClient,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
     );
     await expect(
       svc.subscribe('uid', { plan: SubscriptionPlan.PRO }),
@@ -694,13 +848,15 @@ describe('BillingService', () => {
       'fetch',
       vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }),
     );
-    await service.handleMercadoPagoSubscriptionWebhook(
-      {},
-      { type: 'payment' },
-      'pay-fail',
-      undefined,
-      'payment',
-    );
+    await expect(
+      service.handleMercadoPagoSubscriptionWebhook(
+        {},
+        { type: 'payment' },
+        'pay-fail',
+        undefined,
+        'payment',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'SERVICE_UNAVAILABLE' } });
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -918,6 +1074,48 @@ describe('BillingService', () => {
     expect(result).toEqual({ ok: true });
   });
 
+  it('webhook usa topic unknown cuando body/query no incluyen topic', async () => {
+    const dataId = 'unknown-topic-id';
+    const requestId = 'req-unknown-topic';
+    const ts = '1704908013';
+    const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
+    const v1 = createHmac('sha256', payCfg.mercadoPagoWebhookSecret)
+      .update(manifest)
+      .digest('hex');
+    await expect(
+      service.handleMercadoPagoSubscriptionWebhook(
+        {
+          'x-signature': `ts=${ts},v1=${v1}`,
+          'x-request-id': requestId,
+        },
+        { data: { id: dataId } },
+        undefined,
+        dataId,
+        undefined,
+      ),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it('payment webhook tolera payload no objeto en json()', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => 'not-an-object',
+      }),
+    );
+    await expect(
+      service.handleMercadoPagoSubscriptionWebhook(
+        {},
+        { type: 'payment' },
+        'pay-no-object',
+        undefined,
+        'payment',
+      ),
+    ).resolves.toEqual({ ok: true });
+    vi.unstubAllGlobals();
+  });
+
   it('subscribe creates MP plan when env plan id missing', async () => {
     const dynamicCfg = {
       ...cfg,
@@ -933,6 +1131,9 @@ describe('BillingService', () => {
       dynamicCfg as never,
       payCfg as never,
       mpClient,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
     );
     vi.mocked(mpClient.createPreapprovalPlan).mockResolvedValue({
       id: 'new-plan',
@@ -1177,7 +1378,9 @@ describe('BillingService', () => {
       'payment',
     );
     expect(billingRepo.update).not.toHaveBeenCalled();
-    expect(notifications.notifySubscriptionPaymentFailed).not.toHaveBeenCalled();
+    expect(
+      notifications.notifySubscriptionPaymentFailed,
+    ).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 

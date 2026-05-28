@@ -286,6 +286,39 @@ enum AuditAction {
   PORTFOLIO_ADMIN_MODERATED    // SUPER_ADMIN resolvió la cola de moderación manual
 }
 
+enum ProcessAuditSource {
+  HTTP
+  WEBHOOK
+  WORKER
+  CRON
+  SYSTEM
+}
+
+enum ProcessAuditOutcome {
+  SUCCESS
+  FAILURE
+  SKIPPED
+}
+
+enum ProcessAuditDomain {
+  PAYMENTS
+  BILLING
+  ESCROW
+  PAYOUT
+  JOBS
+  DGI
+  PORTFOLIO
+  AUTH
+  EXCHANGE_RATES
+  OTHER
+}
+
+enum PaymentWebhookIdempotencyStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 enum PortfolioItemStatus {
   DRAFT                  // Creado sin fotos o no publicado todavía
   PUBLISHED              // Visible al público
@@ -1250,6 +1283,54 @@ model AuditLog {
   @@index([entityId])
   @@index([companyId])
   @@index([userId])
+}
+
+/// Auditoría de integración: webhooks, workers, fallos técnicos (payload sanitizado).
+model ProcessAudit {
+  id            String              @id @default(uuid())
+  correlationId String
+  domain        ProcessAuditDomain
+  operation     String
+  outcome       ProcessAuditOutcome
+  source        ProcessAuditSource
+  severity      String
+
+  userId     String?
+  entityType String?
+  entityId   String?
+
+  httpStatus      Int?
+  problemCode     String?
+  errorMessage    String? @db.Text
+  durationMs      Int?
+  requestSummary  Json?
+  responseSummary Json?
+  jobId           String?
+  externalRef     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([correlationId])
+  @@index([domain, operation, createdAt])
+  @@index([entityId])
+  @@index([createdAt])
+}
+
+/// Dedup de webhooks de pagos (MP / mock) — evita doble fondeo y re-procesar notificaciones.
+model PaymentWebhookIdempotency {
+  idempotencyKey    String                          @id
+  provider          String
+  operation         String
+  status            PaymentWebhookIdempotencyStatus
+  externalRef       String?
+  jobId             String?
+  providerReference String?
+  outcomeSummary    Json?
+  createdAt         DateTime                        @default(now()) @db.Timestamptz
+  processedAt       DateTime?                       @db.Timestamptz
+
+  @@index([status, createdAt])
+  @@index([jobId])
 }
 
 /// Historial persistente de notificaciones en-app (la campana).

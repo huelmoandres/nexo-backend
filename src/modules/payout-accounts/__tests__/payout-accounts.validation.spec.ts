@@ -226,25 +226,13 @@ describe('payout-accounts.validation', () => {
       ),
     ).toBe('xy***@example.com');
     expect(
-      maskTransferIdentifier(
-        PayoutIdentifierType.MP_EMAIL,
-        '@nodomain',
-        null,
-      ),
+      maskTransferIdentifier(PayoutIdentifierType.MP_EMAIL, '@nodomain', null),
     ).toBe('***@nodomain');
     expect(
-      maskTransferIdentifier(
-        PayoutIdentifierType.MP_EMAIL,
-        '@',
-        null,
-      ),
+      maskTransferIdentifier(PayoutIdentifierType.MP_EMAIL, '@', null),
     ).toBe('***@');
     expect(
-      maskTransferIdentifier(
-        PayoutIdentifierType.MP_EMAIL,
-        'ab@c.com',
-        null,
-      ),
+      maskTransferIdentifier(PayoutIdentifierType.MP_EMAIL, 'ab@c.com', null),
     ).toBe('ab***@c.com');
   });
 

@@ -120,7 +120,10 @@ export class GeoRepository {
     });
   }
 
-  async findNeighborhoodByCityAndParsedName(cityId: string, parsedName: string) {
+  async findNeighborhoodByCityAndParsedName(
+    cityId: string,
+    parsedName: string,
+  ) {
     for (const slug of geoNameMatchSlugs(parsedName)) {
       const found = await this.findNeighborhoodByCityAndSlug(cityId, slug);
       if (found) return found;
@@ -129,8 +132,9 @@ export class GeoRepository {
     const target = normalizeGeoNameForCompare(parsedName);
     const neighborhoods = await this.findNeighborhoodsByCityId(cityId);
     return (
-      neighborhoods.find((n) => normalizeGeoNameForCompare(n.name) === target) ??
-      null
+      neighborhoods.find(
+        (n) => normalizeGeoNameForCompare(n.name) === target,
+      ) ?? null
     );
   }
 

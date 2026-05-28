@@ -162,23 +162,69 @@ Tipos permitidos: `kyc | evidence_before | evidence_after | receipt | profile | 
 
 ---
 
+## 7.1 CORS en buckets R2 (subidas desde el navegador)
+
+Las URLs prefirmadas de **PUT** apuntan al endpoint S3 de Cloudflare (`*.r2.cloudflarestorage.com`). El frontend (`localhost:5173`, `localhost:5174`, producción) hace el `PUT` **directo al bucket**, no pasa por Nest.
+
+El `CORS_ORIGINS` del backend **solo** aplica a `http://localhost:3000/api`. Si el bucket R2 no tiene política CORS, el navegador bloquea la subida con error de CORS aunque la URL firmada sea válida.
+
+**Configurar en Cloudflare:** R2 → bucket (`nexos-public` para portfolio/perfil; repetir en `nexos-kyc` si subís KYC desde el browser) → **Settings → CORS policy**.
+
+Ejemplo para desarrollo + producción:
+
+```json
+[
+  {
+    "AllowedOrigins": [
+      "http://localhost:5173",
+      "http://localhost:5174",
+      "https://app.nexos.uy",
+      "https://nexos.uy"
+    ],
+    "AllowedMethods": ["GET", "PUT", "HEAD"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Tras guardar, esperá unos segundos y reintentá la subida. La **lectura** pública usa otra URL (`pub-….r2.dev` o CDN); el CORS del bucket afecta sobre todo **PUT/GET al API S3** del bucket.
+
+### 7.2 URL pública del bucket (`nexos-public`)
+
+Cada bucket con **Public access** habilitado obtiene su propio dominio `https://pub-<hash>.r2.dev`. Ese valor debe configurarse en:
+
+- Backend: `R2_PUBLIC_BASE_URL` (sin barra final).
+- Frontend: `VITE_PUBLIC_STORAGE_BASE_URL` (mismo valor).
+
+Si el dominio no corresponde al bucket donde están los objetos, las miniaturas en la vidriera devuelven 404 aunque la subida por presign haya sido correcta. El editor de portfolio (`GET /portfolio/items/:id/mine`) incluye además `previewUrl` (GET firmado) para que el dueño vea las fotos sin depender del dominio público.
+
+---
+
 ## 8. Configuración (src/config/storage.config.ts)
 
 ```typescript
-export default registerAs('storage', () => ({
-  endpoint: process.env.S3_ENDPOINT,
-  accessKeyId: process.env.S3_ACCESS_KEY_ID,
-  secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
-  buckets: {
-    public: process.env.S3_BUCKET_PUBLIC || 'nexos-public',
-    evidencias: process.env.S3_BUCKET_EVIDENCIAS || 'nexos-evidencias',
-    kyc: process.env.S3_BUCKET_KYC || 'nexos-kyc',
-    internal: process.env.S3_BUCKET_INTERNAL || 'nexos-internal',
-  },
-  presignedGetTtlSeconds: 900,   // 15 minutos
-  presignedPutTtlSeconds: 300,   // 5 minutos para subir
+export const storageConfig = registerAs('storage', () => ({
+  r2AccountId: process.env['R2_ACCOUNT_ID'] ?? '',
+  r2Endpoint:
+    process.env['R2_ENDPOINT'] ??
+    (process.env['R2_ACCOUNT_ID']
+      ? `https://${process.env['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com`
+      : ''),
+  r2AccessKeyId: process.env['R2_ACCESS_KEY_ID'] ?? '',
+  r2SecretAccessKey: process.env['R2_SECRET_ACCESS_KEY'] ?? '',
+  r2BucketPublic: process.env['R2_BUCKET_PUBLIC'] ?? 'nexos-public',
+  r2PublicBaseUrl: process.env['R2_PUBLIC_BASE_URL'] ?? '',
+  r2BucketKyc: process.env['R2_BUCKET_KYC'] ?? 'nexos-kyc',
+  presignedUrlTtlSeconds: parseInt(
+    process.env['STORAGE_PRESIGNED_URL_TTL'] ?? '900',
+    10,
+  ),
 }));
 ```
+
+Variables históricas `S3_*` (por ejemplo `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`) quedan deprecadas en la documentación y no deben usarse para nuevas configuraciones.
 
 ---
 

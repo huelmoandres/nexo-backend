@@ -11,6 +11,9 @@ const AI_LOCK_TTL_MARGIN_MS = 15_000;
  *   - `AI_POLICY_VERSION`       — versión de política de moderación (invalida caché).
  *   - `AI_OPENAI_API_KEY`       — API key de OpenAI.
  *   - `AI_AWS_REGION`           — región AWS Rekognition (default: `us-east-1`).
+ *   - `AI_AWS_ACCESS_KEY_ID`    — Access Key para Rekognition (opcional; fallback `AWS_ACCESS_KEY_ID`).
+ *   - `AI_AWS_SECRET_ACCESS_KEY`— Secret Key para Rekognition (opcional; fallback `AWS_SECRET_ACCESS_KEY`).
+ *   - `AI_AWS_SESSION_TOKEN`    — Session token opcional (fallback `AWS_SESSION_TOKEN`).
  *   - `AI_PROVIDER_TIMEOUT_MS`  — timeout llamada al proveedor (default: `30000`).
  *   - `AI_CACHE_TTL_SECONDS`    — TTL Redis L1 (default: `604800`).
  *   - `AI_CACHE_PG_ENABLED`     — persistencia L2 PostgreSQL (default: `true`).
@@ -24,6 +27,18 @@ export const aiConfig = registerAs('ai', () => ({
 
   aws: {
     region: process.env['AI_AWS_REGION'] ?? 'us-east-1',
+    accessKeyId:
+      process.env['AI_AWS_ACCESS_KEY_ID'] ??
+      process.env['AWS_ACCESS_KEY_ID'] ??
+      '',
+    secretAccessKey:
+      process.env['AI_AWS_SECRET_ACCESS_KEY'] ??
+      process.env['AWS_SECRET_ACCESS_KEY'] ??
+      '',
+    sessionToken:
+      process.env['AI_AWS_SESSION_TOKEN'] ??
+      process.env['AWS_SESSION_TOKEN'] ??
+      '',
   },
 
   provider: {

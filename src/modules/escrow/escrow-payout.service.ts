@@ -124,12 +124,31 @@ export class EscrowPayoutService {
     );
     const destination =
       this.payoutAccounts.gatewayDestinationFromAccount(account);
-    const result = await this.paymentGateway.issuePayout({
-      escrowTransactionId: escrow.id,
-      amountCents: escrow.amountCents,
-      netAmountCents: escrow.netAmountCents,
-      destination,
-    });
+    const idempotencyKey = `payout:${escrow.id}:attempt:${attemptNumber}`;
+    let result: Awaited<ReturnType<IPaymentGateway['issuePayout']>>;
+    try {
+      result = await this.paymentGateway.issuePayout({
+        escrowTransactionId: escrow.id,
+        amountCents: escrow.amountCents,
+        netAmountCents: escrow.netAmountCents,
+        destination,
+        idempotencyKey,
+      });
+    } catch (err: unknown) {
+      const failureMessage =
+        err instanceof Error ? err.message : 'issuePayout failed';
+      await this.escrowRepository.completePayoutAttempt(
+        attempt.id,
+        escrow.id,
+        {
+          status: PayoutAttemptStatus.FAILED,
+          failureCode: 'PAYOUT_GATEWAY_ERROR',
+          failureMessage,
+        },
+        auditUserId,
+      );
+      throw err;
+    }
     if (result.success) {
       await this.escrowRepository.completePayoutAttempt(
         attempt.id,
@@ -348,5 +367,106 @@ export class EscrowPayoutService {
       PayoutAttemptTrigger.ADMIN_RETRY,
       payoutAccountId,
     );
+  }
+
+  async recoverPendingGatewayPayouts(): Promise<{ recovered: number }> {
+    if (this.isManualMode) {
+      return { recovered: 0 };
+    }
+    const batchSize = Math.max(1, this.payoutCfg.recoveryBatchSize ?? 25);
+    const rows = await this.escrowRepository.listRecoverableGatewayPayouts({
+      take: batchSize,
+    });
+    let recovered = 0;
+    for (const row of rows) {
+      if (!row.job?.id || !row.job.clientId) {
+        continue;
+      }
+      await this.executePayoutForJob(
+        row.job.id,
+        row.job.clientId,
+        PayoutAttemptTrigger.SYSTEM_RETRY,
+      );
+      recovered += 1;
+    }
+    return { recovered };
+  }
+
+  async recoverStuckPayoutAttempts(): Promise<{ recovered: number }> {
+    if (this.isManualMode) {
+      return { recovered: 0 };
+    }
+    const batchSize = Math.max(1, this.payoutCfg.recoveryBatchSize ?? 25);
+    const olderThan = new Date(
+      Date.now() - Math.max(30_000, this.payoutCfg.stuckAttemptMs ?? 300_000),
+    );
+    const attempts = await this.escrowRepository.listStuckPayoutAttempts({
+      take: batchSize,
+      olderThan,
+    });
+    let recovered = 0;
+    for (const att of attempts) {
+      const escrow = att.escrowTransaction;
+      if (!escrow?.id) {
+        continue;
+      }
+      const auditUserId = att.triggeredByUserId ?? 'system';
+      const idempotencyKey = `payout:${escrow.id}:attempt:${att.attemptNumber}`;
+      try {
+        const reconciled =
+          await this.paymentGateway.reconcilePayoutByIdempotencyKey({
+            escrowTransactionId: escrow.id,
+            idempotencyKey,
+            providerReference: att.providerReference?.trim() || undefined,
+          });
+        const result =
+          reconciled ??
+          (await this.paymentGateway.issuePayout({
+            escrowTransactionId: escrow.id,
+            amountCents: escrow.amountCents,
+            netAmountCents: escrow.netAmountCents,
+            destination: att.destinationSnapshot as never,
+            idempotencyKey,
+          }));
+        if (result.success) {
+          await this.escrowRepository.completePayoutAttempt(
+            att.id,
+            escrow.id,
+            {
+              status: PayoutAttemptStatus.SUCCEEDED,
+              providerReference: result.providerReference,
+              providerStatus: result.providerStatus,
+            },
+            auditUserId,
+          );
+        } else {
+          await this.escrowRepository.completePayoutAttempt(
+            att.id,
+            escrow.id,
+            {
+              status: PayoutAttemptStatus.FAILED,
+              failureCode: result.failureCode,
+              failureMessage: result.failureMessage,
+            },
+            auditUserId,
+          );
+        }
+      } catch (err: unknown) {
+        const failureMessage =
+          err instanceof Error ? err.message : 'issuePayout failed';
+        await this.escrowRepository.completePayoutAttempt(
+          att.id,
+          escrow.id,
+          {
+            status: PayoutAttemptStatus.FAILED,
+            failureCode: 'PAYOUT_GATEWAY_ERROR',
+            failureMessage,
+          },
+          auditUserId,
+        );
+      }
+      recovered += 1;
+    }
+    return { recovered };
   }
 }

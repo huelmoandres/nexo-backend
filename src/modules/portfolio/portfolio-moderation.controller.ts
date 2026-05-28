@@ -78,7 +78,7 @@ export class PortfolioModerationController {
   @ApiOperation({
     summary: 'Resolver ítem en cola de moderación',
     description:
-      '`approve` restaura `PUBLISHED`. `hide` deja `HIDDEN_BY_ADMIN`. Registra `PortfolioModerationLog` con `ADMIN_OVERRIDE`.',
+      '`approve` restaura `PUBLISHED`. `hide` deja `HIDDEN_BY_ADMIN`. `restore_draft` rehabilita `HIDDEN_BY_ADMIN -> DRAFT`. Registra `PortfolioModerationLog` con `ADMIN_OVERRIDE`.',
   })
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Decisión aplicada' })
@@ -94,7 +94,8 @@ export class PortfolioModerationController {
   })
   @ApiResponse({
     status: 409,
-    description: 'PORTFOLIO_NOT_IN_MODERATION_QUEUE',
+    description:
+      'PORTFOLIO_NOT_IN_MODERATION_QUEUE o PORTFOLIO_NOT_HIDDEN_BY_ADMIN',
     schema: { $ref: '#/components/schemas/ProblemDetail' },
   })
   async moderatePortfolioItem(

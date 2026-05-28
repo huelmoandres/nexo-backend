@@ -33,10 +33,26 @@ describe('PaymentsService', () => {
     }),
     getPaymentStatus: vi.fn(),
   };
-  const cfg = { webhookSecret: 'secret', provider: 'mock' as const };
+  const cfg = {
+    webhookSecret: 'secret',
+    provider: 'mock' as const,
+    webhookIdempotencyStaleMs: 120_000,
+  };
+  const auditContext = {
+    getCorrelationId: vi.fn().mockReturnValue('test-correlation'),
+  };
+  const processAudit = {
+    record: vi.fn().mockResolvedValue(undefined),
+  };
+  const webhookIdempotency = {
+    begin: vi.fn().mockResolvedValue('new' as const),
+    complete: vi.fn().mockResolvedValue(undefined),
+    abandon: vi.fn().mockResolvedValue(undefined),
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    webhookIdempotency.begin.mockResolvedValue('new');
     escrowService.fundEscrow.mockResolvedValue(undefined);
     exchangeRatesService.convertJobTotalToUyuCents.mockResolvedValue({
       heldAmountCents: 100_000,
@@ -58,6 +74,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       paymentGateway as never,
       { ...cfg, provider } as never,
     );
@@ -77,6 +96,62 @@ describe('PaymentsService', () => {
     } as never);
     expect(r.ok).toBe(true);
     expect(escrowService.fundEscrow).toHaveBeenCalledWith('j1', 'ref', 'c1');
+    expect(webhookIdempotency.complete).toHaveBeenCalled();
+  });
+
+  it('handleWebhook idempotente si ya procesado', async () => {
+    webhookIdempotency.begin.mockResolvedValue('completed');
+    const svc = makeSvc();
+    const r = await svc.handleWebhook('secret', {
+      jobId: 'j1',
+      providerReference: 'ref',
+    } as never);
+    expect(r.ok).toBe(true);
+    expect(escrowService.fundEscrow).not.toHaveBeenCalled();
+  });
+
+  it('handleWebhook en progreso devuelve 503', async () => {
+    webhookIdempotency.begin.mockResolvedValue('in_progress');
+    await expect(
+      makeSvc().handleWebhook('secret', {
+        jobId: 'j1',
+        providerReference: 'ref',
+      } as never),
+    ).rejects.toMatchObject({ response: { code: 'SERVICE_UNAVAILABLE' } });
+  });
+
+  it('handleMercadoPagoWebhook idempotente no re-fondea', async () => {
+    const mpGateway = {
+      verifyWebhookFromHeaders: vi.fn().mockReturnValue(true),
+      getPaymentStatus: vi.fn().mockResolvedValue({
+        status: 'approved',
+        providerReference: 'pay-1',
+        amountCents: 100_000,
+        externalReference: 'j1',
+      }),
+    };
+    webhookIdempotency.begin.mockResolvedValue('completed');
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
+      mpGateway as never,
+      {
+        webhookSecret: '',
+        provider: 'mercadopago',
+        webhookIdempotencyStaleMs: 120_000,
+      } as never,
+    );
+    await svc.handleMercadoPagoWebhook(
+      { 'x-signature': 'ts=1,v1=x', 'x-request-id': 'r' },
+      { data: { id: 'pay-1' } },
+    );
+    expect(mpGateway.getPaymentStatus).not.toHaveBeenCalled();
+    expect(escrowService.fundEscrow).not.toHaveBeenCalled();
   });
 
   it('createJobCheckout para cliente con job ACCEPTED', async () => {
@@ -144,6 +219,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { webhookSecret: '', provider: 'mercadopago' } as never,
     );
@@ -185,6 +263,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { webhookSecret: '', provider: 'mercadopago' } as never,
     );
@@ -398,7 +479,9 @@ describe('PaymentsService', () => {
 
   it('createJobCheckout sin detail en producción', async () => {
     vi.stubEnv('NODE_ENV', 'production');
-    paymentGateway.createPaymentLink.mockRejectedValueOnce(new Error('mp down'));
+    paymentGateway.createPaymentLink.mockRejectedValueOnce(
+      new Error('mp down'),
+    );
     prisma.job.findUnique.mockResolvedValue({
       id: 'j1',
       clientId: 'c1',
@@ -444,6 +527,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { provider: 'mercadopago' } as never,
     );
@@ -479,6 +565,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { provider: 'mercadopago' } as never,
     );
@@ -523,6 +612,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { provider: 'mercadopago' } as never,
     );
@@ -565,6 +657,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpBad as never,
       { provider: 'mercadopago' } as never,
     );
@@ -583,6 +678,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGetFail as never,
       { provider: 'mercadopago' } as never,
     );
@@ -593,7 +691,7 @@ describe('PaymentsService', () => {
         undefined,
         '1',
       ),
-    ).resolves.toEqual({ ok: true });
+    ).rejects.toMatchObject({ response: { code: 'SERVICE_UNAVAILABLE' } });
     const mpNoJob = {
       verifyWebhookFromHeaders: vi.fn().mockReturnValue(true),
       getPaymentStatus: vi.fn().mockResolvedValue({
@@ -607,6 +705,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpNoJob as never,
       { provider: 'mercadopago' } as never,
     );
@@ -645,6 +746,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { provider: 'mercadopago' } as never,
     );
@@ -669,6 +773,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { provider: 'mercadopago' } as never,
     );
@@ -680,7 +787,7 @@ describe('PaymentsService', () => {
         undefined,
         'merchant_order',
       ),
-    ).resolves.toEqual({ ok: true });
+    ).rejects.toMatchObject({ response: { code: 'SERVICE_UNAVAILABLE' } });
   });
 
   it('handleMercadoPagoWebhook merchant_order error no-Error ACK 200', async () => {
@@ -696,6 +803,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { provider: 'mercadopago' } as never,
     );
@@ -707,7 +817,7 @@ describe('PaymentsService', () => {
         undefined,
         'merchant_order',
       ),
-    ).resolves.toEqual({ ok: true });
+    ).rejects.toMatchObject({ response: { code: 'SERVICE_UNAVAILABLE' } });
     expect(escrowService.fundEscrow).not.toHaveBeenCalled();
   });
 
@@ -727,6 +837,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { provider: 'mercadopago' } as never,
     );
@@ -748,6 +861,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       { verifyWebhookFromHeaders: vi.fn() } as never,
       { provider: 'mercadopago' } as never,
     );
@@ -760,6 +876,72 @@ describe('PaymentsService', () => {
         'payment',
       ),
     ).rejects.toMatchObject({ response: { code: 'PAYMENT_WEBHOOK_INVALID' } });
+  });
+
+  it('handleMercadoPagoWebhook IPN legacy payment usa queryId sin validar firma', async () => {
+    const mpGateway = {
+      verifyWebhookFromHeaders: vi.fn(),
+      getPaymentStatus: vi.fn().mockResolvedValue({
+        status: 'pending',
+        providerReference: 'pay-ipn',
+        amountCents: 100,
+        externalReference: 'job-ipn',
+      }),
+      resolveApprovedPaymentFromMerchantOrder: vi.fn(),
+    };
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
+      mpGateway as never,
+      { provider: 'mercadopago' } as never,
+    );
+    await expect(
+      svc.handleMercadoPagoWebhook(
+        {},
+        { type: 'payment' },
+        'p-legacy',
+        undefined,
+        'payment',
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(mpGateway.verifyWebhookFromHeaders).not.toHaveBeenCalled();
+    expect(mpGateway.getPaymentStatus).toHaveBeenCalledWith('p-legacy');
+  });
+
+  it('handleMercadoPagoWebhook retorna SERVICE_UNAVAILABLE si idempotencia está in_progress', async () => {
+    webhookIdempotency.begin.mockResolvedValueOnce('in_progress');
+    const mpGateway = {
+      verifyWebhookFromHeaders: vi.fn().mockReturnValue(true),
+      getPaymentStatus: vi.fn().mockResolvedValue({
+        status: 'pending',
+        providerReference: 'pay-1',
+        amountCents: 100,
+        externalReference: 'j-1',
+      }),
+      resolveApprovedPaymentFromMerchantOrder: vi.fn(),
+    };
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
+      mpGateway as never,
+      { provider: 'mercadopago' } as never,
+    );
+    await expect(
+      svc.handleMercadoPagoWebhook(
+        { 'x-signature': 'x', 'x-request-id': 'r' },
+        { data: { id: 'pay-1' } },
+      ),
+    ).rejects.toMatchObject({ response: { code: 'SERVICE_UNAVAILABLE' } });
   });
 
   it('handleMercadoPagoWebhook usa body.data.id para firma', async () => {
@@ -778,6 +960,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { provider: 'mercadopago' } as never,
     );
@@ -809,6 +994,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { provider: 'mercadopago' } as never,
     );
@@ -825,6 +1013,41 @@ describe('PaymentsService', () => {
     expect(mpGateway.getPaymentStatus).toHaveBeenCalledWith('ipn-pay-id');
   });
 
+  it('handleMercadoPagoWebhook IPN normaliza topic legacy en minúsculas', async () => {
+    const mpGateway = {
+      verifyWebhookFromHeaders: vi.fn(),
+      getPaymentStatus: vi.fn().mockResolvedValue({
+        status: 'pending',
+        providerReference: 'ipn-topic',
+        amountCents: 100,
+        externalReference: 'j-ipn',
+      }),
+      resolveApprovedPaymentFromMerchantOrder: vi.fn(),
+    };
+    const svc = new PaymentsService(
+      prisma as never,
+      escrowService as never,
+      escrowRepository as never,
+      exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
+      mpGateway as never,
+      { provider: 'mercadopago' } as never,
+    );
+    await expect(
+      svc.handleMercadoPagoWebhook(
+        {},
+        {},
+        'ipn-legacy-id',
+        undefined,
+        'PAYMENT',
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(mpGateway.getPaymentStatus).toHaveBeenCalledWith('ipn-legacy-id');
+    expect(mpGateway.verifyWebhookFromHeaders).not.toHaveBeenCalled();
+  });
+
   it('handleMercadoPagoWebhook rechaza sin signatureDataId pero con queryId', async () => {
     const mpGateway = {
       verifyWebhookFromHeaders: vi.fn(),
@@ -836,6 +1059,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { provider: 'mercadopago' } as never,
     );
@@ -861,6 +1087,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { provider: 'mercadopago' } as never,
     );
@@ -888,6 +1117,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { provider: 'mercadopago' } as never,
     );
@@ -913,6 +1145,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { provider: 'mercadopago' } as never,
     );
@@ -923,7 +1158,7 @@ describe('PaymentsService', () => {
         undefined,
         '1',
       ),
-    ).resolves.toEqual({ ok: true });
+    ).rejects.toMatchObject({ response: { code: 'SERVICE_UNAVAILABLE' } });
   });
 
   it('handleMercadoPagoWebhook ignora external_reference de suscripción', async () => {
@@ -942,6 +1177,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       mpGateway as never,
       { provider: 'mercadopago' } as never,
     );
@@ -962,6 +1200,9 @@ describe('PaymentsService', () => {
       escrowService as never,
       escrowRepository as never,
       exchangeRatesService as never,
+      auditContext as never,
+      processAudit as never,
+      webhookIdempotency as never,
       paymentGateway as never,
       { webhookSecret: '', provider: 'mock' } as never,
     );

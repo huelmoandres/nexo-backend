@@ -62,6 +62,12 @@ Prefijo global: `/api`.
 - Planes MP: bootstrap API (`preapproval_plan`); IDs en env o BD.
 - Webhooks: validación manual **ngrok + sandbox** (no sustituto de “listo”).
 
+## 6.1 Resiliencia subscribe/cancel/webhooks (2026-05-27)
+
+- **Subscribe:** `createPreapproval` en MP → persistencia en `prisma.$transaction` (fila `BillingSubscription` + sync perfil). Si falla la TX, **compensación** con `cancelPreapproval` del `mpPreapprovalId` creado.
+- **Cancel:** `cancelPreapproval` en MP (tolera “ya cancelado”) → `CANCELED` en BD. Si falla BD tras MP OK → **503** `SERVICE_UNAVAILABLE` (reintento idempotente).
+- **Webhooks suscripciones:** misma tabla `PaymentWebhookIdempotency` con clave `billing:mp:notify:{topic}:{resourceId}`. Fallo al consultar pago en MP → **503** (no ACK silencioso).
+
 ## 7. Errores RFC 7807
 
 | Código | HTTP |
@@ -73,6 +79,7 @@ Prefijo global: `/api`.
 | `BILLING_CANCEL_FAILED` | 502 |
 | `BILLING_WEBHOOK_INVALID` | 401 |
 | `BILLING_RATE_STALE` | 503 |
+| `SERVICE_UNAVAILABLE` | 503 | Webhook billing en progreso / fallo transitorio MP / cancel BD tras MP |
 
 ## 8. Tests
 

@@ -4,6 +4,31 @@ import { VerificationSubjectType } from '@prisma/client';
 import { AdminVerificationController } from '../admin-verification.controller';
 
 describe('AdminVerificationController', () => {
+  it('getDocumentUrl delega al service', async () => {
+    const dgi = {
+      getAdminVerificationDocumentUrl: vi.fn().mockResolvedValue({
+        viewUrl: 'https://signed',
+        expiresInSeconds: 900,
+      }),
+    };
+    const repo = { findBySupabaseUidForMe: vi.fn() };
+    const controller = new AdminVerificationController(
+      dgi as never,
+      repo as never,
+    );
+
+    const res = await controller.getDocumentUrl(
+      VerificationSubjectType.PROFESSIONAL,
+      'p1',
+    );
+
+    expect(dgi.getAdminVerificationDocumentUrl).toHaveBeenCalledWith(
+      VerificationSubjectType.PROFESSIONAL,
+      'p1',
+    );
+    expect(res.viewUrl).toBe('https://signed');
+  });
+
   it('listPending delega al service', async () => {
     const dgi = {
       listPendingForAdmin: vi.fn().mockResolvedValue([]),

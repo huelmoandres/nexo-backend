@@ -323,6 +323,21 @@ export const ERRORS = {
     title: 'Límite de fotos alcanzado',
     slug: 'portfolio-photos-limit-reached',
   },
+  PORTFOLIO_MIN_PHOTOS_REQUIRED: {
+    status: 409,
+    title: 'Cantidad mínima de fotos no alcanzada',
+    slug: 'portfolio-min-photos-required',
+  },
+  PORTFOLIO_ITEM_NOT_PUBLISHED: {
+    status: 409,
+    title: 'El item no está publicado',
+    slug: 'portfolio-item-not-published',
+  },
+  PORTFOLIO_BLOCKED_BY_ADMIN: {
+    status: 409,
+    title: 'El item está bloqueado por moderación admin',
+    slug: 'portfolio-blocked-by-admin',
+  },
   PORTFOLIO_ITEM_NOT_DRAFT: {
     status: 409,
     title: 'El item no está en DRAFT',
@@ -362,6 +377,11 @@ export const ERRORS = {
     status: 409,
     title: 'El ítem no está en cola de moderación',
     slug: 'portfolio-not-in-moderation-queue',
+  },
+  PORTFOLIO_NOT_HIDDEN_BY_ADMIN: {
+    status: 409,
+    title: 'El ítem no está oculto por admin',
+    slug: 'portfolio-not-hidden-by-admin',
   },
   GEO_RESOLVE_INPUT_REQUIRED: {
     status: 400,

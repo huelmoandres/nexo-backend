@@ -8,6 +8,7 @@ import { EntitlementsModule } from '@modules/entitlements/entitlements.module';
 import { StorageModule } from '@modules/storage/storage.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { dgiConfig } from '@config/dgi.config';
+import { storageConfig } from '@config/storage.config';
 import { AdminVerificationController } from './admin-verification.controller';
 import { DgiVerificationController } from './dgi-verification.controller';
 import { RolesGuard } from './guards/roles.guard';
@@ -34,6 +35,7 @@ import { DGI_MAINTENANCE_QUEUE, DGI_VERIFY_QUEUE } from './users-dgi.constants';
     StorageModule,
     NotificationsModule,
     ConfigModule.forFeature(dgiConfig),
+    ConfigModule.forFeature(storageConfig),
     BullModule.registerQueue({ name: DGI_VERIFY_QUEUE }),
     BullModule.registerQueue({ name: DGI_MAINTENANCE_QUEUE }),
   ],

@@ -1,6 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import { EscrowStatus, JobStatus, Role } from '@prisma/client';
+import {
+  AuditContextService,
+  ProcessAuditService,
+  logOp,
+  recordProcessSkipped,
+  runCriticalProcess,
+  sanitizeForProcessAudit,
+} from '@common/observability';
 import { problemException } from '@common/errors/problem.factory';
 import { CURRENCY_CODES } from '@common/constants/currency.constants';
 import { paymentsConfig } from '@config/payments.config';
@@ -15,6 +23,11 @@ import type { IPaymentGateway } from './payment-gateway.interface';
 import { MercadoPagoPaymentGatewayService } from './mercadopago-payment-gateway.service';
 import type { MercadoPagoWebhookHeaders } from './mercadopago-signature.util';
 import { isSubscriptionExternalReference } from '@common/mercadopago/subscription-external-reference.util';
+import { PaymentWebhookIdempotencyRepository } from './payment-webhook-idempotency.repository';
+import {
+  buildMercadoPagoWebhookIdempotencyKey,
+  buildMockWebhookIdempotencyKey,
+} from './payment-webhook-idempotency.util';
 
 @Injectable()
 export class PaymentsService {
@@ -25,6 +38,9 @@ export class PaymentsService {
     private readonly escrowService: EscrowService,
     private readonly escrowRepository: EscrowRepository,
     private readonly exchangeRatesService: ExchangeRatesService,
+    private readonly auditContext: AuditContextService,
+    private readonly processAudit: ProcessAuditService,
+    private readonly webhookIdempotency: PaymentWebhookIdempotencyRepository,
     @Inject(PAYMENT_GATEWAY_TOKEN)
     private readonly paymentGateway: IPaymentGateway,
     @Inject(paymentsConfig.KEY)
@@ -118,12 +134,38 @@ export class PaymentsService {
     if (!this.cfg.webhookSecret || secret !== this.cfg.webhookSecret) {
       throw problemException('PAYMENT_WEBHOOK_INVALID');
     }
-    await this.fundEscrowFromReference(
+    const idempotencyKey = buildMockWebhookIdempotencyKey(
       dto.jobId,
       dto.providerReference,
-      undefined,
     );
-    return { ok: true };
+    const begin = await this.webhookIdempotency.begin({
+      idempotencyKey,
+      provider: 'mock',
+      operation: 'payments.webhook.mock',
+      jobId: dto.jobId,
+      providerReference: dto.providerReference,
+      staleProcessingMs: this.cfg.webhookIdempotencyStaleMs,
+    });
+    if (begin === 'completed') {
+      return { ok: true };
+    }
+    if (begin === 'in_progress') {
+      throw problemException('SERVICE_UNAVAILABLE');
+    }
+    try {
+      await this.fundEscrowFromReference(
+        dto.jobId,
+        dto.providerReference,
+        undefined,
+      );
+      await this.webhookIdempotency.complete(idempotencyKey, {
+        outcome: 'funded',
+      });
+      return { ok: true };
+    } catch (err: unknown) {
+      await this.webhookIdempotency.abandon(idempotencyKey);
+      throw err;
+    }
   }
 
   async handleMercadoPagoWebhook(
@@ -133,6 +175,48 @@ export class PaymentsService {
     queryDataId?: string,
     queryTopic?: string,
   ): Promise<{ ok: true }> {
+    const op = 'payments.webhook.mercadopago';
+    const requestSummary = sanitizeForProcessAudit({
+      queryId,
+      queryDataId,
+      queryTopic,
+      type: body.type,
+      topic: body.topic,
+      dataId: body.data?.id,
+    });
+
+    return runCriticalProcess({
+      logger: this.logger,
+      processAudit: this.processAudit,
+      auditContext: this.auditContext,
+      op,
+      domain: 'PAYMENTS',
+      source: 'WEBHOOK',
+      requestSummary,
+      externalRef: queryDataId ?? queryId,
+      skipAuditOnSuccess: true,
+      fn: async () =>
+        this.processMercadoPagoWebhook(
+          headers,
+          body,
+          queryId,
+          queryDataId,
+          queryTopic,
+          op,
+          requestSummary,
+        ),
+    });
+  }
+
+  private async processMercadoPagoWebhook(
+    headers: MercadoPagoWebhookHeaders,
+    body: MercadoPagoWebhookBodyDto,
+    queryId: string | undefined,
+    queryDataId: string | undefined,
+    queryTopic: string | undefined,
+    op: string,
+    requestSummary: unknown,
+  ): Promise<{ ok: true }> {
     if (this.cfg.provider !== 'mercadopago') {
       throw problemException('PAYMENT_WEBHOOK_INVALID');
     }
@@ -140,25 +224,29 @@ export class PaymentsService {
     const notificationTopic = (queryTopic ?? body.topic ?? body.type ?? '')
       .trim()
       .toLowerCase();
-    // IPN legacy (notification_url): ?id=&topic= — MP no valida HMAC con secret.
     const isIpnLegacy = Boolean(queryTopic?.trim());
     const resourceId = isIpnLegacy
-      ? (queryId?.trim() || '')
-      : (queryDataId?.trim() ||
+      ? queryId?.trim() || ''
+      : queryDataId?.trim() ||
         (body.data?.id != null ? String(body.data.id) : '') ||
         queryId?.trim() ||
-        '');
+        '';
     if (!resourceId) {
-      this.logger.warn(
-        'MP webhook sin id de recurso (query id, data.id o body.data.id)',
-      );
+      logOp(this.logger, 'warn', {
+        op,
+        phase: 'failed',
+        reason: 'missing_resource_id',
+      });
       throw problemException('PAYMENT_WEBHOOK_INVALID');
     }
     if (isIpnLegacy) {
-      this.logger.log(
-        { resourceId, topic: notificationTopic },
-        'MP IPN legacy — validación vía API (sin HMAC)',
-      );
+      logOp(this.logger, 'log', {
+        op,
+        phase: 'start',
+        resourceId,
+        topic: notificationTopic,
+        mode: 'ipn_legacy',
+      });
     } else {
       const signatureDataId =
         queryDataId?.trim() ||
@@ -167,17 +255,59 @@ export class PaymentsService {
         !signatureDataId ||
         !mpGateway.verifyWebhookFromHeaders(headers, signatureDataId)
       ) {
-        this.logger.warn(
-          {
-            resourceId,
-            signatureDataId: signatureDataId || undefined,
-            hasSignature: Boolean(headers['x-signature']),
-          },
-          'MP webhook firma inválida o MERCADOPAGO_WEBHOOK_SECRET incorrecto',
-        );
+        logOp(this.logger, 'warn', {
+          op,
+          phase: 'failed',
+          resourceId,
+          hasSignature: Boolean(headers['x-signature']),
+        });
         throw problemException('PAYMENT_WEBHOOK_INVALID');
       }
     }
+
+    const idempotencyKey = buildMercadoPagoWebhookIdempotencyKey(
+      notificationTopic,
+      resourceId,
+    );
+    const begin = await this.webhookIdempotency.begin({
+      idempotencyKey,
+      provider: 'mercadopago',
+      operation: op,
+      externalRef: resourceId,
+      staleProcessingMs: this.cfg.webhookIdempotencyStaleMs,
+    });
+    if (begin === 'completed') {
+      return { ok: true };
+    }
+    if (begin === 'in_progress') {
+      throw problemException('SERVICE_UNAVAILABLE');
+    }
+
+    try {
+      const result = await this.executeMercadoPagoWebhook({
+        mpGateway,
+        notificationTopic,
+        resourceId,
+        op,
+        requestSummary,
+      });
+      await this.webhookIdempotency.complete(idempotencyKey);
+      return result;
+    } catch (err: unknown) {
+      await this.webhookIdempotency.abandon(idempotencyKey);
+      throw err;
+    }
+  }
+
+  private async executeMercadoPagoWebhook(input: {
+    mpGateway: MercadoPagoPaymentGatewayService;
+    notificationTopic: string;
+    resourceId: string;
+    op: string;
+    requestSummary: unknown;
+  }): Promise<{ ok: true }> {
+    const { mpGateway, notificationTopic, resourceId, op, requestSummary } =
+      input;
     const dataId = resourceId;
     let paymentStatus: Awaited<
       ReturnType<IPaymentGateway['getPaymentStatus']>
@@ -189,17 +319,31 @@ export class PaymentsService {
       } catch (err: unknown) {
         const detail =
           err instanceof Error ? err.message : 'resolveMerchantOrder';
-        this.logger.warn(
-          { dataId, err: detail },
-          'MP webhook merchant_order no consultable, ACK 200',
-        );
-        return { ok: true };
+        await recordProcessSkipped({
+          logger: this.logger,
+          processAudit: this.processAudit,
+          auditContext: this.auditContext,
+          op,
+          domain: 'PAYMENTS',
+          source: 'WEBHOOK',
+          requestSummary,
+          externalRef: dataId,
+          reason: detail,
+        });
+        throw problemException('SERVICE_UNAVAILABLE');
       }
       if (!paymentStatus) {
-        this.logger.log(
-          { dataId },
-          'MP merchant_order sin pago approved aún — ACK 200',
-        );
+        await recordProcessSkipped({
+          logger: this.logger,
+          processAudit: this.processAudit,
+          auditContext: this.auditContext,
+          op,
+          domain: 'PAYMENTS',
+          source: 'WEBHOOK',
+          requestSummary,
+          externalRef: dataId,
+          reason: 'merchant_order_without_approved_payment',
+        });
         return { ok: true };
       }
     } else {
@@ -207,14 +351,33 @@ export class PaymentsService {
         paymentStatus = await this.paymentGateway.getPaymentStatus(dataId);
       } catch (err: unknown) {
         const detail = err instanceof Error ? err.message : 'getPaymentStatus';
-        this.logger.warn(
-          { dataId, err: detail },
-          'MP webhook: pago no consultable (simulación o id inválido), ACK 200',
-        );
-        return { ok: true };
+        await recordProcessSkipped({
+          logger: this.logger,
+          processAudit: this.processAudit,
+          auditContext: this.auditContext,
+          op,
+          domain: 'PAYMENTS',
+          source: 'WEBHOOK',
+          requestSummary,
+          externalRef: dataId,
+          reason: detail,
+        });
+        throw problemException('SERVICE_UNAVAILABLE');
       }
     }
     if (paymentStatus.status !== 'approved') {
+      await recordProcessSkipped({
+        logger: this.logger,
+        processAudit: this.processAudit,
+        auditContext: this.auditContext,
+        op,
+        domain: 'PAYMENTS',
+        source: 'WEBHOOK',
+        requestSummary,
+        externalRef: dataId,
+        reason: `payment_status_${paymentStatus.status}`,
+        responseSummary: { status: paymentStatus.status },
+      });
       return { ok: true };
     }
     const jobId = paymentStatus.externalReference;
@@ -222,10 +385,18 @@ export class PaymentsService {
       throw problemException('PAYMENT_WEBHOOK_INVALID');
     }
     if (isSubscriptionExternalReference(jobId)) {
-      this.logger.log(
-        { externalReference: jobId },
-        'MP job webhook ignored — subscription external_reference',
-      );
+      await recordProcessSkipped({
+        logger: this.logger,
+        processAudit: this.processAudit,
+        auditContext: this.auditContext,
+        op,
+        domain: 'PAYMENTS',
+        source: 'WEBHOOK',
+        requestSummary,
+        externalRef: dataId,
+        reason: 'subscription_external_reference',
+        responseSummary: { externalReference: jobId },
+      });
       return { ok: true };
     }
     await this.fundEscrowFromReference(
@@ -233,6 +404,18 @@ export class PaymentsService {
       paymentStatus.providerReference,
       paymentStatus.amountCents,
     );
+    await this.processAudit.record({
+      domain: 'PAYMENTS',
+      operation: 'payments.escrow.fund',
+      outcome: 'SUCCESS',
+      source: 'WEBHOOK',
+      entityType: 'Job',
+      entityId: jobId,
+      externalRef: dataId,
+      responseSummary: {
+        providerReference: paymentStatus.providerReference,
+      },
+    });
     return { ok: true };
   }
 

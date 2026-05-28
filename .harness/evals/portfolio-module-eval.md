@@ -65,11 +65,14 @@
 - [ ] Tras insertar con `displayOrder = 2` intermedio, las posteriores se shiftan +1 en transacción.
 - [ ] Si no se manda `displayOrder` al crear → `MAX(displayOrder) + 1` calculado dentro de la transacción (no antes).
 - [ ] Máximo 10 fotos enforced en service → `409 PORTFOLIO_PHOTOS_LIMIT_REACHED`.
+- [ ] Si el item está `PUBLISHED`, `DELETE /portfolio/items/:id/photos/:photoId` rechaza con `409 PORTFOLIO_ITEM_NOT_DRAFT` y obliga despublicar antes de editar fotos.
 
 ---
 
 ## Checklist del Pre-Publish (HEAD checks)
 
+- [ ] `POST /publish` exige mínimo 2 fotos; con 0 o 1 responde `409 PORTFOLIO_MIN_PHOTOS_REQUIRED`.
+- [ ] Si el item está `HIDDEN_BY_ADMIN`, `POST /publish` responde `409 PORTFOLIO_BLOCKED_BY_ADMIN` hasta rehabilitación explícita admin.
 - [ ] `POST /publish` ejecuta `HEAD` paralelo sobre cada `fileKey` con `Promise.allSettled`.
 - [ ] Si alguna foto da `404` → `409 PORTFOLIO_PHOTOS_NOT_READY` con array de `photoId`s pendientes.
 - [ ] Si alguna foto da timeout / 5xx / network error → 1 retry con backoff 500ms; si vuelve a fallar → `503 PORTFOLIO_PHOTOS_STORAGE_UNAVAILABLE` con `Retry-After: 5`.
@@ -91,10 +94,14 @@
 - [ ] Sentry recibe el error completo (post-sanitización) para diagnóstico profundo.
 - [ ] Cuando la IA flagea un item, se notifica al pro inmediatamente con `aiModerationReason` legible y deep-link al item.
 - [ ] Si el pro corrige y la nueva moderación da OK, el item vuelve a `PUBLISHED` automáticamente sin intervención admin, y se registra `transitionType: AUTO_RESTORE_AFTER_CORRECTION` en `PortfolioModerationLog`.
+- [ ] Si un item está `HIDDEN_PENDING_REVIEW` por `FLAGGED` y el pro edita texto/fotos, el backend re-encola `portfolio-moderate` con `transitionType: RE_MODERATION` (sin requerir paso manual previo).
+- [ ] Si esa re-moderación vuelve a `FLAGGED`, el item permanece `HIDDEN_PENDING_REVIEW` y la UI muestra mensaje claro de contenido no permitido.
+- [ ] `PATCH /portfolio/items/:id/moderate` con `action='restore_draft'` solo aplica cuando el item está `HIDDEN_BY_ADMIN`; transiciona a `DRAFT`.
 - [ ] Fail-safe: si el provider IA falla, el item queda en `HIDDEN_PENDING_REVIEW`, **nunca** publicado.
 - [ ] Retry: 3 intentos máx con backoff `30s → 2min → 8min` y jitter ±20%.
 - [ ] Cap absoluto de 10 minutos (`PORTFOLIO_AI_RETRY_TOTAL_BUDGET_MS`). Tras agotar, evento `portfolio.moderation.exhausted` al AuditLog.
 - [ ] `PORTFOLIO_AI_FAIL_OPEN = true` en `.env` produce WARN crítico en bootstrap.
+- [ ] **Realtime:** al completar moderación, el backend emite `portfolio.moderation.completed` al room `user:<sub>` del profesional (ver [realtime-module.md](../specs/realtime-module.md)). El frontend invalida cache y actualiza UI sin refresh manual.
 
 ---
 
@@ -226,4 +233,9 @@ curl -s "http://localhost:3000/api/professionals/$PRO_ID/portfolio"
 curl -s -X DELETE "http://localhost:3000/api/portfolio/items/$ITEM_ID" \
   -H "Authorization: Bearer $JWT_PRO"
 # → 204
+
+# 11. Despublicar por owner
+curl -s -X POST "http://localhost:3000/api/portfolio/items/$ITEM_ID/unpublish" \
+  -H "Authorization: Bearer $JWT_PRO"
+# → 200, status DRAFT
 ```

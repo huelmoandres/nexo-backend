@@ -67,6 +67,28 @@ export class JobsController {
     );
   }
 
+  @Get('professional/mine')
+  @Roles(Role.INDEPENDENT_PRO, Role.COMPANY_ADMIN)
+  @ApiOperation({
+    summary: 'Trabajos asignados al profesional',
+    description:
+      'Listado de jobs donde `professionalId` es el perfil del usuario. ' +
+      'Usado p. ej. para vincular trabajos CLOSED al portfolio.',
+  })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  listProfessionalMine(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.jobsService.listProfessionalMine(
+      user.sub,
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20,
+    );
+  }
+
   @Get('available')
   @Roles(Role.INDEPENDENT_PRO)
   @ApiOperation({ summary: 'Trabajos PENDING disponibles' })

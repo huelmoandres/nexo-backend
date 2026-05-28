@@ -1,16 +1,38 @@
 # Logging & Audit Standards - Nexos
 
-## 1. Trazabilidad de Dinero (Audit Log)
-Toda acción que afecte la tabla `EscrowTransaction` en PostgreSQL debe generar un log de auditoría obligatorio.
-- Se debe registrar: `userId`, `action` (ej: FUND_ESCROW, RELEASE_FUNDS), `timestamp` y `previous_state`.
+## 1. Tres pilares
 
-## 2. Niveles de Log (Pino)
-- **DEBUG**: Solo para desarrollo. Detalle de queries y payloads.
-- **INFO**: Flujos normales de negocio (ej: "Trabajo finalizado por profesional X").
-- **WARN**: Reintentos de pago o errores de validación repetitivos.
-- **ERROR**: Excepciones que requieren atención (dispara Sentry).
+| Pilar | Canal | Uso |
+|-------|-------|-----|
+| **Logs (`op`)** | Pino / Nest Logger | Operación en tiempo real; `correlationId` en cada línea crítica |
+| **AuditLog** | PostgreSQL | Cambios de negocio: escrow, roles, portfolio consent, etc. |
+| **ProcessAudit** | PostgreSQL | Webhooks, workers, fallos de integración (payload sanitizado) |
 
-## 3. Privacidad en Logs
-**PROHIBIDO** loguear:
-- JWTs o secretos del `.env`.
-- Datos personales sensibles (Nro de Cédula o fotos) en texto plano dentro de los logs.
+Ver [.harness/rules/observability.md](../../.harness/rules/observability.md) y [.harness/specs/process-audit.md](../../.harness/specs/process-audit.md).
+
+## 2. Trazabilidad de dinero (AuditLog)
+
+Toda acción que afecte `EscrowTransaction` debe generar `AuditLog` en la **misma** transacción Prisma (`money-rules`).
+
+Campos: `userId`, `action`, `entityType`, `entityId`, `previousState`, `newState`, `metadata`, `ipAddress`, `userAgent`.
+
+## 3. Correlation ID
+
+- Request: header `x-correlation-id` (opcional).
+- Response: mismo header devuelto.
+- Workers: UUID al inicio del job; propagar a logs y `ProcessAudit`.
+
+## 4. Niveles de log (Pino)
+
+- **DEBUG**: desarrollo; queries y detalle.
+- **INFO**: flujos normales (`phase: done`).
+- **WARN**: reintentos, skips, validación repetida.
+- **ERROR**: excepciones no recuperadas (Sentry en 5xx).
+
+## 5. Privacidad
+
+**PROHIBIDO** loguear: JWT, secretos, CI completa, PDF binario. Usar `sanitizeForProcessAudit()` antes de persistir JSON en ProcessAudit.
+
+## 6. Consulta operativa
+
+`GET /api/admin/process-audit` — `SUPER_ADMIN`, filtros por `correlationId`, `domain`, `operation`, fechas.

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Post,
@@ -79,6 +80,8 @@ export class DgiVerificationController {
   }
 
   @Get('status')
+  @Header('Cache-Control', 'no-store')
+  @Header('Pragma', 'no-cache')
   @UseGuards(SupabaseAuthGuard, RolesGuard)
   @Roles(Role.COMPANY_ADMIN, Role.INDEPENDENT_PRO)
   @ApiOperation({ summary: 'Estado de verificación DGI del sujeto' })

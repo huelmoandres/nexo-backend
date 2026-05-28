@@ -34,4 +34,6 @@ export const paymentGatewayMock: IPaymentGateway = {
     providerReference: 'MOCK-PAYOUT-OK',
     providerStatus: 'approved',
   }),
+
+  reconcilePayoutByIdempotencyKey: vi.fn().mockResolvedValue(null),
 };

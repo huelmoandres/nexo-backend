@@ -315,6 +315,16 @@ export class UsersRepository {
           where: { id: input.userId },
           data: { role: Role.INDEPENDENT_PRO },
         });
+        await tx.auditLog.create({
+          data: {
+            userId: input.userId,
+            action: AuditAction.ROLE_CHANGED,
+            entityType: 'User',
+            entityId: input.userId,
+            previousState: JSON.stringify({ role: Role.CLIENT }),
+            newState: JSON.stringify({ role: Role.INDEPENDENT_PRO }),
+          },
+        });
       }
 
       return profile;
@@ -583,7 +593,14 @@ export class UsersRepository {
       rut: string;
       dgiRazonSocial: string | null;
       dgiVerificationDocKey: string | null;
+      dgiVerificationMethod: string | null;
       updatedAt: Date;
+      subjectDisplayName: string;
+      ownerUserId: string;
+      ownerEmail: string;
+      ownerFullName: string;
+      documentSubmittedAt: Date | null;
+      hasDocument: boolean;
     }>
   > {
     const [companies, profiles] = await Promise.all([
@@ -595,9 +612,16 @@ export class UsersRepository {
         select: {
           id: true,
           rut: true,
+          name: true,
+          legalName: true,
+          tradeName: true,
           dgiRazonSocial: true,
           dgiVerificationDocKey: true,
+          dgiVerificationMethod: true,
           updatedAt: true,
+          adminId: true,
+          admin: { select: { id: true, email: true, fullName: true } },
+          trustProfiles: { select: { id: true }, take: 1 },
         },
       }),
       this.prisma.professionalProfile.findMany({
@@ -611,30 +635,83 @@ export class UsersRepository {
           rut: true,
           dgiRazonSocial: true,
           dgiVerificationDocKey: true,
+          dgiVerificationMethod: true,
           updatedAt: true,
+          userId: true,
+          user: { select: { id: true, email: true, fullName: true } },
+          trustProfiles: { select: { id: true }, take: 1 },
         },
       }),
     ]);
 
-    const companyRows = companies.map((c) => ({
-      subjectType: VerificationSubjectType.COMPANY,
-      subjectId: c.id,
-      rut: c.rut,
-      dgiRazonSocial: c.dgiRazonSocial,
-      dgiVerificationDocKey: c.dgiVerificationDocKey,
-      updatedAt: c.updatedAt,
-    }));
+    const trustProfileIds = [
+      ...companies.map((c) => c.trustProfiles?.[0]?.id).filter(Boolean),
+      ...profiles.map((p) => p.trustProfiles?.[0]?.id).filter(Boolean),
+    ] as string[];
+
+    const pendingDocs =
+      trustProfileIds.length > 0
+        ? await this.prisma.verificationDocument.findMany({
+            where: {
+              trustProfileId: { in: trustProfileIds },
+              documentType: VerificationDocumentType.RUT_PROOF,
+              status: VerificationDocumentStatus.PENDING,
+            },
+            orderBy: { createdAt: 'desc' },
+            select: { trustProfileId: true, createdAt: true },
+          })
+        : [];
+
+    const docSubmittedByTrust = new Map<string, Date>();
+    for (const doc of pendingDocs) {
+      if (!docSubmittedByTrust.has(doc.trustProfileId)) {
+        docSubmittedByTrust.set(doc.trustProfileId, doc.createdAt);
+      }
+    }
+
+    const companyRows = companies.map((c) => {
+      const trustId = c.trustProfiles?.[0]?.id;
+      return {
+        subjectType: VerificationSubjectType.COMPANY,
+        subjectId: c.id,
+        rut: c.rut,
+        dgiRazonSocial: c.dgiRazonSocial,
+        dgiVerificationDocKey: c.dgiVerificationDocKey,
+        dgiVerificationMethod: c.dgiVerificationMethod,
+        updatedAt: c.updatedAt,
+        subjectDisplayName: c.legalName ?? c.tradeName ?? c.name,
+        ownerUserId: c.admin.id,
+        ownerEmail: c.admin.email,
+        ownerFullName: c.admin.fullName,
+        documentSubmittedAt: trustId
+          ? (docSubmittedByTrust.get(trustId) ?? null)
+          : null,
+        hasDocument: Boolean(c.dgiVerificationDocKey),
+      };
+    });
 
     const profileRows = profiles
       .filter((p): p is typeof p & { rut: string } => p.rut !== null)
-      .map((p) => ({
-        subjectType: VerificationSubjectType.PROFESSIONAL,
-        subjectId: p.id,
-        rut: p.rut,
-        dgiRazonSocial: p.dgiRazonSocial,
-        dgiVerificationDocKey: p.dgiVerificationDocKey,
-        updatedAt: p.updatedAt,
-      }));
+      .map((p) => {
+        const trustId = p.trustProfiles?.[0]?.id;
+        return {
+          subjectType: VerificationSubjectType.PROFESSIONAL,
+          subjectId: p.id,
+          rut: p.rut,
+          dgiRazonSocial: p.dgiRazonSocial,
+          dgiVerificationDocKey: p.dgiVerificationDocKey,
+          dgiVerificationMethod: p.dgiVerificationMethod,
+          updatedAt: p.updatedAt,
+          subjectDisplayName: p.user.fullName,
+          ownerUserId: p.user.id,
+          ownerEmail: p.user.email,
+          ownerFullName: p.user.fullName,
+          documentSubmittedAt: trustId
+            ? (docSubmittedByTrust.get(trustId) ?? null)
+            : null,
+          hasDocument: Boolean(p.dgiVerificationDocKey),
+        };
+      });
 
     return [...companyRows, ...profileRows].sort(
       (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),

@@ -14,6 +14,8 @@ import { ERRORS } from '@common/errors/error-catalog';
 import type { ErrorCode } from '@common/errors/error-codes';
 import { problemDetailTypeFromScreamingCode } from '@common/problem-detail/problem-detail-url.util';
 import { appConfig } from '@config/app.config';
+import { observabilityConfig } from '@config/observability.config';
+import { AuditContextService } from '@common/observability/audit-context.service';
 
 type ProblemPayload = Partial<ProblemDetail> & {
   errors?: Array<{ field: string; constraints: string[] }>;
@@ -43,6 +45,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   constructor(
     @Inject(appConfig.KEY)
     private readonly config: ConfigType<typeof appConfig>,
+    @Inject(observabilityConfig.KEY)
+    private readonly obsCfg: ConfigType<typeof observabilityConfig>,
+    private readonly auditContext: AuditContextService,
   ) {}
 
   /**
@@ -58,12 +63,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     const status = this.resolveStatus(exception);
     const problem = this.buildProblemDetail(exception, status);
+    const correlationId = this.auditContext.getCorrelationId();
+    response.setHeader(this.obsCfg.correlationHeader, correlationId);
 
     // Solo reportamos errores 500+ para evitar ruido en Sentry.
     if (status >= 500 && this.config.sentryDsn) {
       Sentry.withScope((scope) => {
         scope.setTag('status_code', String(status));
         scope.setTag('path', request.url);
+        scope.setTag('correlation_id', correlationId);
         scope.setLevel('error');
         scope.setContext('problem_detail', {
           type: problem.type,

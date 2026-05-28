@@ -10,7 +10,7 @@
 - [Guía de Testing](../docs/reference/testing-guidelines.md): Vitest, Testcontainers, Factories, Mocks y Fixed Date para lógica temporal.
 - [API Testing (Swagger + Postman)](../docs/reference/api-testing.md): Swagger UI, importar colección en Postman, Environment Variables y templates de pm.test().
 - [Seguridad y Roles](../docs/reference/security-roles.md): Jerarquía B2B y KYC.
-- [Logs y Auditoría](../docs/reference/logging-audit.md): Trazabilidad de Escrow.
+- [Logs y Auditoría](../docs/reference/logging-audit.md): Trazabilidad Escrow, ProcessAudit y correlation ID.
 
 ## Reglas de Implementación (Restricciones del agente)
 - [Docs-First (doctrina de cambios)](rules/docs-first.md): la doc va antes del código; matriz de obligaciones, excepciones y checklist de PR.
@@ -18,6 +18,7 @@
 - [Reglas de API](rules/api-rules.md): RFC 7807, Pino, paginación obligatoria y DTOs.
 - [Docs-First](rules/docs-first.md): incluye plantilla obligatoria **RBAC + Planes** en specs de módulo (§9).
 - [Reglas de Dinero](rules/money-rules.md): PostgreSQL ACID, prisma.$transaction() y State Machine del Escrow.
+- [Observabilidad](rules/observability.md): correlation ID, catálogo `op`, ProcessAudit vs AuditLog.
 - [Estándares Técnicos Avanzados](rules/tech-standards.md): Value Object Money, interfaces para integraciones externas, TypeScript strict y límites de deuda técnica.
 
 ## Especificaciones de Módulos (Qué construimos)
@@ -43,7 +44,11 @@
 - [Reseñas y Reputación](specs/reviews-reputation.md): Calificación multidimensional y Prueba Social.
 - [Chat y Mensajería](specs/chat-module.md): MongoDB, ciclo de vida y moderación preventiva de IA.
 - [Portfolio del Profesional](specs/portfolio-module.md): Vidriera pública con vínculo opcional a Job verificado, moderación IA híbrida y consentimiento del cliente.
+- [Realtime (Socket.IO)](specs/realtime-module.md): Canal server→client para push de eventos (ej. moderación IA) con auth Supabase y Redis adapter multi-instancia.
 - [Gestión de Archivos](specs/storage-rules.md): S3/R2, URLs firmadas y clasificación de privacidad.
+- [ProcessAudit (integración)](specs/process-audit.md): Webhooks, workers, API admin.
+- [Auditoría transversal de resiliencia/plataforma](specs/platform-resilience-audit.md): Matriz P0/P1/P2 de performance, transacciones, idempotencia y fallos parciales.
+- [Catálogo `op` observabilidad](specs/observability-catalog.md): Operaciones estructuradas por dominio.
 - **Diagnostics** (código): comprobaciones de dependencias en arranque y reporte para `/health/ready` — `src/modules/diagnostics/`.
 
 ## Infraestructura y Datos
@@ -71,7 +76,10 @@
 - [Currency / BCU Eval](evals/currency-exchange-rates-eval.md): Sync SOAP y conversión USD→UYU.
 - [Payout Accounts Eval](evals/payout-accounts-eval.md): Gate accept, intentos append-only, Postman Payout.
 - [Portfolio Module Eval](evals/portfolio-module-eval.md): Inmutabilidad post-verificación, fail-closed IA, ownership de paths y privacidad PII.
+- [Realtime Module Eval](evals/realtime-module-eval.md): Auth WS, Redis adapter multi-instancia, best-effort y fallback HTTP.
+- [Platform Resilience Audit Eval](evals/platform-resilience-audit-eval.md): Checklist por oleada para hardening P0/P1/P2.
 - [Global Tech Eval](evals/global-tech-eval.md): Path Aliases, Config Centralizada, RFC 7807, TypeScript Strict y límites de código.
+- [Observability Eval](evals/observability-eval.md): ProcessAudit, correlation ID, instrumentación P0.
 
 ## Estado del Proyecto
 - [Session State](SESSION_STATE.md): Módulos completados, decisiones tomadas y próximos pasos.

@@ -19,6 +19,11 @@ export type IssuePayoutInput = {
   amountCents: number;
   netAmountCents: number;
   destination: ValidatePayoutDestinationInput;
+  /**
+   * Clave idempotente para evitar doble emisión en retries.
+   * Debe ser estable para el mismo "intento" lógico de payout.
+   */
+  idempotencyKey?: string;
 };
 
 export type IssuePayoutResult = {
@@ -27,6 +32,13 @@ export type IssuePayoutResult = {
   providerStatus?: string;
   failureCode?: string;
   failureMessage?: string;
+};
+
+export type ReconcilePayoutInput = {
+  escrowTransactionId: string;
+  idempotencyKey: string;
+  /** ID de pago MP conocido (p. ej. intento parcialmente persistido). */
+  providerReference?: string;
 };
 
 export interface IPaymentGateway {
@@ -63,4 +75,8 @@ export interface IPaymentGateway {
   ): Promise<ValidatePayoutDestinationResult>;
 
   issuePayout(input: IssuePayoutInput): Promise<IssuePayoutResult>;
+
+  reconcilePayoutByIdempotencyKey(
+    input: ReconcilePayoutInput,
+  ): Promise<IssuePayoutResult | null>;
 }

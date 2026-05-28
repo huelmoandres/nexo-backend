@@ -1,15 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { pdfToPng } from 'pdf-to-png-converter';
 import jsQR from 'jsqr';
-import sharp from 'sharp';
+import sharp = require('sharp');
 import { extractQrUrlFromPdf } from '../lib/pdf-qr-extractor';
 
 vi.mock('pdf-to-png-converter', () => ({
   pdfToPng: vi.fn(),
-}));
-
-vi.mock('sharp', () => ({
-  default: vi.fn(),
 }));
 
 vi.mock('jsqr', () => ({
@@ -34,18 +30,18 @@ describe('extractQrUrlFromPdf', () => {
   });
 
   it('devuelve URL del QR cuando jsQR detecta datos', async () => {
-    vi.mocked(pdfToPng).mockResolvedValue([
-      { content: Buffer.from('img') } as never,
-    ]);
-    const rgba = Buffer.alloc(16);
-    vi.mocked(sharp).mockReturnValue({
-      ensureAlpha: vi.fn().mockReturnThis(),
-      raw: vi.fn().mockReturnThis(),
-      toBuffer: vi.fn().mockResolvedValue({
-        data: rgba,
-        info: { width: 2, height: 2 },
-      }),
-    } as never);
+    const pngBuffer = await sharp({
+      create: {
+        width: 2,
+        height: 2,
+        channels: 4,
+        background: { r: 10, g: 20, b: 30, alpha: 1 },
+      },
+    })
+      .png()
+      .toBuffer();
+
+    vi.mocked(pdfToPng).mockResolvedValue([{ content: pngBuffer } as never]);
     vi.mocked(jsQR).mockReturnValue({
       data: ' https://efactura.dgi.gub.uy/qr ',
     } as never);
@@ -56,17 +52,18 @@ describe('extractQrUrlFromPdf', () => {
   });
 
   it('devuelve null si jsQR no encuentra código', async () => {
-    vi.mocked(pdfToPng).mockResolvedValue([
-      { content: Buffer.from('img') } as never,
-    ]);
-    vi.mocked(sharp).mockReturnValue({
-      ensureAlpha: vi.fn().mockReturnThis(),
-      raw: vi.fn().mockReturnThis(),
-      toBuffer: vi.fn().mockResolvedValue({
-        data: Buffer.alloc(16),
-        info: { width: 2, height: 2 },
-      }),
-    } as never);
+    const pngBuffer = await sharp({
+      create: {
+        width: 2,
+        height: 2,
+        channels: 4,
+        background: { r: 40, g: 50, b: 60, alpha: 1 },
+      },
+    })
+      .png()
+      .toBuffer();
+
+    vi.mocked(pdfToPng).mockResolvedValue([{ content: pngBuffer } as never]);
     vi.mocked(jsQR).mockReturnValue(null);
 
     expect(await extractQrUrlFromPdf(Buffer.from('pdf'))).toBeNull();

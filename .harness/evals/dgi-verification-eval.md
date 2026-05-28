@@ -7,6 +7,12 @@ Checklist pre-PR para robustez del flujo constancia PDF.
 - [ ] `GET /users/verification/status` con `status: REJECTED` incluye `rejectionReason` no vacío cuando el documento fue rechazado por el worker.
 - [ ] `GET` con `status: VERIFIED_AUTO` **no** incluye `rejectionReason` (o viene omitido/null).
 
+## Admin (SUPER_ADMIN)
+
+- [ ] `GET /admin/verification/pending` incluye campos enriquecidos (`subjectDisplayName`, `ownerEmail`, `verificationMethod`, `hasDocument`, etc.).
+- [ ] `GET .../document-url` con sujeto en `PENDING_MANUAL_REVIEW` devuelve `viewUrl` y `expiresInSeconds`.
+- [ ] `GET .../document-url` con sujeto no pendiente o sin key → `404`.
+
 ## Submit y storage
 
 - [ ] `POST submit` con key que no matchea `VERIFICATION_DOC_KEY_PATTERN` → `400 DGI_VERIFICATION_INVALID_FILE`.

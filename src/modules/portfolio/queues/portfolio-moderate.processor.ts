@@ -1,9 +1,15 @@
 import { Inject, Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { ConfigType } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Job } from 'bullmq';
-import { AiModerationStatus, ModerationTransitionType } from '@prisma/client';
+import {
+  AiModerationStatus,
+  ModerationTransitionType,
+  PortfolioItemStatus,
+} from '@prisma/client';
 import { aiConfig } from '@config/ai.config';
+import { storageConfig } from '@config/storage.config';
 import { STORAGE_SERVICE_TOKEN } from '@modules/storage/storage.constants';
 import type { IStorageService } from '@modules/storage/interfaces/storage.service.interface';
 import {
@@ -12,6 +18,7 @@ import {
 } from '../services/content-moderation.provider';
 import { PortfolioRepository } from '../portfolio.repository';
 import { PORTFOLIO_MODERATE_QUEUE } from '../portfolio.constants';
+import { REALTIME_PUSH_EVENT } from '@modules/realtime/realtime.constants';
 
 export const PORTFOLIO_MODERATE_JOB = 'moderate-item';
 
@@ -25,6 +32,8 @@ export interface PortfolioModerateJobData {
   text: string;
   /** Si true, fuerza re-análisis ignorando caché. */
   forceReanalyze?: boolean;
+  /** Tipo de transición de moderación a registrar. */
+  transitionType?: ModerationTransitionType;
 }
 
 /**
@@ -46,8 +55,11 @@ export class PortfolioModerateProcessor extends WorkerHost {
     private readonly moderation: IContentModerationProvider,
     @Inject(STORAGE_SERVICE_TOKEN)
     private readonly storage: IStorageService,
+    @Inject(storageConfig.KEY)
+    private readonly storageCfg: ConfigType<typeof storageConfig>,
     @Inject(aiConfig.KEY)
     private readonly aiCfg: ConfigType<typeof aiConfig>,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     super();
   }
@@ -61,12 +73,18 @@ export class PortfolioModerateProcessor extends WorkerHost {
       return;
     }
 
-    const { itemId, photoFileKeys, text } = job.data;
+    const {
+      itemId,
+      photoFileKeys,
+      text,
+      transitionType = ModerationTransitionType.INITIAL,
+    } = job.data;
 
     this.logger.log({
       op: 'portfolio.moderate.start',
       itemId,
       photoCount: photoFileKeys.length,
+      transitionType,
     });
 
     try {
@@ -81,13 +99,20 @@ export class PortfolioModerateProcessor extends WorkerHost {
         imageBuffersByKey,
       });
 
-      await this.repository.applyAiModerationVerdict({
+      const updated = await this.repository.applyAiModerationVerdict({
         itemId,
         aiModerationStatus: result.status,
         modelRef: result.modelRef,
-        transitionType: ModerationTransitionType.INITIAL,
+        transitionType,
         reason: result.reason,
         policyVersion: this.aiCfg.policyVersion,
+      });
+      await this.emitRealtimeModerationCompleted({
+        itemId,
+        status: updated.status,
+        aiModerationStatus: updated.aiModerationStatus,
+        transitionType,
+        updatedAt: updated.updatedAt.toISOString(),
       });
 
       this.logger.log({
@@ -96,6 +121,7 @@ export class PortfolioModerateProcessor extends WorkerHost {
         status: result.status,
         modelRef: result.modelRef,
         policyVersion: this.aiCfg.policyVersion,
+        transitionType,
       });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -105,12 +131,12 @@ export class PortfolioModerateProcessor extends WorkerHost {
         err: errMsg,
       });
 
-      await this.repository
+      const updated = await this.repository
         .applyAiModerationVerdict({
           itemId,
           aiModerationStatus: AiModerationStatus.FLAGGED,
           modelRef: 'ai:error:fail-closed',
-          transitionType: ModerationTransitionType.INITIAL,
+          transitionType,
           reason: 'provider_error',
           policyVersion: this.aiCfg.policyVersion,
           errorCode: 'AI_PROVIDER_ERROR',
@@ -124,6 +150,14 @@ export class PortfolioModerateProcessor extends WorkerHost {
           });
           throw repoErr;
         });
+
+      await this.emitRealtimeModerationCompleted({
+        itemId,
+        status: updated.status,
+        aiModerationStatus: updated.aiModerationStatus,
+        transitionType,
+        updatedAt: updated.updatedAt.toISOString(),
+      });
     }
   }
 
@@ -141,7 +175,10 @@ export class PortfolioModerateProcessor extends WorkerHost {
     await Promise.all(
       fileKeys.map(async (key) => {
         try {
-          result[key] = await this.storage.downloadObject(key);
+          result[key] = await this.storage.downloadObject(
+            key,
+            this.storageCfg.r2BucketPublic,
+          );
         } catch (err: unknown) {
           this.logger.warn({
             op: 'portfolio.moderate.downloadFailed',
@@ -154,5 +191,39 @@ export class PortfolioModerateProcessor extends WorkerHost {
     );
 
     return result;
+  }
+
+  private async emitRealtimeModerationCompleted(payload: {
+    itemId: string;
+    status: PortfolioItemStatus;
+    aiModerationStatus: AiModerationStatus;
+    transitionType: ModerationTransitionType;
+    updatedAt: string;
+  }): Promise<void> {
+    try {
+      const userId = await this.repository.findOwnerUserIdByItemId(
+        payload.itemId,
+      );
+      if (!userId) {
+        this.logger.warn({
+          op: 'portfolio.moderate.realtime.skip',
+          itemId: payload.itemId,
+          reason: 'owner-not-found',
+        });
+        return;
+      }
+
+      this.eventEmitter.emit(REALTIME_PUSH_EVENT, {
+        userId,
+        event: 'portfolio.moderation.completed',
+        data: payload,
+      });
+    } catch (err: unknown) {
+      this.logger.warn({
+        op: 'portfolio.moderate.realtime.error',
+        itemId: payload.itemId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
